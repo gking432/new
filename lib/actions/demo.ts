@@ -3,6 +3,33 @@
 import { submitLead } from "@/lib/actions";
 import { findExistingLead } from "@/lib/calls/completeCall";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { createClient } from "@/lib/supabase/server";
+
+/**
+ * Context the interactive demo guide needs to wire its buttons (e.g. the
+ * seeded Sarah Mitchell lead for the existing-customer callback).
+ */
+export async function getDemoGuideContext(): Promise<{
+  sarah: {
+    id: string;
+    first_name: string;
+    last_name: string;
+    phone: string | null;
+    stage: string;
+    urgency: string;
+    service_type: string;
+  } | null;
+}> {
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("leads")
+    .select("id, first_name, last_name, phone, stage, urgency, service_type")
+    .eq("phone", "(414) 555-0188")
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  return { sarah: data ?? null };
+}
 
 const DEMO_HOMEOWNERS = [
   { first: "Jordan", last: "Avery", phone: "(414) 555-0123", city: "Pewaukee", street: "418 Lakeview Ct" },

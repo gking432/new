@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Controller, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Loader2, Sparkles } from "lucide-react";
@@ -187,8 +187,12 @@ const DEMO_CUSTOMERS: LeadFormValues[] = [
   },
 ];
 
+/** Fired by the demo guide widget to auto-fill the form from anywhere on the page. */
+export const DEMO_FILL_EVENT = "northstar-demo-fill";
+
 export function LeadForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [submitting, setSubmitting] = useState(false);
 
   const {
@@ -206,6 +210,19 @@ export function LeadForm() {
       state: "MN",
     },
   });
+
+  // Auto-fill triggers: the demo guide dispatches an event when already on
+  // this page, or links here with ?fill=demo from elsewhere.
+  useEffect(() => {
+    const fill = () => {
+      reset(DEMO_CUSTOMERS[Math.floor(Math.random() * DEMO_CUSTOMERS.length)]);
+      toast.success("Form filled with a demo customer — review and submit");
+    };
+    if (searchParams.get("fill") === "demo") fill();
+    window.addEventListener(DEMO_FILL_EVENT, fill);
+    return () => window.removeEventListener(DEMO_FILL_EVENT, fill);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   async function onSubmit(values: LeadFormValues) {
     setSubmitting(true);

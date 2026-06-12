@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
 import { PublicHeader } from "@/components/public/PublicHeader";
 import { LeadForm } from "@/components/public/LeadForm";
 
@@ -20,7 +21,9 @@ export default function RequestPage() {
           hour during business hours.
         </p>
         <div className="mt-8">
-          <LeadForm />
+          <Suspense>
+            <LeadForm />
+          </Suspense>
         </div>
       </main>
     </div>
