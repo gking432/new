@@ -1,4 +1,8 @@
+"use client";
+
+import { useState } from "react";
 import Link from "next/link";
+import { ChevronsLeft, ChevronsRight } from "lucide-react";
 import { LeadStageSelect } from "@/components/app/LeadStageSelect";
 import { UrgencyBadge } from "@/components/app/UrgencyBadge";
 import { Card } from "@/components/ui/card";
@@ -10,16 +14,27 @@ import {
   fullName,
 } from "@/lib/utils/format";
 import { LEAD_STAGES, SERVICE_LABELS, STAGE_STYLES } from "@/lib/utils/statuses";
-import type { LeadWithRelations } from "@/types/app";
+import type { LeadStage, LeadWithRelations } from "@/types/app";
 
 export function PipelineBoard({ leads }: { leads: LeadWithRelations[] }) {
+  const [collapsed, setCollapsed] = useState<Set<LeadStage>>(new Set());
+
   const byStage = new Map(LEAD_STAGES.map((stage) => [stage, [] as LeadWithRelations[]]));
   for (const lead of leads) {
     byStage.get(lead.stage)?.push(lead);
   }
 
+  function toggle(stage: LeadStage) {
+    setCollapsed((prev) => {
+      const next = new Set(prev);
+      if (next.has(stage)) next.delete(stage);
+      else next.add(stage);
+      return next;
+    });
+  }
+
   return (
-    <div className="flex gap-4 overflow-x-auto pb-4 max-lg:flex-col">
+    <div className="flex gap-3 overflow-x-auto pb-4 max-lg:flex-col">
       {LEAD_STAGES.map((stage) => {
         const stageLeads = byStage.get(stage) ?? [];
         const stageValue = stageLeads.reduce(
@@ -27,20 +42,51 @@ export function PipelineBoard({ leads }: { leads: LeadWithRelations[] }) {
             sum + estimatedValueMidpoint(lead.estimated_value_min, lead.estimated_value_max),
           0
         );
+        const isCollapsed = collapsed.has(stage);
+        const dotClass = STAGE_STYLES[stage].className
+          .split(" ")[0]
+          .replace("-100", "-500");
+
+        if (isCollapsed) {
+          return (
+            <button
+              key={stage}
+              type="button"
+              onClick={() => toggle(stage)}
+              className="flex w-10 shrink-0 flex-col items-center gap-2 rounded-lg border bg-secondary/40 py-3 transition-colors hover:bg-secondary max-lg:w-full max-lg:flex-row max-lg:px-3 max-lg:py-2"
+              title={`Expand ${STAGE_STYLES[stage].label}`}
+            >
+              <ChevronsRight className="h-3.5 w-3.5 text-muted-foreground max-lg:rotate-90" />
+              <span className={cn("inline-block h-2 w-2 rounded-full", dotClass)} />
+              <span className="text-xs font-semibold [writing-mode:vertical-rl] max-lg:[writing-mode:horizontal-tb]">
+                {STAGE_STYLES[stage].label}
+              </span>
+              <span className="flex h-5 w-5 items-center justify-center rounded-full bg-secondary text-[10px] font-medium text-muted-foreground">
+                {stageLeads.length}
+              </span>
+            </button>
+          );
+        }
+
         return (
-          <div key={stage} className="w-72 shrink-0 max-lg:w-full">
-            <div className="mb-3 flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <span
-                  className={cn(
-                    "inline-block h-2 w-2 rounded-full",
-                    STAGE_STYLES[stage].className.split(" ")[0].replace("bg-", "bg-").replace("-100", "-500")
-                  )}
-                />
-                <h3 className="text-sm font-semibold">{STAGE_STYLES[stage].label}</h3>
+          <div key={stage} className="w-64 shrink-0 max-lg:w-full">
+            <div className="mb-3 flex items-center justify-between gap-1">
+              <div className="flex min-w-0 items-center gap-1.5">
+                <span className={cn("inline-block h-2 w-2 shrink-0 rounded-full", dotClass)} />
+                <h3 className="truncate text-sm font-semibold">{STAGE_STYLES[stage].label}</h3>
                 <span className="text-xs text-muted-foreground">{stageLeads.length}</span>
               </div>
-              <span className="text-xs text-muted-foreground">{formatMoney(stageValue)}</span>
+              <div className="flex items-center gap-1.5">
+                <span className="text-xs text-muted-foreground">{formatMoney(stageValue)}</span>
+                <button
+                  type="button"
+                  onClick={() => toggle(stage)}
+                  className="rounded p-0.5 text-muted-foreground hover:bg-secondary hover:text-foreground"
+                  title={`Collapse ${STAGE_STYLES[stage].label}`}
+                >
+                  <ChevronsLeft className="h-3.5 w-3.5" />
+                </button>
+              </div>
             </div>
             <div className="space-y-2">
               {stageLeads.length === 0 ? (

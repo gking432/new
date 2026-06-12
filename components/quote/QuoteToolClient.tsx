@@ -68,6 +68,8 @@ export function QuoteToolClient({
   const [complexity, setComplexity] = useState<"simple" | "moderate" | "complex">("moderate");
   const [windowCount, setWindowCount] = useState<string>("");
   const [gutterFeet, setGutterFeet] = useState<string>("");
+  const [manualSqft, setManualSqft] = useState<string>("");
+  const [manualStories, setManualStories] = useState<string>("");
   const [bathType, setBathType] = useState<"tub_to_shower" | "shower_update" | "full_remodel" | "accessibility">("tub_to_shower");
   const [activeLeak, setActiveLeak] = useState(false);
   const [notes, setNotes] = useState("");
@@ -110,8 +112,8 @@ export function QuoteToolClient({
       service_type: serviceType,
       material_tier: materialTier,
       complexity,
-      finished_sqft: property?.finished_sqft ?? undefined,
-      stories: property?.stories ?? undefined,
+      finished_sqft: manualSqft ? Number(manualSqft) : (property?.finished_sqft ?? undefined),
+      stories: manualStories ? Number(manualStories) : (property?.stories ?? undefined),
       roof_pitch: (property?.roof_pitch as "low" | "moderate" | "steep" | null) ?? undefined,
       estimated_roof_sqft: property?.estimated_roof_sqft ?? undefined,
       estimated_siding_sqft: property?.estimated_siding_sqft ?? undefined,
@@ -198,14 +200,16 @@ export function QuoteToolClient({
               <Home className="h-4 w-4 text-primary" />
               Property research
               {property && (
-                <Badge variant="secondary" className="text-[10px]">
-                  Demo property data
+                <Badge className="bg-amber-100 text-amber-800 text-[10px]" variant="secondary">
+                  Simulated data
                 </Badge>
               )}
             </CardTitle>
             <CardDescription>
-              Deterministic demo profile by address — a real data provider plugs in behind the same
-              interface.
+              These values are simulated for the demo — not pulled from the web. In production,
+              this panel would be fed by county assessor records (public) or a paid property-data
+              API (e.g. ATTOM, Estated); Zillow does not offer a public API. You can also override
+              the key numbers manually in the job inputs.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
@@ -290,6 +294,25 @@ export function QuoteToolClient({
                     <SelectItem value="best">Best</SelectItem>
                   </SelectContent>
                 </Select>
+              </div>
+              <div className="space-y-1.5">
+                <Label>Finished sqft (override)</Label>
+                <Input
+                  type="number"
+                  placeholder={String(property?.finished_sqft ?? "e.g. 2100")}
+                  value={manualSqft}
+                  onChange={(e) => setManualSqft(e.target.value)}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Stories (override)</Label>
+                <Input
+                  type="number"
+                  step="0.5"
+                  placeholder={String(property?.stories ?? "e.g. 1.5")}
+                  value={manualStories}
+                  onChange={(e) => setManualStories(e.target.value)}
+                />
               </div>
               <div className="space-y-1.5">
                 <Label>Complexity / access</Label>

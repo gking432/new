@@ -7,7 +7,6 @@ import {
   ArrowDownLeft,
   ArrowUpRight,
   Bot,
-  Check,
   FileText,
   Loader2,
   Mail,
@@ -41,32 +40,24 @@ const CHANNEL_ICONS: Record<string, React.ComponentType<{ className?: string }>>
   manual: FileText,
 };
 
-const STATUS_STYLES: Record<string, string> = {
-  draft: "bg-amber-100 text-amber-800",
-  approved: "bg-blue-100 text-blue-800",
-  simulated_sent: "bg-green-100 text-green-800",
-  sent: "bg-green-100 text-green-800",
-  received: "bg-secondary text-secondary-foreground",
-  failed: "bg-red-100 text-red-800",
-  discarded: "bg-secondary text-muted-foreground",
-};
-
 export function InboxView({ communications }: { communications: CommunicationWithLead[] }) {
   const router = useRouter();
-  const [tab, setTab] = useState("all");
+  const [tab, setTab] = useState("messages");
   const [channelFilter, setChannelFilter] = useState<string | null>(null);
   const [search, setSearch] = useState("");
-  const [selectedId, setSelectedId] = useState<string | null>(communications[0]?.id ?? null);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
   const [editedBody, setEditedBody] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
-  const filtered = useMemo(() => {
-    let list = communications.filter((c) => c.status !== "discarded");
-    if (tab === "approvals") {
-      list = list.filter(
-        (c) => c.direction === "outbound" && (c.status === "draft" || c.status === "approved")
-      );
-    }
+  const live = communications.filter((c) => c.status !== "discarded");
+
+  // The left list shows conversations, not raw rows: inbound messages and
+  // calls. Outbound drafts/sends appear inside the thread on the right.
+  const listItems = useMemo(() => {
+    let list =
+      tab === "approvals"
+        ? live.filter((c) => c.direction === "outbound" && c.status === "draft")
+        : live.filter((c) => c.direction === "inbound" || c.channel === "call");
     if (channelFilter) list = list.filter((c) => c.channel === channelFilter);
     if (search.trim()) {
       const term = search.toLowerCase();
@@ -79,22 +70,56 @@ export function InboxView({ communications }: { communications: CommunicationWit
       );
     }
     return list;
-  }, [communications, tab, channelFilter, search]);
+  }, [live, tab, channelFilter, search]);
 
-  const selected = filtered.find((c) => c.id === selectedId) ?? filtered[0] ?? null;
-  const approvalsCount = communications.filter(
+  const selected = listItems.find((c) => c.id === selectedId) ?? listItems[0] ?? null;
+
+  // Thread for the selected conversation: every message on the same channel
+  // for the same lead (or same phone/email when unmatched), oldest first.
+  const thread = useMemo(() => {
+    if (!selected || selected.channel === "call") return [];
+    return live
+      .filter((c) => {
+        if (c.channel !== selected.channel) return false;
+        if (selected.lead_id) return c.lead_id === selected.lead_id;
+        const key = selected.direction === "inbound" ? selected.from_value : selected.to_value;
+        return c.from_value === key || c.to_value === key;
+      })
+      .sort((a, b) => a.created_at.localeCompare(b.created_at));
+  }, [live, selected]);
+
+  const pendingDraft = thread.find((c) => c.direction === "outbound" && c.status === "draft");
+  const approvalsCount = live.filter(
     (c) => c.direction === "outbound" && c.status === "draft"
   ).length;
 
-  function runAction(action: () => Promise<{ success: boolean; error?: string }>, okMessage: string) {
+  function approveAndSend(draftId: string) {
     startTransition(async () => {
-      const result = await action();
-      if (result.success) {
-        toast.success(okMessage);
+      const approved = await approveCommunication(draftId, editedBody ?? undefined);
+      if (!approved.success) {
+        toast.error(approved.error ?? "Approval failed");
+        return;
+      }
+      const sent = await simulateSendCommunication(draftId);
+      if (sent.success) {
+        toast.success("Approved & sent (simulated — nothing real was sent)");
         setEditedBody(null);
         router.refresh();
       } else {
-        toast.error(result.error ?? "Action failed");
+        toast.error(sent.error ?? "Send failed");
+      }
+    });
+  }
+
+  function discard(draftId: string) {
+    startTransition(async () => {
+      const result = await discardCommunication(draftId);
+      if (result.success) {
+        toast.success("Draft discarded");
+        setEditedBody(null);
+        router.refresh();
+      } else {
+        toast.error(result.error ?? "Discard failed");
       }
     });
   }
@@ -104,11 +129,11 @@ export function InboxView({ communications }: { communications: CommunicationWit
       <div className="flex flex-wrap items-center gap-3">
         <Tabs value={tab} onValueChange={setTab}>
           <TabsList>
-            <TabsTrigger value="all">All messages</TabsTrigger>
+            <TabsTrigger value="messages">Conversations</TabsTrigger>
             <TabsTrigger value="approvals">
               Approval queue
               {approvalsCount > 0 && (
-                <Badge className="ml-1.5 bg-amber-100 text-amber-800" variant="secondary">
+                <Badge className="ml-1.5 bg-red-500 text-white" variant="secondary">
                   {approvalsCount}
                 </Badge>
               )}
@@ -116,7 +141,7 @@ export function InboxView({ communications }: { communications: CommunicationWit
           </TabsList>
         </Tabs>
         <div className="flex flex-wrap gap-1.5">
-          {["call", "sms", "email", "form"].map((channel) => (
+          {["call", "sms", "email"].map((channel) => (
             <Button
               key={channel}
               variant={channelFilter === channel ? "default" : "outline"}
@@ -137,15 +162,15 @@ export function InboxView({ communications }: { communications: CommunicationWit
       </div>
 
       <div className="grid gap-4 lg:grid-cols-5">
-        {/* Message list */}
+        {/* Conversation list */}
         <Card className="lg:col-span-2">
-          <CardContent className="max-h-[65vh] space-y-1 overflow-y-auto p-2">
-            {filtered.length === 0 ? (
+          <CardContent className="max-h-[68vh] space-y-1 overflow-y-auto p-2">
+            {listItems.length === 0 ? (
               <p className="px-3 py-10 text-center text-sm text-muted-foreground">
-                No messages match. Use the Demo Center to simulate an inbound text or email.
+                Nothing here yet. Use the Demo Center to simulate an inbound text or email.
               </p>
             ) : (
-              filtered.map((comm) => {
+              listItems.map((comm) => {
                 const Icon = CHANNEL_ICONS[comm.channel] ?? FileText;
                 return (
                   <button
@@ -172,9 +197,11 @@ export function InboxView({ communications }: { communications: CommunicationWit
                           ? `${comm.lead.first_name} ${comm.lead.last_name}`
                           : (comm.from_value ?? "Unknown")}
                       </span>
-                      <Badge className={cn("text-[10px]", STATUS_STYLES[comm.status])} variant="secondary">
-                        {comm.status.replace(/_/g, " ")}
-                      </Badge>
+                      {tab === "approvals" && (
+                        <Badge className="bg-amber-100 text-amber-800 text-[10px]" variant="secondary">
+                          needs approval
+                        </Badge>
+                      )}
                     </div>
                     <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">
                       {comm.subject ? `${comm.subject} — ` : ""}
@@ -182,7 +209,6 @@ export function InboxView({ communications }: { communications: CommunicationWit
                     </p>
                     <p className="mt-1 text-[10px] text-muted-foreground/70">
                       {formatRelative(comm.created_at)}
-                      {comm.ai_generated ? " · AI draft" : ""}
                     </p>
                   </button>
                 );
@@ -191,107 +217,26 @@ export function InboxView({ communications }: { communications: CommunicationWit
           </CardContent>
         </Card>
 
-        {/* Detail */}
+        {/* Conversation detail */}
         <Card className="lg:col-span-3">
           {selected ? (
-            <CardContent className="space-y-4 p-5">
-              <div className="flex flex-wrap items-center gap-2">
+            <CardContent className="flex max-h-[68vh] flex-col p-0">
+              {/* Header */}
+              <div className="flex flex-wrap items-center gap-2 border-b p-4">
                 <h3 className="text-base font-semibold">
-                  {selected.subject ??
-                    `${selected.channel.toUpperCase()} ${selected.direction === "inbound" ? "from" : "to"} ${
-                      selected.direction === "inbound"
-                        ? (selected.from_value ?? "unknown")
-                        : (selected.to_value ?? "customer")
-                    }`}
+                  {selected.lead
+                    ? `${selected.lead.first_name} ${selected.lead.last_name}`
+                    : (selected.from_value ?? "Unknown")}
                 </h3>
-                <Badge className={STATUS_STYLES[selected.status]} variant="secondary">
-                  {selected.status.replace(/_/g, " ")}
+                <Badge variant="secondary" className="capitalize">
+                  {selected.channel}
                 </Badge>
-                {selected.ai_generated && (
-                  <Badge variant="outline" className="gap-1 text-[10px]">
-                    <Bot className="h-3 w-3" />
-                    AI draft — human approval required
-                  </Badge>
-                )}
-              </div>
-
-              <div className="text-xs text-muted-foreground">
-                {selected.from_value && <span>From: {selected.from_value} · </span>}
-                {selected.to_value && <span>To: {selected.to_value} · </span>}
-                {formatRelative(selected.created_at)}
-              </div>
-
-              {selected.status === "draft" && selected.direction === "outbound" ? (
-                <Textarea
-                  value={editedBody ?? selected.body ?? ""}
-                  onChange={(e) => setEditedBody(e.target.value)}
-                  rows={7}
-                />
-              ) : (
-                <div className="whitespace-pre-wrap rounded-lg border bg-secondary/30 p-3 text-sm">
-                  {selected.body}
-                </div>
-              )}
-
-              {selected.ai_summary && (
-                <div className="rounded-lg border border-primary/20 bg-primary/5 p-3">
-                  <p className="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-primary">
-                    <Bot className="h-3.5 w-3.5" />
-                    AI summary
-                  </p>
-                  <p className="mt-1 text-sm">{selected.ai_summary}</p>
-                  {selected.suggested_next_action && (
-                    <p className="mt-1.5 text-xs text-muted-foreground">
-                      Suggested next action: {selected.suggested_next_action}
-                    </p>
-                  )}
-                </div>
-              )}
-
-              <div className="flex flex-wrap gap-2 border-t pt-4">
-                {selected.status === "draft" && selected.direction === "outbound" && (
-                  <>
-                    <Button
-                      size="sm"
-                      disabled={pending}
-                      onClick={() =>
-                        runAction(
-                          () => approveCommunication(selected.id, editedBody ?? undefined),
-                          "Draft approved"
-                        )
-                      }
-                    >
-                      {pending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
-                      Approve
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      disabled={pending}
-                      onClick={() =>
-                        runAction(() => discardCommunication(selected.id), "Draft discarded")
-                      }
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                      Discard
-                    </Button>
-                  </>
-                )}
-                {selected.status === "approved" && (
-                  <Button
-                    size="sm"
-                    disabled={pending}
-                    onClick={() =>
-                      runAction(
-                        () => simulateSendCommunication(selected.id),
-                        "Send simulated (demo mode — nothing real was sent)"
-                      )
-                    }
-                  >
-                    {pending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
-                    Simulate send
-                  </Button>
-                )}
+                <span className="text-xs text-muted-foreground">
+                  {selected.direction === "inbound"
+                    ? selected.from_value
+                    : selected.to_value}
+                </span>
+                <span className="flex-1" />
                 {selected.lead && (
                   <Button size="sm" variant="outline" asChild>
                     <Link href={`/app/leads/${selected.lead.id}`}>Open lead</Link>
@@ -303,10 +248,126 @@ export function InboxView({ communications }: { communications: CommunicationWit
                   </Button>
                 )}
               </div>
+
+              {/* Body */}
+              <div className="flex-1 overflow-y-auto p-4">
+                {selected.channel === "call" ? (
+                  <div className="space-y-3">
+                    <div className="whitespace-pre-wrap rounded-lg border bg-secondary/30 p-3 text-sm">
+                      {selected.body}
+                    </div>
+                    {selected.ai_summary && (
+                      <div className="rounded-lg border border-primary/20 bg-primary/5 p-3">
+                        <p className="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-primary">
+                          <Bot className="h-3.5 w-3.5" />
+                          AI call note
+                        </p>
+                        <p className="mt-1 text-sm">{selected.ai_summary}</p>
+                      </div>
+                    )}
+                  </div>
+                ) : selected.channel === "sms" ? (
+                  /* iMessage-style thread */
+                  <div className="space-y-2">
+                    {thread
+                      .filter((c) => c.status !== "draft")
+                      .map((msg) => (
+                        <div
+                          key={msg.id}
+                          className={cn(
+                            "flex",
+                            msg.direction === "inbound" ? "justify-start" : "justify-end"
+                          )}
+                        >
+                          <div
+                            className={cn(
+                              "max-w-[80%] rounded-2xl px-3.5 py-2 text-sm",
+                              msg.direction === "inbound"
+                                ? "rounded-bl-sm bg-secondary"
+                                : "rounded-br-sm bg-primary text-primary-foreground"
+                            )}
+                          >
+                            <p className="whitespace-pre-wrap">{msg.body}</p>
+                            <p
+                              className={cn(
+                                "mt-1 text-[10px]",
+                                msg.direction === "inbound"
+                                  ? "text-muted-foreground"
+                                  : "text-primary-foreground/60"
+                              )}
+                            >
+                              {formatRelative(msg.created_at)}
+                              {msg.status === "simulated_sent" ? " · sent (simulated)" : ""}
+                            </p>
+                          </div>
+                        </div>
+                      ))}
+                  </div>
+                ) : (
+                  /* Email thread */
+                  <div className="space-y-3">
+                    {thread
+                      .filter((c) => c.status !== "draft")
+                      .map((msg) => (
+                        <div key={msg.id} className="rounded-lg border p-3">
+                          <p className="text-xs text-muted-foreground">
+                            {msg.direction === "inbound" ? "From" : "To"}:{" "}
+                            {msg.direction === "inbound" ? msg.from_value : msg.to_value} ·{" "}
+                            {formatRelative(msg.created_at)}
+                            {msg.status === "simulated_sent" ? " · sent (simulated)" : ""}
+                          </p>
+                          {msg.subject && <p className="mt-1 text-sm font-medium">{msg.subject}</p>}
+                          <p className="mt-1.5 whitespace-pre-wrap text-sm">{msg.body}</p>
+                        </div>
+                      ))}
+                  </div>
+                )}
+              </div>
+
+              {/* AI draft composer */}
+              {pendingDraft && (
+                <div className="border-t bg-secondary/30 p-4">
+                  <p className="mb-2 flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                    <Bot className="h-3.5 w-3.5 text-primary" />
+                    AI-drafted reply — review before sending
+                    {pendingDraft.subject && selected.channel === "email" && (
+                      <span className="normal-case">· {pendingDraft.subject}</span>
+                    )}
+                  </p>
+                  <Textarea
+                    value={editedBody ?? pendingDraft.body ?? ""}
+                    onChange={(e) => setEditedBody(e.target.value)}
+                    rows={selected.channel === "email" ? 7 : 4}
+                    className="bg-background"
+                  />
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    <Button size="sm" disabled={pending} onClick={() => approveAndSend(pendingDraft.id)}>
+                      {pending ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <Send className="h-3.5 w-3.5" />
+                      )}
+                      Approve &amp; send (simulated)
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={pending}
+                      onClick={() => discard(pendingDraft.id)}
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                      Discard
+                    </Button>
+                    <span className="self-center text-[11px] text-muted-foreground">
+                      Demo mode — nothing real is sent.
+                    </span>
+                  </div>
+                </div>
+              )}
             </CardContent>
           ) : (
             <CardContent className="py-16 text-center text-sm text-muted-foreground">
-              Select a message to view it.
+              Select a conversation to view it.
             </CardContent>
           )}
         </Card>

@@ -1,23 +1,57 @@
 "use server";
 
 import { submitLead } from "@/lib/actions";
+import { findExistingLead } from "@/lib/calls/completeCall";
+import { createAdminClient } from "@/lib/supabase/admin";
 
 const DEMO_HOMEOWNERS = [
-  { first: "Sarah", last: "Mitchell", phone: "(414) 555-0188", city: "Sussex", street: "123 Demo Lane" },
   { first: "Jordan", last: "Avery", phone: "(414) 555-0123", city: "Pewaukee", street: "418 Lakeview Ct" },
   { first: "Maria", last: "Castillo", phone: "(414) 555-0167", city: "Waukesha", street: "902 Hillcrest Dr" },
+  { first: "Tyler", last: "Brennan", phone: "(262) 555-0190", city: "Brookfield", street: "1377 Stonefield Rd" },
 ];
 
 /**
  * Demo Center helper: submits a storm-damage lead through the real public
  * pipeline (insert → AI analysis → automations), then the UI runs the
- * speed-to-lead AI call against it.
+ * speed-to-lead AI call against it. Dedupes by phone: re-running the demo
+ * with the same homeowner reuses their existing lead instead of creating a
+ * duplicate.
  */
 export async function createDemoSpeedToLead(): Promise<
-  | { success: true; data: { leadId: string; name: string; phone: string } }
+  | { success: true; data: { leadId: string; name: string; phone: string; reused: boolean } }
   | { success: false; error: string }
 > {
   const homeowner = DEMO_HOMEOWNERS[Math.floor(Math.random() * DEMO_HOMEOWNERS.length)];
+
+  try {
+    const supabase = createAdminClient();
+    const existing = await findExistingLead(supabase, homeowner.phone);
+    if (existing) {
+      await supabase
+        .from("leads")
+        .update({ stage: "new", updated_at: new Date().toISOString() })
+        .eq("id", existing.id);
+      await supabase.from("activities").insert({
+        lead_id: existing.id,
+        type: "lead_created",
+        title: "Repeat website submission matched to this existing record",
+        description: "Demo speed-to-lead run reused the existing lead (matched by phone number).",
+      });
+      return {
+        success: true,
+        data: {
+          leadId: existing.id,
+          name: `${existing.first_name} ${existing.last_name}`,
+          phone: existing.phone ?? homeowner.phone,
+          reused: true,
+        },
+      };
+    }
+  } catch {
+    // Admin client unavailable — fall through to the normal pipeline, which
+    // reports a friendly configuration error.
+  }
+
   const result = await submitLead({
     first_name: homeowner.first,
     last_name: homeowner.last,
@@ -50,6 +84,7 @@ export async function createDemoSpeedToLead(): Promise<
       leadId: result.data.leadId,
       name: `${homeowner.first} ${homeowner.last}`,
       phone: homeowner.phone,
+      reused: false,
     },
   };
 }

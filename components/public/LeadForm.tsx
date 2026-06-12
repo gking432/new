@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Controller, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Loader2 } from "lucide-react";
+import { Loader2, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -118,6 +118,75 @@ function TextField({
   );
 }
 
+const DEMO_CUSTOMERS: LeadFormValues[] = [
+  {
+    first_name: "Sarah",
+    last_name: "Mitchell",
+    email: "sarah.mitchell@example.com",
+    phone: "(414) 555-0188",
+    preferred_contact_method: "phone",
+    best_time_to_contact: "afternoon",
+    street_address: "123 Demo Lane",
+    city: "Sussex",
+    state: "WI",
+    zip_code: "53089",
+    homeowner_status: "owner",
+    service_type: "storm_damage",
+    project_reason: "damage_repair",
+    timeframe: "emergency",
+    budget_range: "not_sure",
+    description:
+      "We had hail last week and now I'm seeing missing shingles and a water spot on the ceiling upstairs. It looks like it's getting bigger.",
+    insurance_started: "no",
+    active_leak: "yes",
+    source: "google",
+  },
+  {
+    first_name: "Priya",
+    last_name: "Raman",
+    email: "priya.raman@example.com",
+    phone: "(262) 555-0171",
+    preferred_contact_method: "text",
+    best_time_to_contact: "evening",
+    street_address: "2240 Sunset Ridge Dr",
+    city: "Brookfield",
+    state: "WI",
+    zip_code: "53045",
+    homeowner_status: "owner",
+    service_type: "windows",
+    project_reason: "replacement",
+    timeframe: "1_3_months",
+    budget_range: "15k_30k",
+    description:
+      "Our house was built in 1992 and the original windows are drafty and fog up between the panes. We'd like to replace the first floor before winter.",
+    insurance_started: "not_applicable",
+    active_leak: "no",
+    source: "referral",
+  },
+  {
+    first_name: "Dale",
+    last_name: "Kowalski",
+    email: "dale.kowalski@example.com",
+    phone: "(414) 555-0136",
+    preferred_contact_method: "phone",
+    best_time_to_contact: "morning",
+    street_address: "815 Foxglove Ct",
+    city: "Menomonee Falls",
+    state: "WI",
+    zip_code: "53051",
+    homeowner_status: "owner",
+    service_type: "gutters",
+    project_reason: "damage_repair",
+    timeframe: "this_week",
+    budget_range: "under_5k",
+    description:
+      "Gutters are pulling away from the fascia in the back and overflowing every time it rains hard.",
+    insurance_started: "not_sure",
+    active_leak: "no",
+    source: "yard_sign",
+  },
+];
+
 export function LeadForm() {
   const router = useRouter();
   const [submitting, setSubmitting] = useState(false);
@@ -126,6 +195,7 @@ export function LeadForm() {
     register,
     control,
     handleSubmit,
+    reset,
     formState: { errors },
   } = useForm<LeadFormValues>({
     resolver: zodResolver(leadFormSchema),
@@ -152,6 +222,25 @@ export function LeadForm() {
 
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
+      <div className="flex flex-wrap items-center gap-3 rounded-lg border border-brand-gold/40 bg-brand-gold/10 p-3">
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="bg-background"
+          onClick={() =>
+            reset(DEMO_CUSTOMERS[Math.floor(Math.random() * DEMO_CUSTOMERS.length)])
+          }
+        >
+          <Sparkles className="h-3.5 w-3.5 text-brand-gold" />
+          Generate demo customer
+        </Button>
+        <p className="text-xs text-muted-foreground">
+          Auto-fills the form with a realistic homeowner — or enter your own info; everything you
+          type works in the demo. After submitting, watch for the AI callback.
+        </p>
+      </div>
+
       <Card>
         <CardHeader>
           <CardTitle>Contact information</CardTitle>

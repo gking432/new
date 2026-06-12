@@ -185,20 +185,63 @@ function heuristicParseAvailability(text: string) {
   };
 }
 
-/**
- * Converts a plain-English availability description into availability windows
- * (AI when configured, deterministic parser otherwise) and replaces the
- * current schedule.
- */
-export async function setAvailabilityFromText(
-  text: string
-): Promise<ActionResult<{ windows: z.infer<typeof AvailabilityWindowsSchema>["windows"]; usedAI: boolean }>> {
-  const trimmed = text.trim().slice(0, 600);
-  if (!trimmed) return { success: false, error: "Describe your availability first" };
+/** Manually adds a weekly availability window for an estimator. */
+export async function addAvailabilityWindow(input: {
+  estimator_id: string | null;
+  day_of_week: number;
+  start_time: string;
+  end_time: string;
+  slot_minutes: number;
+}): Promise<ActionResult<undefined>> {
+  const parsed = z
+    .object({
+      estimator_id: z.string().uuid().nullable(),
+      day_of_week: z.number().min(0).max(6),
+      start_time: z.string().regex(/^\d{2}:\d{2}$/),
+      end_time: z.string().regex(/^\d{2}:\d{2}$/),
+      slot_minutes: z.number().min(30).max(240),
+    })
+    .safeParse(input);
+  if (!parsed.success) return { success: false, error: "Invalid availability window" };
+  if (parsed.data.end_time <= parsed.data.start_time) {
+    return { success: false, error: "End time must be after start time" };
+  }
 
   const supabase = await createClient();
   try {
-    const user = await requireUser(supabase);
+    await requireUser(supabase);
+    const { error } = await supabase.from("availability_windows").insert({
+      user_id: parsed.data.estimator_id,
+      day_of_week: parsed.data.day_of_week,
+      start_time: parsed.data.start_time,
+      end_time: parsed.data.end_time,
+      slot_minutes: parsed.data.slot_minutes,
+      appointment_type: "inspection",
+      active: true,
+    });
+    if (error) return { success: false, error: error.message };
+    revalidatePath("/app/appointments");
+    return { success: true, data: undefined };
+  } catch (err) {
+    return { success: false, error: err instanceof Error ? err.message : "Could not add window" };
+  }
+}
+
+/**
+ * Optional shortcut: converts a plain-English availability description into
+ * windows for one estimator (AI when configured, deterministic parser
+ * otherwise) and replaces that estimator's schedule.
+ */
+export async function setAvailabilityFromText(
+  text: string,
+  estimatorId: string | null
+): Promise<ActionResult<{ windows: z.infer<typeof AvailabilityWindowsSchema>["windows"]; usedAI: boolean }>> {
+  const trimmed = text.trim().slice(0, 600);
+  if (!trimmed) return { success: false, error: "Describe the availability first" };
+
+  const supabase = await createClient();
+  try {
+    await requireUser(supabase);
 
     let parsed: z.infer<typeof AvailabilityWindowsSchema> | null = null;
     let usedAI = false;
@@ -220,9 +263,20 @@ export async function setAvailabilityFromText(
       return { success: false, error: "Couldn't find any working days in that description" };
     }
 
-    await supabase.from("availability_windows").delete().neq("id", "00000000-0000-0000-0000-000000000000");
+    // Replace only this estimator's windows.
+    let deleteQuery = supabase.from("availability_windows").delete();
+    deleteQuery = estimatorId
+      ? deleteQuery.eq("user_id", estimatorId)
+      : deleteQuery.is("user_id", null);
+    await deleteQuery;
+
     const { error } = await supabase.from("availability_windows").insert(
-      parsed.windows.map((w) => ({ ...w, user_id: user.id, appointment_type: "inspection", active: true }))
+      parsed.windows.map((w) => ({
+        ...w,
+        user_id: estimatorId,
+        appointment_type: "inspection",
+        active: true,
+      }))
     );
     if (error) return { success: false, error: error.message };
 

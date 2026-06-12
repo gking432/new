@@ -4,6 +4,7 @@ import { ArrowRight } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { DemoGuideWidget } from "@/components/demo/DemoGuideWidget";
 import { PublicHeader } from "@/components/public/PublicHeader";
 
 export const metadata: Metadata = {
@@ -196,6 +197,7 @@ export default function CaseStudyPage() {
           </Button>
         </div>
       </main>
+      <DemoGuideWidget audience="public" />
     </div>
   );
 }

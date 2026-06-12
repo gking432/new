@@ -48,7 +48,13 @@ const NAV_ITEMS = [
   { href: "/app/demo-center", label: "Demo Center", icon: PlayCircle },
 ];
 
-export function AppSidebar({ profile }: { profile: Profile | null }) {
+export function AppSidebar({
+  profile,
+  badges = {},
+}: {
+  profile: Profile | null;
+  badges?: Record<string, number>;
+}) {
   const pathname = usePathname();
 
   return (
@@ -80,7 +86,12 @@ export function AppSidebar({ profile }: { profile: Profile | null }) {
               )}
             >
               <item.icon className="h-4 w-4" />
-              {item.label}
+              <span className="flex-1">{item.label}</span>
+              {(badges[item.href] ?? 0) > 0 && (
+                <span className="flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold leading-none text-white">
+                  {badges[item.href]! > 9 ? "9+" : badges[item.href]}
+                </span>
+              )}
             </Link>
           );
         })}

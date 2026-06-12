@@ -12,9 +12,11 @@ import type { Lead } from "@/types/app";
  * the browser only ever sees a short-lived client secret.
  *
  * When Realtime is unavailable (no key, disabled, or the mint fails) the
- * response switches to scripted fallback mode so the demo always works. The
- * scripted scenario is returned in every response so the client can also fall
- * back mid-call if the live connection drops.
+ * response switches to scripted fallback mode — and includes the reason in
+ * `realtime_error` so the UI can show exactly why live voice didn't start.
+ *
+ * GET runs a diagnostic mint and returns the raw outcome (used by the Demo
+ * Center "Test AI voice" button).
  */
 
 const requestSchema = z.object({
@@ -38,81 +40,156 @@ function rateLimited() {
   return false;
 }
 
-async function mintRealtimeSecret(args: {
-  apiKey: string;
+interface MintResult {
+  ok: true;
+  clientSecret: string;
+  webrtcUrl: string;
+  api: "ga" | "beta";
   model: string;
-  instructions: string;
-}): Promise<{ clientSecret: string; webrtcUrl: string; api: "ga" | "beta" } | null> {
-  // GA endpoint first.
+}
+interface MintFailure {
+  ok: false;
+  error: string;
+}
+
+async function tryGaMint(
+  apiKey: string,
+  model: string,
+  instructions: string,
+  minimal: boolean
+): Promise<MintResult | MintFailure> {
   try {
+    const session: Record<string, unknown> = { type: "realtime", model, instructions };
+    if (!minimal) {
+      session.audio = {
+        input: { transcription: { model: "gpt-4o-mini-transcribe" } },
+        output: { voice: "marin" },
+      };
+    }
     const res = await fetch("https://api.openai.com/v1/realtime/client_secrets", {
       method: "POST",
-      headers: {
-        Authorization: `Bearer ${args.apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        session: {
-          type: "realtime",
-          model: args.model,
-          instructions: args.instructions,
-          audio: {
-            input: { transcription: { model: "gpt-4o-mini-transcribe" } },
-            output: { voice: "marin" },
-          },
-        },
-      }),
+      headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ session }),
     });
+    const text = await res.text();
     if (res.ok) {
-      const data = await res.json();
+      const data = JSON.parse(text);
       const value = data?.value ?? data?.client_secret?.value;
       if (value) {
         return {
+          ok: true,
           clientSecret: value,
-          webrtcUrl: `https://api.openai.com/v1/realtime/calls?model=${encodeURIComponent(args.model)}`,
+          webrtcUrl: `https://api.openai.com/v1/realtime/calls?model=${encodeURIComponent(model)}`,
           api: "ga",
+          model,
         };
       }
-    } else {
-      console.error("Realtime GA session mint failed:", res.status, await res.text());
+      return { ok: false, error: "GA mint returned no client secret" };
     }
+    return { ok: false, error: `GA ${res.status}: ${text.slice(0, 300)}` };
   } catch (err) {
-    console.error("Realtime GA session mint error:", err);
+    return { ok: false, error: `GA request error: ${err instanceof Error ? err.message : String(err)}` };
   }
+}
 
-  // Beta endpoint fallback.
+async function tryBetaMint(
+  apiKey: string,
+  model: string,
+  instructions: string
+): Promise<MintResult | MintFailure> {
   try {
     const res = await fetch("https://api.openai.com/v1/realtime/sessions", {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${args.apiKey}`,
+        Authorization: `Bearer ${apiKey}`,
         "Content-Type": "application/json",
         "OpenAI-Beta": "realtime=v1",
       },
       body: JSON.stringify({
-        model: args.model,
-        instructions: args.instructions,
+        model,
+        instructions,
         voice: "verse",
         input_audio_transcription: { model: "whisper-1" },
       }),
     });
+    const text = await res.text();
     if (res.ok) {
-      const data = await res.json();
+      const data = JSON.parse(text);
       const value = data?.client_secret?.value;
       if (value) {
         return {
+          ok: true,
           clientSecret: value,
-          webrtcUrl: `https://api.openai.com/v1/realtime?model=${encodeURIComponent(args.model)}`,
+          webrtcUrl: `https://api.openai.com/v1/realtime?model=${encodeURIComponent(model)}`,
           api: "beta",
+          model,
         };
       }
-    } else {
-      console.error("Realtime beta session mint failed:", res.status, await res.text());
+      return { ok: false, error: "Beta mint returned no client secret" };
     }
+    return { ok: false, error: `Beta ${res.status}: ${text.slice(0, 300)}` };
   } catch (err) {
-    console.error("Realtime beta session mint error:", err);
+    return {
+      ok: false,
+      error: `Beta request error: ${err instanceof Error ? err.message : String(err)}`,
+    };
   }
-  return null;
+}
+
+/**
+ * Tries the GA endpoint (full config, then minimal config), then the beta
+ * endpoint with a beta-era model name. Returns the mint or every error
+ * collected along the way.
+ */
+async function mintRealtimeSecret(args: {
+  apiKey: string;
+  model: string;
+  instructions: string;
+}): Promise<MintResult | { ok: false; errors: string[] }> {
+  const errors: string[] = [];
+
+  const ga = await tryGaMint(args.apiKey, args.model, args.instructions, false);
+  if (ga.ok) return ga;
+  errors.push(ga.error);
+  console.error("Realtime GA mint failed:", ga.error);
+
+  const gaMinimal = await tryGaMint(args.apiKey, args.model, args.instructions, true);
+  if (gaMinimal.ok) return gaMinimal;
+  errors.push(gaMinimal.error);
+
+  const betaModel = args.model.startsWith("gpt-4o-realtime")
+    ? args.model
+    : "gpt-4o-realtime-preview";
+  const beta = await tryBetaMint(args.apiKey, betaModel, args.instructions);
+  if (beta.ok) return beta;
+  errors.push(beta.error);
+  console.error("Realtime beta mint failed:", beta.error);
+
+  return { ok: false, errors };
+}
+
+/** Diagnostics: attempts a real mint and reports the outcome. */
+export async function GET() {
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (!apiKey) {
+    return NextResponse.json({
+      ok: false,
+      reason: "OPENAI_API_KEY is not set (restart `npm run dev` after editing .env.local)",
+    });
+  }
+  if (process.env.ENABLE_REALTIME_CALLS === "false") {
+    return NextResponse.json({ ok: false, reason: "ENABLE_REALTIME_CALLS is set to false" });
+  }
+  const model = process.env.REALTIME_MODEL || "gpt-realtime";
+  const minted = await mintRealtimeSecret({
+    apiKey,
+    model,
+    instructions: "Diagnostics test session.",
+  });
+  if (minted.ok) {
+    return NextResponse.json({ ok: true, api: minted.api, model: minted.model });
+  }
+  return NextResponse.json({ ok: false, reason: minted.errors.join(" | "), model });
 }
 
 export async function POST(request: Request) {
@@ -154,9 +231,12 @@ export async function POST(request: Request) {
       scenario,
       direction,
       caller_name:
-        direction === "inbound" ? (callerName ?? leadName ?? "Unknown Caller") : "Northstar AI Assistant",
+        direction === "inbound"
+          ? (callerName ?? leadName ?? "Unknown Caller")
+          : "Northstar AI Assistant",
       caller_phone: direction === "inbound" ? (callerPhone ?? lead?.phone ?? null) : null,
-      callee_name: direction === "outbound" ? (leadName ?? callerName ?? "Homeowner") : "Northstar AI Assistant",
+      callee_name:
+        direction === "outbound" ? (leadName ?? callerName ?? "Homeowner") : "Northstar AI Assistant",
       callee_phone: direction === "outbound" ? (lead?.phone ?? callerPhone ?? null) : null,
       status: "ringing",
       started_at: new Date().toISOString(),
@@ -187,17 +267,29 @@ export async function POST(request: Request) {
   const apiKey = process.env.OPENAI_API_KEY;
   const realtimeEnabled = process.env.ENABLE_REALTIME_CALLS !== "false";
   if (!apiKey || !realtimeEnabled || forceScripted) {
-    return NextResponse.json({ ...base, mode: "scripted_fallback" });
+    return NextResponse.json({
+      ...base,
+      mode: "scripted_fallback",
+      realtime_error: forceScripted
+        ? undefined
+        : !apiKey
+          ? "OPENAI_API_KEY is not set (restart the dev server after editing .env.local)"
+          : "ENABLE_REALTIME_CALLS is false",
+    });
   }
 
   const model = process.env.REALTIME_MODEL || "gpt-realtime";
   const instructions = buildRealtimeInstructions({ scenario, lead, slots: slotLabels, maxSeconds });
   const minted = await mintRealtimeSecret({ apiKey, model, instructions });
-  if (!minted) {
-    return NextResponse.json({ ...base, mode: "scripted_fallback" });
+  if (!minted.ok) {
+    return NextResponse.json({
+      ...base,
+      mode: "scripted_fallback",
+      realtime_error: minted.errors[minted.errors.length - 1],
+    });
   }
 
-  await supabase.from("calls").update({ ai_model: model }).eq("id", call.id);
+  await supabase.from("calls").update({ ai_model: minted.model }).eq("id", call.id);
 
   return NextResponse.json({
     ...base,
@@ -205,7 +297,7 @@ export async function POST(request: Request) {
     client_secret: minted.clientSecret,
     webrtc_url: minted.webrtcUrl,
     realtime_api: minted.api,
-    model,
+    model: minted.model,
     instructions,
   });
 }

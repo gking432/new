@@ -10,6 +10,7 @@ import {
   Loader2,
   Mail,
   MessageSquareText,
+  Mic,
   Phone,
   PhoneIncoming,
   PhoneOutgoing,
@@ -19,19 +20,13 @@ import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import { CallLauncher } from "@/components/calls/CallLauncher";
-import { RealtimeCallSimulator } from "@/components/calls/RealtimeCallSimulator";
+import { useCall } from "@/components/calls/CallProvider";
 import { syncLeadToHubSpot } from "@/lib/actions/crm";
 import { createDemoSpeedToLead } from "@/lib/actions/demo";
 import { simulateInboundEmail, simulateInboundText } from "@/lib/actions/inbox";
-import { DemoEventLog, type DemoEvent } from "./DemoEventLog";
+import { appendDemoEvent } from "@/lib/demo-log";
+import { DemoEventLog } from "./DemoEventLog";
 
 interface SarahLead {
   id: string;
@@ -51,57 +46,61 @@ export function DemoCenterClient({
   latestLead: { id: string; first_name: string; last_name: string } | null;
 }) {
   const router = useRouter();
-  const [events, setEvents] = useState<DemoEvent[]>([]);
+  const { startCall, callActive } = useCall();
   const [busy, setBusy] = useState<string | null>(null);
-  const [speedToLead, setSpeedToLead] = useState<{
-    leadId: string;
-    name: string;
-    phone: string;
-  } | null>(null);
-
-  const log = (label: string) => setEvents((prev) => [...prev, { at: new Date(), label }]);
 
   async function runSpeedToLead() {
     setBusy("speed");
-    log("Submitting website lead through the public pipeline…");
+    appendDemoEvent("Submitting website lead through the public pipeline…");
     const result = await createDemoSpeedToLead();
     setBusy(null);
     if (!result.success) {
       toast.error(result.error);
       return;
     }
-    log(`Website lead submitted: ${result.data.name}`);
-    log("AI classified the lead and automation rules fired");
-    log("Speed-to-lead AI call starting…");
-    setSpeedToLead(result.data);
+    appendDemoEvent(
+      result.data.reused
+        ? `Repeat submission matched to existing lead: ${result.data.name} (no duplicate created)`
+        : `Website lead submitted: ${result.data.name} — AI classified it and automations fired`
+    );
+    appendDemoEvent("Speed-to-lead AI call starting…");
+    startCall({
+      scenario: "speed_to_lead_outbound",
+      leadId: result.data.leadId,
+      callerName: result.data.name,
+      callerPhone: result.data.phone,
+      subtitle: "Calling the homeowner",
+      direction: "outbound",
+      navigateTo: "/app",
+    });
   }
 
   async function runInboundText() {
     setBusy("text");
-    log("Inbound text received from (414) 555-0188…");
+    appendDemoEvent("Inbound text received from (414) 555-0188…");
     const result = await simulateInboundText();
     setBusy(null);
     if (!result.success) {
       toast.error(result.error);
       return;
     }
-    result.data.events.forEach(log);
-    toast.success("Inbound text processed — check the Inbox");
-    router.refresh();
+    result.data.events.forEach(appendDemoEvent);
+    toast.success("Inbound text processed — opening the conversation");
+    router.push("/app/inbox");
   }
 
   async function runInboundEmail() {
     setBusy("email");
-    log("Inbound email received: “Window estimate”…");
+    appendDemoEvent("Inbound email received: “Window estimate”…");
     const result = await simulateInboundEmail();
     setBusy(null);
     if (!result.success) {
       toast.error(result.error);
       return;
     }
-    result.data.events.forEach(log);
-    toast.success("Inbound email processed — check the Inbox");
-    router.refresh();
+    result.data.events.forEach(appendDemoEvent);
+    toast.success("Inbound email processed — opening the Inbox");
+    router.push("/app/inbox");
   }
 
   async function runHubSpotSync() {
@@ -110,15 +109,15 @@ export function DemoCenterClient({
       return;
     }
     setBusy("hubspot");
-    log(`Preparing HubSpot payload for ${latestLead.first_name} ${latestLead.last_name}…`);
+    appendDemoEvent(`Preparing HubSpot payload for ${latestLead.first_name} ${latestLead.last_name}…`);
     const result = await syncLeadToHubSpot(latestLead.id);
     setBusy(null);
     if (!result.success) {
       toast.error(result.error);
-      log(`HubSpot sync failed: ${result.error}`);
+      appendDemoEvent(`HubSpot sync failed: ${result.error}`);
       return;
     }
-    log(
+    appendDemoEvent(
       result.data.mode === "dry_run"
         ? `HubSpot dry run successful — contact ${result.data.contactId}, deal ${result.data.dealId} (no external CRM updated)`
         : `HubSpot live sync complete — contact ${result.data.contactId}, deal ${result.data.dealId}`
@@ -131,6 +130,23 @@ export function DemoCenterClient({
     router.refresh();
   }
 
+  async function testAiVoice() {
+    setBusy("voice");
+    const res = await fetch("/api/realtime/session");
+    const data = (await res.json()) as { ok: boolean; reason?: string; api?: string; model?: string };
+    setBusy(null);
+    if (data.ok) {
+      toast.success(`Live AI voice is working (${data.api} API · ${data.model})`);
+      appendDemoEvent(`AI voice check passed: ${data.model} via ${data.api} API`);
+    } else {
+      toast.error(`Live AI voice unavailable — calls will run in scripted mode`, {
+        description: data.reason,
+        duration: 12000,
+      });
+      appendDemoEvent(`AI voice check failed: ${data.reason}`);
+    }
+  }
+
   return (
     <div className="grid gap-6 xl:grid-cols-3">
       <div className="grid gap-4 sm:grid-cols-2 xl:col-span-2">
@@ -139,9 +155,9 @@ export function DemoCenterClient({
           icon={Zap}
           title="Run Speed-to-Lead Demo"
           tag="Primary wow demo"
-          description="A homeowner submits the website form — and the AI scheduling assistant calls them back within seconds, confirms details, and books the inspection."
+          description="A homeowner submits the website form — and the AI scheduling assistant calls them back within seconds. Answer the call, then browse the CRM while it runs."
         >
-          <Button onClick={runSpeedToLead} disabled={busy !== null}>
+          <Button onClick={runSpeedToLead} disabled={busy !== null || callActive}>
             {busy === "speed" ? (
               <Loader2 className="h-4 w-4 animate-spin" />
             ) : (
@@ -155,16 +171,15 @@ export function DemoCenterClient({
         <ScenarioCard
           icon={PhoneIncoming}
           title="Simulate New Inbound Call"
-          description="An unknown homeowner calls the office. The AI answers, runs intake, creates the lead, books the inspection, and writes the CRM notes."
+          description="An unknown homeowner (Marcus Webb) calls the office. The AI answers, runs intake, creates the lead, books the inspection, and writes the CRM notes."
         >
           <CallLauncher
             scenario="new_inbound_call"
             callerName="Unknown Caller"
-            callerPhone="(414) 555-0188"
+            callerPhone="(262) 555-0114"
             direction="inbound"
             buttonLabel="Simulate inbound call"
-            onEvent={log}
-            onFinished={() => router.refresh()}
+            navigateTo="/app"
           />
         </ScenarioCard>
 
@@ -174,7 +189,7 @@ export function DemoCenterClient({
           title="Simulate Existing Customer Call"
           description={
             sarahLead
-              ? `${sarahLead.first_name} ${sarahLead.last_name} calls back. The AI matches her number, pulls the CRM record, and logs the second touchpoint.`
+              ? `${sarahLead.first_name} ${sarahLead.last_name} calls back. The AI matches her number, pulls the CRM record, and you get sent to the dashboard with the live call floating on top.`
               : "Requires the seeded Sarah Mitchell lead — run `npm run seed` first."
           }
         >
@@ -188,14 +203,13 @@ export function DemoCenterClient({
               direction="inbound"
               buttonLabel="Simulate callback"
               buttonVariant="outline"
+              navigateTo="/app"
               crmContext={[
                 { label: "Name", value: `${sarahLead.first_name} ${sarahLead.last_name}` },
                 { label: "Stage", value: sarahLead.stage.replace(/_/g, " ") },
                 { label: "Urgency", value: sarahLead.urgency },
                 { label: "Service", value: sarahLead.service_type.replace(/_/g, " ") },
               ]}
-              onEvent={log}
-              onFinished={() => router.refresh()}
             />
           ) : (
             <Button variant="outline" disabled>
@@ -208,7 +222,7 @@ export function DemoCenterClient({
         <ScenarioCard
           icon={MessageSquareText}
           title="Simulate Inbound Text"
-          description="Sarah texts an urgent update. The AI matches her number, flags the worsening leak, creates a task, and drafts a reply for approval."
+          description="Sarah texts an urgent update. The AI matches her number, flags the worsening leak, creates a task, and drafts a reply — review it in a real message thread."
         >
           <Button variant="outline" onClick={runInboundText} disabled={busy !== null}>
             {busy === "text" ? <Loader2 className="h-4 w-4 animate-spin" /> : <MessageSquareText className="h-4 w-4" />}
@@ -220,7 +234,7 @@ export function DemoCenterClient({
         <ScenarioCard
           icon={Mail}
           title="Simulate Inbound Email"
-          description="A new prospect emails about replacing 12 windows. The AI creates the lead, classifies the service, and drafts the reply."
+          description="A new prospect emails about replacing 12 windows. The AI creates the lead, classifies the service, and drafts the reply for approval."
         >
           <Button variant="outline" onClick={runInboundEmail} disabled={busy !== null}>
             {busy === "email" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Mail className="h-4 w-4" />}
@@ -234,7 +248,7 @@ export function DemoCenterClient({
           title="Run HubSpot Dry Sync"
           description={
             latestLead
-              ? `Push ${latestLead.first_name} ${latestLead.last_name} to HubSpot as a contact + deal + AI note. Without a token this is a dry run — the exact payload is logged, nothing external is touched.`
+              ? `Push ${latestLead.first_name} ${latestLead.last_name} to HubSpot as a contact + deal + AI note. Without a token this is a dry run — payload logged, nothing external touched.`
               : "Requires at least one lead."
           }
         >
@@ -248,7 +262,7 @@ export function DemoCenterClient({
         <ScenarioCard
           icon={Calculator}
           title="Generate Quote Intelligence"
-          description="Open the internal quote tool: demo property research, storm context, and a deterministic ballpark estimate with assumptions and confidence."
+          description="Open the internal quote tool: simulated property research, storm context, and a deterministic ballpark estimate with assumptions and confidence."
         >
           <Button variant="outline" asChild>
             <Link href="/app/quote-tool">Open Quote Tool</Link>
@@ -259,7 +273,7 @@ export function DemoCenterClient({
         <ScenarioCard
           icon={CalendarCheck}
           title="Book an Appointment"
-          description="See the internal availability calendar, edit this week's schedule in plain English, and book inspections from open slots."
+          description="See the internal estimator calendar, set weekly availability per estimator, and book inspections from open slots."
         >
           <Button variant="outline" asChild>
             <Link href="/app/appointments">Open Appointments</Link>
@@ -268,7 +282,27 @@ export function DemoCenterClient({
       </div>
 
       <div className="space-y-4">
-        <DemoEventLog events={events} />
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="flex items-center gap-2 text-base">
+              <Mic className="h-4 w-4 text-primary" />
+              AI voice status
+            </CardTitle>
+            <CardDescription>
+              Check whether live AI voice is configured. If this fails, calls run in scripted mode
+              and the exact OpenAI error is shown.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Button variant="outline" size="sm" onClick={testAiVoice} disabled={busy !== null}>
+              {busy === "voice" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Mic className="h-3.5 w-3.5" />}
+              Test AI voice
+            </Button>
+          </CardContent>
+        </Card>
+
+        <DemoEventLog />
+
         <Card>
           <CardContent className="space-y-1.5 p-4 text-xs text-muted-foreground">
             <p className="font-medium text-foreground">Demo guardrails</p>
@@ -279,43 +313,6 @@ export function DemoCenterClient({
           </CardContent>
         </Card>
       </div>
-
-      {/* Speed-to-lead call dialog */}
-      <Dialog
-        open={speedToLead !== null}
-        onOpenChange={(open) => {
-          if (!open) setSpeedToLead(null);
-        }}
-      >
-        <DialogContent className="max-h-[90vh] max-w-3xl overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <PhoneOutgoing className="h-4 w-4 text-primary" />
-              Speed-to-lead AI call
-              <Badge variant="secondary" className="text-[10px]">
-                Demo — no real phone call placed
-              </Badge>
-            </DialogTitle>
-            <DialogDescription>
-              You&apos;re seeing the homeowner&apos;s side: the AI assistant is calling them moments
-              after they submitted the form. Answer the call to play it out.
-            </DialogDescription>
-          </DialogHeader>
-          {speedToLead && (
-            <RealtimeCallSimulator
-              key={speedToLead.leadId}
-              scenario="speed_to_lead_outbound"
-              leadId={speedToLead.leadId}
-              callerName={speedToLead.name}
-              callerPhone={speedToLead.phone}
-              subtitle="Calling the homeowner"
-              direction="outbound"
-              onEvent={log}
-              onFinished={() => router.refresh()}
-            />
-          )}
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }

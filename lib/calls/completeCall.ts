@@ -35,6 +35,44 @@ function turnsToText(turns: TranscriptTurn[]) {
     .join("\n");
 }
 
+function normalizePhone(phone: string | null | undefined): string | null {
+  if (!phone) return null;
+  const digits = phone.replace(/\D/g, "");
+  return digits.length >= 7 ? digits.slice(-10) : null;
+}
+
+/**
+ * Dedupe guard: matches a caller to an existing lead by phone (normalized) or
+ * email so repeat contacts attach to the same CRM record instead of creating
+ * duplicates.
+ */
+export async function findExistingLead(
+  supabase: SupabaseClient,
+  phone: string | null | undefined,
+  email?: string | null
+): Promise<Lead | null> {
+  if (email) {
+    const { data } = await supabase
+      .from("leads")
+      .select("*")
+      .eq("email", email)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (data) return data as Lead;
+  }
+  const target = normalizePhone(phone);
+  if (!target) return null;
+  const { data: candidates } = await supabase
+    .from("leads")
+    .select("*")
+    .not("phone", "is", null)
+    .order("created_at", { ascending: false })
+    .limit(300);
+  const match = (candidates ?? []).find((l) => normalizePhone(l.phone) === target);
+  return (match as Lead | undefined) ?? null;
+}
+
 /**
  * Finishes a call: persists the transcript (hidden by default), generates the
  * AI summary, writes the CRM-ready note to the lead timeline, creates or
@@ -100,6 +138,28 @@ export async function completeCall(
   // ── Create or update the lead ──────────────────────────────────────────────
   let leadCreated = false;
   const fields = summary.extracted_fields;
+
+  // Dedupe: before creating a lead from an inbound call, check whether this
+  // caller already exists by phone or email — repeat contacts attach to the
+  // existing record instead of duplicating it.
+  if (!lead && call.scenario === "new_inbound_call") {
+    const existing = await findExistingLead(
+      supabase,
+      fields.phone ?? call.caller_phone,
+      fields.email
+    );
+    if (existing) {
+      lead = existing;
+      await supabase.from("calls").update({ lead_id: existing.id }).eq("id", input.callId);
+      await supabase.from("activities").insert({
+        lead_id: existing.id,
+        type: "ai_call",
+        title: "Inbound caller matched to this existing CRM record by phone number",
+        metadata: { call_id: input.callId },
+      });
+    }
+  }
+
   if (!lead && call.scenario === "new_inbound_call") {
     const { data: contact } = await supabase
       .from("contacts")

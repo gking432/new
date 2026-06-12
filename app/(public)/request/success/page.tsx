@@ -58,13 +58,7 @@ export default async function RequestSuccessPage({
           </Card>
         )}
 
-        {params.lead && (
-          <SpeedToLeadDemo
-            leadId={params.lead}
-            name={name ?? ""}
-            phone={params.phone?.slice(0, 30)}
-          />
-        )}
+        {params.lead && <SpeedToLeadDemo leadId={params.lead} name={name ?? ""} />}
 
         <Alert className="mt-8">
           <AlertTitle>Demonstration app</AlertTitle>

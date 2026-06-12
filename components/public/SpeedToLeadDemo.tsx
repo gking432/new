@@ -1,71 +1,68 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { PhoneIncoming, Sparkles } from "lucide-react";
+import { PhoneIncoming } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { RealtimeCallSimulator } from "@/components/calls/RealtimeCallSimulator";
 
 /**
- * The speed-to-lead wow moment on the public success page: moments after the
- * form is submitted, the company's AI scheduling assistant "calls" the
- * homeowner — right here in the browser.
+ * The speed-to-lead wow moment: moments after the form is submitted, a phone
+ * pops up — the company's AI scheduling assistant calling the homeowner. The
+ * phone stays open after the call to "receive" the confirmation SMS once the
+ * team approves it.
  */
-export function SpeedToLeadDemo({
-  leadId,
-  name,
-  phone,
-}: {
-  leadId: string;
-  name: string;
-  phone?: string | null;
-}) {
-  const [showCall, setShowCall] = useState(false);
+export function SpeedToLeadDemo({ leadId, name }: { leadId: string; name: string }) {
+  const [open, setOpen] = useState(false);
 
   useEffect(() => {
-    const t = setTimeout(() => setShowCall(true), 2200);
+    const t = setTimeout(() => setOpen(true), 2200);
     return () => clearTimeout(t);
   }, []);
 
   return (
-    <Card className="mt-8 border-primary/30">
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2 text-base">
-          <Sparkles className="h-4 w-4 text-brand-gold" />
-          Demo: the AI scheduling assistant is calling the homeowner now
-          <Badge variant="secondary" className="text-[10px]">
-            No real phone call placed
-          </Badge>
-        </CardTitle>
-        <CardDescription>
-          This is the speed-to-lead moment: instead of the request sitting in a queue for hours,
-          the company&apos;s AI assistant calls back within seconds to confirm details and book the
-          inspection. You play the homeowner — answer the call.
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
-        {showCall ? (
-          <RealtimeCallSimulator
-            scenario="speed_to_lead_outbound"
-            leadId={leadId}
-            callerName="Northstar Exterior & Home"
-            callerPhone="(800) 555-0144"
-            subtitle="AI Scheduling Assistant"
-            direction="inbound"
-            audience="public"
-          />
-        ) : (
-          <p className="flex items-center justify-center gap-2 py-10 text-sm text-muted-foreground">
-            <PhoneIncoming className="h-4 w-4 animate-pulse text-primary" />
-            Your phone is about to ring{name ? `, ${name}` : ""}…
-          </p>
-        )}
-        <p className="mt-3 text-xs text-muted-foreground">
-          {phone ? `Pretend ${phone} just rang. ` : ""}With a live AI key this is a real voice
-          conversation; without one it runs as a click-through script. Either way the call produces
-          CRM notes, tasks, and an appointment on the team side.
+    <>
+      {!open && (
+        <p className="mt-8 flex items-center justify-center gap-2 text-sm text-muted-foreground">
+          <PhoneIncoming className="h-4 w-4 animate-pulse text-primary" />
+          Demo: your phone is about to ring{name ? `, ${name}` : ""}…
         </p>
-      </CardContent>
-    </Card>
+      )}
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="max-h-[92vh] max-w-3xl overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex flex-wrap items-center gap-2">
+              <PhoneIncoming className="h-4 w-4 text-primary" />
+              Incoming call: Northstar AI scheduling assistant
+              <Badge variant="secondary" className="text-[10px]">
+                Demo — no real phone call placed
+              </Badge>
+            </DialogTitle>
+            <DialogDescription>
+              You play the homeowner — answer the call. Afterwards, leave this open: when the team
+              approves your confirmation text, it arrives right here.
+            </DialogDescription>
+          </DialogHeader>
+          {open && (
+            <RealtimeCallSimulator
+              scenario="speed_to_lead_outbound"
+              leadId={leadId}
+              callerName="Northstar Exterior & Home"
+              callerPhone="(800) 555-0144"
+              subtitle="AI Scheduling Assistant"
+              direction="inbound"
+              audience="public"
+              keepPhoneOpenAfterCall
+            />
+          )}
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }

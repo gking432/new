@@ -131,15 +131,17 @@ export function getScriptedScenario(
     };
   }
 
-  // new_inbound_call (default)
+  // new_inbound_call (default). The caller is a brand-new prospect (NOT a
+  // seeded customer) so this demo always shows new-lead creation rather than
+  // matching an existing record.
   return {
     steps: [
       {
         ai: "Thanks for calling Northstar Exterior & Home. I can help get the right information over to our team. Can I start with your name?",
-        options: ["Hi, this is Sarah Mitchell."],
+        options: ["Hi, this is Marcus Webb."],
       },
       {
-        ai: "Thanks, Sarah. What's going on with the house?",
+        ai: "Thanks, Marcus. What's going on with the house?",
         options: [
           "We had hail last week and now there's a water stain on the upstairs ceiling.",
           "I'm looking at replacing some old windows before winter.",
@@ -154,11 +156,11 @@ export function getScriptedScenario(
       },
       {
         ai: "Okay, I've marked this as urgent. What's the property address?",
-        options: ["123 Demo Lane in Sussex, Wisconsin."],
+        options: ["508 Granite Court in Pewaukee, Wisconsin."],
       },
       {
-        ai: "Got it — 123 Demo Lane, Sussex. And the best number and email to reach you?",
-        options: ["This number, (414) 555-0188, and sarah.mitchell@example.com."],
+        ai: "Got it — 508 Granite Court, Pewaukee. And the best number and email to reach you?",
+        options: ["This number, (262) 555-0114, and marcus.webb@example.com."],
       },
       {
         ai: "Perfect. Have you contacted your insurance company about the hail yet?",
@@ -173,17 +175,17 @@ export function getScriptedScenario(
         options: ["Yes, call or text is fine."],
       },
       {
-        ai: "You're all set, Sarah. Our team will see you tomorrow at 2:30, and someone will call if anything changes. Thanks for calling Northstar!",
+        ai: "You're all set, Marcus. Our team will see you tomorrow at 2:30, and someone will call if anything changes. Thanks for calling Northstar!",
         options: [],
       },
     ],
     seedFields: {
-      first_name: "Sarah",
-      last_name: "Mitchell",
-      phone: "(414) 555-0188",
-      email: "sarah.mitchell@example.com",
-      address: "123 Demo Lane",
-      city: "Sussex",
+      first_name: "Marcus",
+      last_name: "Webb",
+      phone: "(262) 555-0114",
+      email: "marcus.webb@example.com",
+      address: "508 Granite Ct",
+      city: "Pewaukee",
       active_leak: "yes",
       insurance_started: "no",
       preferred_contact_method: "phone",
