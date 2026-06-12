@@ -87,8 +87,28 @@ async function ensureUsers() {
 }
 
 async function clearOperationalData() {
-  for (const table of ["automation_runs", "activities", "followups", "tasks", "lead_ai_analyses", "feedback", "leads"]) {
-    await supabase.from(table).delete().neq("id", "00000000-0000-0000-0000-000000000000");
+  for (const table of [
+    "crm_sync_events",
+    "communications",
+    "call_summaries",
+    "call_transcripts",
+    "calls",
+    "appointments",
+    "quote_estimates",
+    "property_research",
+    "contacts",
+    "automation_runs",
+    "activities",
+    "followups",
+    "tasks",
+    "lead_ai_analyses",
+    "feedback",
+    "leads",
+  ]) {
+    const { error } = await supabase.from(table).delete().neq("id", "00000000-0000-0000-0000-000000000000");
+    if (error && !/relation .* does not exist|Could not find the table/.test(error.message)) {
+      console.warn(`  (skipping ${table}: ${error.message})`);
+    }
   }
   console.log("✓ cleared operational tables");
 }
@@ -150,7 +170,12 @@ async function seedLeads(profiles) {
         first_name: first,
         last_name: last,
         email: `${emailHandle}@example.com`,
-        phone: `(555) 01${String(leadIds.length).padStart(2, "0")}-${String(1000 + leadIds.length * 37).slice(0, 4)}`,
+        // Sarah Mitchell keeps the canonical demo number used by the Phase 2
+        // call/text scenarios to match her CRM record.
+        phone:
+          first === "Sarah" && last === "Mitchell"
+            ? "(414) 555-0188"
+            : `(555) 01${String(leadIds.length).padStart(2, "0")}-${String(1000 + leadIds.length * 37).slice(0, 4)}`,
         preferred_contact_method: ["phone", "text", "email"][leadIds.length % 3],
         best_time_to_contact: ["morning", "afternoon", "evening", "anytime"][leadIds.length % 4],
         street_address: `${1200 + leadIds.length * 53} ${["Birch", "Cedar", "Elm", "Oak", "Spruce"][leadIds.length % 5]} ${["Ln", "St", "Ave", "Ct"][leadIds.length % 4]}`,
@@ -308,6 +333,168 @@ async function seedFeedback() {
   console.log(`✓ ${items.length} feedback records`);
 }
 
+// ── Phase 2: example call, appointment, and inbox draft ──────────────────────
+async function seedPhase2(profiles, leads) {
+  const sarah = leads.find((l) => l.row[0] === "Sarah");
+  const robert = leads.find((l) => l.row[0] === "Robert");
+  if (!sarah) return;
+
+  // A completed AI-handled call on Sarah's lead with hidden transcript + summary.
+  const { data: call, error: callError } = await supabase
+    .from("calls")
+    .insert({
+      lead_id: sarah.id,
+      scenario: "speed_to_lead_outbound",
+      direction: "outbound",
+      caller_name: "Northstar AI Assistant",
+      callee_name: "Sarah Mitchell",
+      callee_phone: "(414) 555-0188",
+      status: "completed",
+      started_at: hoursAgo(0.9),
+      ended_at: hoursAgo(0.85),
+      duration_seconds: 154,
+      ai_status: "completed",
+      created_at: hoursAgo(0.9),
+    })
+    .select("id")
+    .single();
+  if (callError) {
+    console.warn(`  (skipping phase 2 seed: ${callError.message} — run migration 004 first)`);
+    return;
+  }
+
+  const turns = [
+    ["ai", "Hi Sarah, this is Northstar Exterior & Home's AI scheduling assistant. I saw the request you just sent about storm damage and wanted to confirm a few details so we can get the right person out."],
+    ["customer", "Oh wow, that was fast. Sure."],
+    ["ai", "Great, I'll keep it short. Is water actively coming into the house right now?"],
+    ["customer", "There's a brown water spot on the upstairs ceiling and it looks fresh."],
+    ["ai", "Understood — I've flagged that as urgent. Have you contacted your insurance company yet?"],
+    ["customer", "No, not yet. I wasn't sure if I should."],
+    ["ai", "Our inspector documents everything with photos, which homeowners often use for claims — though I can't speak to coverage itself. For the inspection, I have tomorrow at 10:30 AM or 2:30 PM available. Would either work?"],
+    ["customer", "Tomorrow at 2:30 works."],
+    ["ai", "You're booked. You'll get a confirmation message shortly. Thanks Sarah — we'll see you tomorrow at 2:30!"],
+  ];
+  await supabase.from("call_transcripts").insert({
+    call_id: call.id,
+    transcript_text: turns.map(([s, t]) => `${s === "ai" ? "AI" : "Customer"}: ${t}`).join("\n"),
+    transcript_json: turns.map(([speaker, text], i) => ({ speaker, text, at: i * 16 })),
+    storage_visibility: "hidden",
+  });
+
+  const crmNote =
+    "Speed-to-lead call completed minutes after form submission. Sarah confirmed fresh water staining on the upstairs ceiling after last week's hail. No insurance claim started yet. Inspection booked for tomorrow 2:30 PM. Inspector should photograph the ceiling stain and roof for possible claim documentation.";
+  await supabase.from("call_summaries").insert({
+    call_id: call.id,
+    lead_id: sarah.id,
+    summary:
+      "Sarah Mitchell confirmed active ceiling staining from hail damage and booked a 2:30 PM inspection for tomorrow. Insurance not yet contacted.",
+    crm_note: crmNote,
+    customer_intent: "Wants an inspection scheduled",
+    service_type: "storm_damage",
+    urgency: "emergency",
+    lead_quality: "hot",
+    next_action: "Confirm the inspection and send the approved confirmation message.",
+    appointment_requested: true,
+    appointment_time: hoursFromNow(26),
+    objections: [],
+    extracted_fields: {
+      first_name: "Sarah",
+      last_name: "Mitchell",
+      phone: "(414) 555-0188",
+      active_leak: "yes",
+      insurance_started: "no",
+      preferred_contact_method: "phone",
+    },
+    recommended_tasks: [
+      {
+        title: "Urgent: confirm inspection for Sarah Mitchell (active leak)",
+        description: "Call back within 15 minutes to confirm the inspection and advise on containing the leak.",
+        priority: "urgent",
+        due_in_minutes: 15,
+      },
+    ],
+  });
+
+  // Appointment booked by the AI call.
+  const apptStart = new Date(Date.now() + 26 * 3600_000);
+  apptStart.setHours(14, 30, 0, 0);
+  await supabase.from("appointments").insert({
+    lead_id: sarah.id,
+    title: "storm damage inspection — Sarah Mitchell",
+    appointment_type: "inspection",
+    start_time: apptStart.toISOString(),
+    end_time: new Date(apptStart.getTime() + 3600_000).toISOString(),
+    status: "scheduled",
+    location: "1200 Birch Ln, Maple Grove",
+    assigned_to: profiles.sales_rep,
+    source: "ai_call",
+  });
+
+  // Inbox: the call record + the confirmation draft awaiting approval.
+  await supabase.from("communications").insert([
+    {
+      lead_id: sarah.id,
+      call_id: call.id,
+      channel: "call",
+      direction: "outbound",
+      status: "received",
+      from_value: "Northstar AI Assistant",
+      to_value: "(414) 555-0188",
+      subject: "Outbound AI call",
+      body: "Speed-to-lead call: confirmed storm damage details and booked inspection.",
+      ai_summary: crmNote,
+      suggested_next_action: "Approve and send the confirmation message.",
+      ai_generated: true,
+    },
+    {
+      lead_id: sarah.id,
+      call_id: call.id,
+      channel: "sms",
+      direction: "outbound",
+      status: "draft",
+      from_value: "Northstar Exterior & Home",
+      to_value: "(414) 555-0188",
+      subject: "Appointment confirmation",
+      body: "Hi Sarah, this is Northstar Exterior & Home. Your storm damage inspection is set for tomorrow at 2:30 PM. The inspector will photograph the roof and the ceiling stain. Reply here if anything changes.",
+      ai_generated: true,
+      human_approved: false,
+    },
+  ]);
+
+  await supabase.from("activities").insert({
+    lead_id: sarah.id,
+    type: "ai_call",
+    title: "AI call placed (speed to lead outbound)",
+    description: crmNote,
+    metadata: { call_id: call.id, ai_status: "completed" },
+    created_at: hoursAgo(0.85),
+  });
+
+  // Demo property research for the quote tool.
+  const propertyLeads = [sarah, robert].filter(Boolean);
+  for (const l of propertyLeads) {
+    await supabase.from("property_research").insert({
+      lead_id: l.id,
+      address: l.row[0] === "Sarah" ? "1200 Birch Ln, Maple Grove, MN" : "1465 Cedar St, Anoka, MN",
+      year_built: l.row[0] === "Sarah" ? 1996 : 1988,
+      finished_sqft: l.row[0] === "Sarah" ? 2150 : 1820,
+      stories: l.row[0] === "Sarah" ? 2 : 1.5,
+      lot_size_sqft: 10200,
+      roof_type: "asphalt shingle",
+      roof_pitch: "moderate",
+      siding_material: "vinyl",
+      estimated_roof_sqft: l.row[0] === "Sarah" ? 1420 : 1480,
+      estimated_siding_sqft: 1880,
+      estimated_window_count: 18,
+      data_source: "demo",
+      confidence: "medium",
+      notes: "Demo property profile seeded for the quote tool walkthrough.",
+    });
+  }
+
+  console.log("✓ phase 2: example AI call, transcript, appointment, inbox draft, property data");
+}
+
 async function main() {
   console.log("Seeding Home Service AI Command Center demo data…\n");
   const profiles = await ensureUsers();
@@ -315,6 +502,7 @@ async function main() {
   const leads = await seedLeads(profiles);
   await seedTasks(profiles, leads);
   await seedFeedback();
+  await seedPhase2(profiles, leads);
   console.log("\nDone. Log in with admin@northstar-demo.com / demo-password");
 }
 

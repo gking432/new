@@ -4,12 +4,18 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   Bell,
+  CalendarDays,
+  Calculator,
+  Cable,
   Compass,
+  Inbox,
   Kanban,
   LayoutDashboard,
   ListChecks,
   LogOut,
   MessageSquareText,
+  Phone,
+  PlayCircle,
   Send,
   Settings,
   Users,
@@ -26,14 +32,20 @@ import type { Profile } from "@/types/app";
 
 const NAV_ITEMS = [
   { href: "/app", label: "Overview", icon: LayoutDashboard, exact: true },
+  { href: "/app/inbox", label: "Inbox", icon: Inbox },
   { href: "/app/leads", label: "Leads", icon: Users },
+  { href: "/app/calls", label: "Calls", icon: Phone },
   { href: "/app/pipeline", label: "Pipeline", icon: Kanban },
   { href: "/app/tasks", label: "Tasks", icon: ListChecks },
+  { href: "/app/appointments", label: "Appointments", icon: CalendarDays },
   { href: "/app/follow-up", label: "Follow-Up", icon: Send },
+  { href: "/app/quote-tool", label: "Quote Tool", icon: Calculator },
   { href: "/app/feedback", label: "Feedback", icon: MessageSquareText },
   { href: "/app/automations", label: "Automations", icon: Workflow },
   { href: "/app/reports", label: "Reports", icon: BarChart3 },
+  { href: "/app/crm-sync", label: "CRM Sync", icon: Cable },
   { href: "/app/settings", label: "Settings", icon: Settings },
+  { href: "/app/demo-center", label: "Demo Center", icon: PlayCircle },
 ];
 
 export function AppSidebar({ profile }: { profile: Profile | null }) {

@@ -10,19 +10,6 @@ export const metadata: Metadata = {
   title: "Case Study — Home Service AI Command Center",
 };
 
-const FEATURES = [
-  "Public lead intake with validation and a realistic marketing landing page",
-  "AI lead analysis: urgency, quality, value range, sales questions, and recommended next actions",
-  "AI Priority Queue that ranks open leads by urgency and quality",
-  "Kanban sales pipeline with stage tracking and automatic activity logging",
-  "Task queue with priorities, due dates, snoozing, and per-rep views",
-  "AI follow-up generator for SMS, email, call scripts, voicemails, and review responses",
-  "Customer feedback analyzer with sentiment, risk level, and operational categorization",
-  "Database-driven automation rules with an auditable run log and test runner",
-  "KPI dashboard: booking rates, close rates, pipeline value, source performance, urgency mix",
-  "Webhook integration point for Make/Zapier-style workflow tools",
-];
-
 const STACK = [
   "Next.js 15 (App Router)",
   "React 19",
@@ -32,17 +19,18 @@ const STACK = [
   "Recharts",
   "React Hook Form + Zod",
   "Supabase (Postgres, Auth, RLS)",
-  "OpenAI API (provider-abstracted)",
+  "OpenAI API (chat + Realtime/WebRTC)",
+  "HubSpot CRM API",
   "Vercel",
 ];
 
 const NEXT_STEPS = [
-  "Role-based permissions (the schema and UI labels are already in place)",
-  "Drag-and-drop pipeline cards",
-  "Photo upload with AI roof-damage triage",
-  "Real SMS/email sending through Twilio and Resend with approval gates",
-  "Speed-to-lead measurement from real contact timestamps",
-  "Duplicate lead detection and lead source ROI calculation",
+  "Real telephony (Twilio Voice + Media Streams) behind the same call pipeline",
+  "Real SMS/email delivery through Twilio and Resend behind the existing approval gates",
+  "Google Calendar free/busy and event sync (the provider seam is already in place)",
+  "Realtime tool-calling for mid-call CRM lookups and live booking",
+  "A live property-data provider behind the existing provider interface",
+  "Role-based permissions, duplicate-lead detection, and lead source ROI",
 ];
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
@@ -62,64 +50,110 @@ export default function CaseStudyPage() {
         <div>
           <Badge variant="secondary">Portfolio case study</Badge>
           <h1 className="mt-3 text-3xl font-semibold tracking-tight sm:text-4xl">
-            Home Service AI Command Center
+            AI Command Center for Home Service Sales, Calls, CRM Notes, Appointments, and Quote
+            Intelligence
           </h1>
           <p className="mt-3 text-lg text-muted-foreground">
-            A working AI-powered sales, operations, and customer service system for a residential
-            home improvement company.
+            An AI communications and operations layer for residential contractors — its own CRM
+            when you need one, an intelligence layer on top of your existing CRM when you
+            don&apos;t.
           </p>
         </div>
 
-        <Section title="The problem">
+        <Section title="The business problem">
           <p>
-            Home service companies often lose revenue through slow lead response, inconsistent
-            follow-up, messy CRM data, and limited visibility into where sales opportunities
-            stall. The first contractor to call a storm-damage lead usually wins the job — yet
-            leads routinely sit untouched for hours while crews are in the field.
+            Home service companies lose revenue in predictable places: leads sit untouched while
+            crews are in the field, call details never make it into the CRM, follow-up depends on
+            whoever remembers, appointment opportunities slip during the call, and quoting starts
+            from a blank page. The first contractor to call a storm-damage lead usually wins the
+            job — yet the median response time in the industry is measured in hours.
           </p>
         </Section>
 
-        <Section title="The solution">
+        <Section title="Why CRMs fail in the real world">
           <p>
-            I built Home Service AI Command Center as a working prototype for a fictional
-            residential contractor, Northstar Exterior &amp; Home. The system captures leads,
-            classifies urgency and quality with AI, creates recommended tasks, generates customer
-            follow-up drafts, tracks pipeline stages, analyzes customer feedback, and surfaces
-            KPI dashboards.
-          </p>
-          <p>
-            The goal was not to build a generic chatbot. The goal was to show how AI can fit into
-            a real business workflow where speed, process discipline, and customer communication
-            directly affect revenue.
+            Most contractors already own a CRM. The CRM isn&apos;t the problem — the work around
+            it is. Notes don&apos;t get written, fields don&apos;t get filled, calls don&apos;t get
+            logged, and the data decays until nobody trusts it. Replacing the CRM doesn&apos;t fix
+            that; the gap is between the customer conversation and the record of it.
           </p>
         </Section>
 
-        <Section title="Demo workflow">
-          <ol className="list-decimal space-y-2 pl-5">
-            <li>A homeowner submits the public form: hail damage, missing shingles, a water spot on the ceiling, active leak.</li>
-            <li>The lead is created and AI classifies it: emergency urgency, hot quality, estimated value range, &quot;call within 15 minutes.&quot;</li>
-            <li>The &quot;Urgent Storm Damage Lead&quot; automation rule fires and creates an urgent call task.</li>
-            <li>The lead appears at the top of the AI Priority Queue on the dashboard.</li>
-            <li>A sales rep opens the lead, reviews the AI summary and suggested discovery questions, and generates an SMS draft.</li>
-            <li>Every step is logged to the activity timeline, and the reports update in real time.</li>
-          </ol>
-        </Section>
-
-        <Section title="Features built">
-          <ul className="list-disc space-y-1.5 pl-5">
-            {FEATURES.map((feature) => (
-              <li key={feature}>{feature}</li>
-            ))}
-          </ul>
-        </Section>
-
-        <Section title="Business impact">
+        <Section title="The AI operations layer">
           <p>
-            The system is designed around the operational levers that move revenue for a
-            contractor: speed-to-lead (urgent leads get 15-minute call tasks), follow-up
-            discipline (estimates that go quiet generate tasks automatically), reputation
-            management (negative feedback reaches a manager within one business day), and
-            visibility (stalled pipeline value is computed and surfaced, not guessed at).
+            I built this system around that gap. It captures leads from forms, calls, texts, and
+            emails; qualifies them with AI; books inspections against real availability; turns
+            conversations into clean CRM-ready notes (with full transcripts stored separately);
+            drafts every follow-up for human approval; and syncs structured updates into an
+            external CRM. The goal was not to replace every CRM. The goal was to show how AI can
+            sit around the CRM and improve the workflows that usually break: slow response time,
+            incomplete notes, inconsistent follow-up, missed appointment opportunities, weak lead
+            prioritization, and scattered customer communication.
+          </p>
+        </Section>
+
+        <Section title="Speed-to-lead voice demo">
+          <p>
+            The flagship demo: a homeowner submits the website form, and seconds later a phone
+            screen rings in the browser — the company&apos;s AI scheduling assistant calling back.
+            With an OpenAI key it&apos;s a live voice conversation over WebRTC (real microphone,
+            real AI speech, ephemeral tokens minted server-side); without one, a scripted
+            click-through mode plays the same call. Either way, ending the call produces a hidden
+            transcript, a CRM note on the timeline, an urgent task, a booked inspection, a stage
+            change, and a confirmation draft waiting for approval. There is no real telephony —
+            and the demo is honest about that — but the entire post-call pipeline is real.
+          </p>
+        </Section>
+
+        <Section title="Call intelligence and CRM notes">
+          <p>
+            Transcripts are deliberately not front and center. The lead timeline gets a short,
+            actionable AI note — what changed, what the customer needs, what to do next — and the
+            full transcript lives behind a &ldquo;View Full Transcript&rdquo; modal, searchable
+            but out of the way. The AI also recognizes existing customers by phone number, pulls
+            their CRM context before answering, and logs second touchpoints without re-asking
+            what it already knows.
+          </p>
+        </Section>
+
+        <Section title="Existing CRM sync">
+          <p>
+            A HubSpot connector shows the integration story: each sync creates or updates the
+            contact, creates a deal, and attaches the AI summary as a note. Without a token it
+            runs as a dry run — the exact payloads are built, logged to an auditable sync-event
+            table with mock IDs, and displayed in the UI — so the integration can be demonstrated
+            without touching anyone&apos;s portal. With a private app token, the same code path
+            calls the real HubSpot API.
+          </p>
+        </Section>
+
+        <Section title="Appointment booking">
+          <p>
+            An internal availability calendar powers booking — no external calendar auth needed
+            for the demo. The owner describes availability in plain English (&ldquo;Mon, Wed, Fri
+            from 10 to 4, 90 minutes per appointment&rdquo;), AI converts it into structured
+            windows, and the call assistant only ever offers genuinely open slots. Booked
+            inspections move the lead&apos;s stage and generate a confirmation draft.
+          </p>
+        </Section>
+
+        <Section title="Quote intelligence">
+          <p>
+            An internal-only ballpark tool for the sales team: demo property research by address
+            (year built, square footage, estimated roof area), storm/weather context, and
+            deterministic calculators per service line produce a low–high range with line items,
+            assumptions, missing info, and inspection questions. Every output is labeled
+            &ldquo;internal ballpark — requires inspection before final quote.&rdquo;
+          </p>
+        </Section>
+
+        <Section title="Human approval for customer communication">
+          <p>
+            Nothing customer-facing sends automatically. Every AI-drafted SMS and email lands in
+            an approval queue where a person can edit, approve, or discard it — and in demo mode,
+            &ldquo;send&rdquo; is explicitly simulated. The AI is also constrained: it never
+            promises insurance approval or final pricing, and it identifies itself as an AI
+            assistant on outbound calls.
           </p>
         </Section>
 
@@ -133,15 +167,16 @@ export default function CaseStudyPage() {
           </div>
           <Card className="mt-4">
             <CardContent className="p-4 text-sm">
-              All AI calls run server-side through a provider-abstracted service layer with
-              Zod-validated structured output. AI failures fall back to deterministic heuristics
-              so lead capture never breaks. Row Level Security separates anonymous lead intake
-              from the authenticated internal app.
+              All AI calls run server-side through a provider-abstracted layer with Zod-validated
+              structured output and deterministic fallbacks, so no workflow dies when AI is
+              unavailable. Realtime voice uses short-lived ephemeral tokens — the real API key
+              never reaches the browser. Row Level Security separates anonymous lead intake from
+              the authenticated internal app.
             </CardContent>
           </Card>
         </Section>
 
-        <Section title="What I'd add next">
+        <Section title="What I'd build next in production">
           <ul className="list-disc space-y-1.5 pl-5">
             {NEXT_STEPS.map((step) => (
               <li key={step}>{step}</li>
@@ -152,7 +187,7 @@ export default function CaseStudyPage() {
         <div className="flex flex-wrap gap-3 border-t pt-8">
           <Button asChild>
             <Link href="/request">
-              Try the demo lead form
+              Try the speed-to-lead demo
               <ArrowRight className="h-4 w-4" />
             </Link>
           </Button>

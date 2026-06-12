@@ -1,54 +1,68 @@
 # Home Service AI Command Center
 
-A working AI-powered sales, operations, and customer service command center for a
-residential home improvement company — built as a portfolio-grade prototype for the
-fictional contractor **Northstar Exterior & Home**.
+**An AI communications and operations layer for residential contractors.**
 
-Homeowners submit service requests through a public landing page. The system
-classifies each lead with AI (urgency, quality, estimated value, recommended next
-action), creates tasks automatically, runs business-rule automations, generates
-follow-up communication drafts, tracks the sales pipeline, analyzes customer
-feedback, and surfaces KPI dashboards.
+Built as a portfolio-grade prototype for the fictional contractor **Northstar
+Exterior & Home**. The system can work as its own CRM, but it can also sit on
+top of an existing CRM: it captures leads from forms, calls, texts, and emails;
+uses AI to qualify customers; books appointments; summarizes calls; creates
+CRM-ready notes; drafts follow-ups; generates quote intelligence; and syncs
+clean updates into external systems (HubSpot dry-run or live).
 
-> **Demo mode:** this is a demonstration app. No real SMS, email, or service
-> requests are sent. AI drafts are always labeled and editable before use.
+> **Demo mode:** no real phone calls are placed, and no real SMS or email is
+> sent. AI calls run in the browser (live voice or scripted), outbound drafts
+> require human approval, and CRM sync defaults to dry-run.
 
-## Why it exists
+## What it demonstrates
 
-Home service companies lose revenue through slow lead response, inconsistent
-follow-up, messy CRM data, and limited visibility into where deals stall. This
-project demonstrates how AI fits into a real business workflow — not as a chatbot,
-but as an operations layer that improves speed-to-lead, follow-up discipline, and
-customer communication.
+**Phase 1 — AI CRM core**
 
-## Features
+- Public lead intake (landing page + validated request form)
+- AI lead analysis: urgency, quality, value range, sales questions, next actions
+- AI Priority Queue, Kanban pipeline, task queue with snoozing
+- Follow-up generator (SMS, email, call scripts, voicemails, review responses)
+- Feedback analyzer with sentiment/risk and manager escalation
+- Database-driven automation rules with an auditable run log
+- KPI reports and webhook export
 
-- **Public lead intake** — polished landing page and validated multi-section request form
-- **AI lead analysis** — urgency, quality, value range, sales questions, objections, and next actions (Zod-validated structured output; deterministic fallback when AI is unavailable)
-- **AI Priority Queue** — open leads ranked by urgency and quality on the dashboard
-- **Pipeline board** — Kanban view across seven stages with logged stage changes
-- **Task queue** — priorities, due dates, snoozing, per-rep views; tasks created manually, by AI recommendations, and by automations
-- **Follow-up generator** — SMS, email, call scripts, voicemails, estimate follow-ups, and review responses in selectable tones
-- **Feedback analyzer** — sentiment, risk level, operational category, suggested internal action and customer response; high-risk feedback creates manager tasks
-- **Automation rules** — database-driven rules with plain-English descriptions, an auditable run log, and per-rule test runs
-- **KPI reports** — booking rate, close rate, pipeline value, source performance, urgency mix, and computed business insights
-- **Webhook integration** — structured lead events for Make/Zapier-style tools (simulated in demo mode)
+**Phase 2 — AI communications layer**
+
+- **Realtime AI call sandbox** — browser-based "phone calls" with a polished
+  mock phone UI. Live AI voice via OpenAI Realtime (WebRTC, ephemeral tokens)
+  when a key is configured; a deterministic **scripted call mode** otherwise,
+  so the demo never dies.
+- **Three flagship call scenarios:**
+  1. *Speed-to-lead:* submit the public form, and the AI scheduling assistant
+     "calls" the homeowner seconds later, confirms details, and books the
+     inspection.
+  2. *New inbound call:* an unknown caller is intake-interviewed by the AI; a
+     lead, tasks, CRM notes, and an appointment come out the other side.
+  3. *Existing customer callback:* the AI matches the caller's number, pulls
+     CRM context, references the prior request, and logs the second touchpoint.
+- **Call intelligence** — short CRM-ready notes land on the lead timeline;
+  full transcripts are stored separately behind "View Full Transcript."
+- **Omnichannel inbox** — forms, calls, texts, and emails in one place, with
+  simulated inbound text/email demos and a human **approval queue**: every
+  AI-drafted outbound message must be approved, then "send" is simulated.
+- **Appointment booking** — internal availability calendar (no Google auth
+  needed); set weekly availability in plain English ("Mon/Wed/Fri 10–4, 90
+  minutes per appointment") and the AI converts it into structured windows the
+  call assistant books against.
+- **HubSpot connector** — dry-run by default: the exact contact/deal/note
+  payloads are built, logged with mock IDs, and shown in the UI. Add a private
+  app token to sync for real.
+- **Quote intelligence** — internal ballpark estimates from deterministic
+  calculators (roofing squares, siding area, windows, gutters, bath), demo
+  property research by address, and storm/weather context. Always labeled
+  "requires inspection before final quote."
+- **Demo Center** — run every scenario from one page with a live event log.
 
 ## Tech stack
 
 Next.js 15 (App Router) · React 19 · TypeScript · Tailwind CSS 4 · shadcn/ui ·
 Recharts · React Hook Form + Zod · Supabase (Postgres, Auth, RLS) · OpenAI API
-(provider-abstracted, server-side only) · Vercel
-
-## Screenshots
-
-| Page | Screenshot |
-| --- | --- |
-| Landing page | _placeholder_ |
-| Overview dashboard | _placeholder_ |
-| Lead detail with AI analysis | _placeholder_ |
-| Pipeline board | _placeholder_ |
-| Reports | _placeholder_ |
+(chat + Realtime over WebRTC, provider-abstracted, server-side keys only) ·
+HubSpot CRM API · Vercel
 
 ## Setup
 
@@ -63,21 +77,19 @@ cp .env.example .env.local
 
 1. Create a project at [supabase.com](https://supabase.com).
 2. Copy the project URL, anon key, and service role key into `.env.local`.
-3. Run the migrations in order in the Supabase SQL editor (or with `supabase db push`):
+3. Run the migrations in order in the Supabase SQL editor (or `supabase db push`):
    - `supabase/migrations/001_initial_schema.sql`
    - `supabase/migrations/002_rls_policies.sql`
-   - `supabase/migrations/003_seed_data.sql` (company settings + default automation rules)
+   - `supabase/migrations/003_seed_data.sql`
+   - `supabase/migrations/004_phase2_schema.sql` (calls, inbox, appointments, CRM sync, quotes)
 
 ### 3. Seed demo data
-
-Profiles must reference real Supabase Auth users, so demo users, leads, tasks,
-feedback, and activity history are seeded by script:
 
 ```bash
 npm run seed
 ```
 
-This creates four demo users (password `demo-password`):
+Creates four demo users (password `demo-password`):
 
 | Email | Role |
 | --- | --- |
@@ -86,17 +98,36 @@ This creates four demo users (password `demo-password`):
 | `sales@northstar-demo.com` | Sales Rep |
 | `ops@northstar-demo.com` | Operations Manager |
 
-…plus 25 leads (8 urgent/high), AI analyses, 15 tasks, 8 feedback records, and a
-full activity history. The script is safe to re-run; it clears and re-seeds
-operational tables.
+…plus 25 leads, tasks, feedback, and Phase 2 demo data: a completed AI call on
+Sarah Mitchell's lead (with hidden transcript), a booked inspection, an inbox
+draft awaiting approval, and property research records. Safe to re-run.
 
-### 4. AI (optional)
+### 4. AI (optional, recommended)
 
-Set `OPENAI_API_KEY` in `.env.local` to enable live AI analysis and generation.
-Without a key, the app uses deterministic rule-based fallbacks so every workflow
-still functions end to end — fallback records are labeled in the UI.
+- `OPENAI_API_KEY` — enables AI lead analysis, call summaries, and **live AI
+  voice calls** (OpenAI Realtime over WebRTC).
+- Without a key, everything still works: lead analysis falls back to rules,
+  and calls run in **scripted demo mode** (click-through customer lines) that
+  produces the same transcripts, notes, tasks, and appointments.
 
-### 5. Run
+**Cost control:** Realtime sessions are capped at `REALTIME_MAX_CALL_SECONDS`
+(default 180s — roughly $0.10–$0.30 per call at typical Realtime rates),
+session creation is rate-limited, ephemeral tokens are minted server-side, and
+scripted mode is free. A full demo day fits comfortably under ~$10.
+
+### 5. HubSpot (optional)
+
+Without configuration, every sync is a **dry run**: payloads are logged to the
+sync event table with mock IDs and nothing external is touched. To sync for
+real, create a HubSpot private app (scopes: `crm.objects.contacts`,
+`crm.objects.deals`, `crm.objects.notes` read/write) and set:
+
+```env
+HUBSPOT_PRIVATE_APP_TOKEN=pat-...
+ENABLE_HUBSPOT_LIVE_SYNC=true
+```
+
+### 6. Run
 
 ```bash
 npm run dev
@@ -104,41 +135,68 @@ npm run dev
 
 - Public site: `http://localhost:3000`
 - Command center: `http://localhost:3000/app` (log in at `/login`)
+- Demo Center: `http://localhost:3000/app/demo-center`
 - Case study: `http://localhost:3000/case-study`
+
+## Demo walkthroughs
+
+### Speed-to-lead (the primary wow demo)
+
+1. Open **Demo Center → Run Speed-to-Lead Demo** (or submit `/request` as a
+   customer — the AI assistant "calls" right on the success page).
+2. A lead is created through the real pipeline (AI analysis + automations).
+3. The mock phone rings; answer it. With an OpenAI key it's a live voice
+   conversation; without one, click through the scripted customer lines.
+4. End the call (or let it wrap at the cap). The pipeline produces: hidden
+   transcript, CRM note on the timeline, urgent task, booked inspection, stage
+   change to Appointment Scheduled, and a confirmation SMS draft waiting for
+   approval in the Inbox.
+
+### Existing customer callback
+
+1. Demo Center → **Simulate Existing Customer Call** (Sarah Mitchell).
+2. The matched CRM record shows before you answer; the AI opens with her
+   prior storm-damage context, handles rescheduling/insurance questions, and
+   logs the second touchpoint to her timeline.
+
+### Everything else
+
+- **Simulate Inbound Text / Email** — AI matches or creates the lead, drafts a
+  reply for approval, creates tasks.
+- **Run HubSpot Dry Sync** — see the exact payload and the logged sync event.
+- **Quote Tool** — pick a lead, generate the demo property profile, set storm
+  context, and get a ballpark with line items, assumptions, and confidence.
+- **Appointments** — type availability in plain English and watch it become
+  bookable slots.
+
+## Safety / demo guardrails
+
+- "Demo call — no real phone call placed" labels on every call surface
+- AI drafts are always labeled and require human approval before (simulated) sending
+- Quote outputs are always "internal ballpark — not a final quote"
+- The AI never promises insurance approval, coverage, or pricing, and is
+  transparent that it's an AI assistant on outbound calls
+- Service-role and OpenAI keys never reach the browser (Realtime uses
+  short-lived ephemeral tokens minted server-side)
 
 ## Environment variables
 
-See `.env.example`. Notes:
-
-- `SUPABASE_SERVICE_ROLE_KEY` is used only in server-side code (public lead intake
-  pipeline and the seed script). It is never exposed to the browser.
-- `DEMO_MODE=true` keeps webhook sends simulated and demo banners visible.
-- `MAKE_WEBHOOK_URL` / `ZAPIER_WEBHOOK_URL` + `DEMO_MODE=false` enable real webhook delivery.
+See `.env.example` for the full list with comments: Supabase keys, OpenAI
+(`AI_MODEL`, `REALTIME_MODEL`, `REALTIME_MAX_CALL_SECONDS`,
+`ENABLE_REALTIME_CALLS`), HubSpot (`HUBSPOT_PRIVATE_APP_TOKEN`,
+`ENABLE_HUBSPOT_LIVE_SYNC`), Google Calendar placeholders, and demo flags.
 
 ## Deployment
 
 1. Push to GitHub and import the repo in [Vercel](https://vercel.com).
-2. Add the environment variables from `.env.local` to the Vercel project.
+2. Add the environment variables from `.env.local`.
 3. Deploy. Supabase hosts the database/auth; no other services are required.
 
-## Demo workflow (the hail-damage story)
+## What I'd build next in production
 
-1. Open `/request` and submit: **Storm Damage**, “We had hail last week and now I’m
-   seeing missing shingles and water spots on the ceiling upstairs,” timeframe
-   **Emergency**, active leak **Yes**, source **Google**.
-2. The lead is created, AI classifies it (emergency / hot / call within 15 minutes),
-   and the **Urgent Storm Damage Lead** automation creates an urgent call task.
-3. Log in — the lead is at the top of the **AI Priority Queue**.
-4. Open the lead: review the AI summary, urgency reasoning, and discovery questions.
-5. Click **Generate SMS** — an editable, AI-labeled draft appears and is saved to
-   the lead’s history.
-6. The activity timeline shows every step, and **Reports** reflect the new lead.
-
-## Future improvements
-
-- Role-based permissions (role labels and schema are already in place)
-- Drag-and-drop pipeline cards
-- Photo upload with AI roof-damage triage
-- Real SMS/email via Twilio/Resend behind approval gates
-- Measured speed-to-lead from contact timestamps
-- Duplicate lead detection and source ROI calculation
+- Real telephony (Twilio Voice + Media Streams) behind the same call pipeline
+- Real SMS/email delivery (Twilio/Resend) behind the existing approval gates
+- Google Calendar free/busy + event sync (the provider seam is in place)
+- A live property-data provider behind `lib/property/provider.ts`
+- Realtime tool-calling for mid-call CRM lookups and live booking
+- Role-based permissions, duplicate-lead detection, and source ROI reporting

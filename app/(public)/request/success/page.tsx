@@ -5,6 +5,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { PublicHeader } from "@/components/public/PublicHeader";
+import { SpeedToLeadDemo } from "@/components/public/SpeedToLeadDemo";
 import { SERVICE_LABELS, TIMEFRAME_LABELS, labelFor } from "@/lib/utils/statuses";
 
 export const metadata: Metadata = {
@@ -14,7 +15,13 @@ export const metadata: Metadata = {
 export default async function RequestSuccessPage({
   searchParams,
 }: {
-  searchParams: Promise<{ name?: string; service?: string; timeframe?: string }>;
+  searchParams: Promise<{
+    name?: string;
+    service?: string;
+    timeframe?: string;
+    lead?: string;
+    phone?: string;
+  }>;
 }) {
   const params = await searchParams;
   const name = params.name?.slice(0, 60);
@@ -49,6 +56,14 @@ export default async function RequestSuccessPage({
               </div>
             </CardContent>
           </Card>
+        )}
+
+        {params.lead && (
+          <SpeedToLeadDemo
+            leadId={params.lead}
+            name={name ?? ""}
+            phone={params.phone?.slice(0, 30)}
+          />
         )}
 
         <Alert className="mt-8">

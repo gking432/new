@@ -14,11 +14,13 @@ import {
 import { Separator } from "@/components/ui/separator";
 import { ActivityTimeline } from "@/components/app/ActivityTimeline";
 import { LeadActionPanel } from "@/components/app/LeadActionPanel";
+import { LeadPhase2Cards } from "@/components/app/LeadPhase2Cards";
 import { LeadAssignSelect } from "@/components/app/LeadAssignSelect";
 import { LeadStageSelect } from "@/components/app/LeadStageSelect";
 import { QualityBadge } from "@/components/app/QualityBadge";
 import { UrgencyBadge } from "@/components/app/UrgencyBadge";
 import { getLeadDetail, getProfiles } from "@/lib/db/queries";
+import { getLeadPhase2 } from "@/lib/db/queries-phase2";
 import { createClient } from "@/lib/supabase/server";
 import { formatDate, formatMoneyRange, fullName } from "@/lib/utils/format";
 import {
@@ -48,9 +50,10 @@ export default async function LeadDetailPage({
 }) {
   const { id } = await params;
   const supabase = await createClient();
-  const [lead, profiles] = await Promise.all([
+  const [lead, profiles, phase2] = await Promise.all([
     getLeadDetail(supabase, id),
     getProfiles(supabase),
+    getLeadPhase2(supabase, id),
   ]);
 
   if (!lead) notFound();
@@ -317,6 +320,15 @@ export default async function LeadDetailPage({
               </CardContent>
             </Card>
           )}
+
+          <LeadPhase2Cards
+            lead={lead}
+            calls={phase2.calls}
+            communications={phase2.communications}
+            appointments={phase2.appointments}
+            quote={phase2.quote}
+            syncEvents={phase2.syncEvents}
+          />
         </div>
       </div>
     </div>

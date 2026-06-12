@@ -142,7 +142,7 @@ export function LeadForm() {
     const result = await submitLead(values);
     if (result.success) {
       router.push(
-        `/request/success?name=${encodeURIComponent(values.first_name)}&service=${values.service_type}&timeframe=${values.timeframe}`
+        `/request/success?name=${encodeURIComponent(values.first_name)}&service=${values.service_type}&timeframe=${values.timeframe}&lead=${result.data?.leadId ?? ""}&phone=${encodeURIComponent(values.phone)}`
       );
     } else {
       toast.error(result.error);
