@@ -19,7 +19,7 @@ import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useCall, useLiveCall } from "@/components/calls/CallProvider";
-import { createDemoSpeedToLead, getDemoGuideContext } from "@/lib/actions/demo";
+import { getDemoGuideContext } from "@/lib/actions/demo";
 import { simulateInboundEmail, simulateInboundText } from "@/lib/actions/inbox";
 import { appendDemoEvent } from "@/lib/demo-log";
 import { Spotlight } from "./Spotlight";
@@ -88,35 +88,17 @@ export function TutorialProvider() {
     },
     {
       id: "speed-to-lead",
-      title: "1 · A homeowner requests service — and the AI calls them back",
-      body: "Click below: a website lead is created through the real pipeline (AI analysis + automations), and the AI scheduling assistant rings the homeowner. You'll play the homeowner.",
+      title: "1 · Submit a request as the customer",
+      body: "Open our public website in a new tab and fill out the request form — use your own info or hit “Auto-fill demo customer,” then click Submit. You're playing the CUSTOMER. The moment you submit, a phone call from our AI scheduling assistant pops up right here on the dashboard — act as the homeowner and watch the AI fill the CRM and book your appointment. (Leave this tour open; it continues automatically when the call starts.)",
       action: {
-        label: "Submit lead & ring the phone",
+        label: "Open the front-end website",
         icon: PhoneOutgoing,
-        run: async (ctx) => {
-          appendDemoEvent("Submitting website lead through the public pipeline…");
-          const res = await createDemoSpeedToLead();
-          if (!res.success) {
-            toast.error(res.error);
-            throw new Error(res.error);
-          }
-          appendDemoEvent(
-            res.data.reused
-              ? `Repeat submission matched to existing lead: ${res.data.name}`
-              : `Website lead submitted: ${res.data.name} — AI classified it and automations fired`
-          );
-          ctx.startCall({
-            scenario: "speed_to_lead_outbound",
-            leadId: res.data.leadId,
-            callerName: res.data.name,
-            callerPhone: res.data.phone,
-            subtitle: "Calling the homeowner",
-            direction: "outbound",
-            navigateTo: `/app/leads/${res.data.leadId}`,
-          });
+        run: () => {
+          // Not "noopener" so the success tab can close itself after handoff.
+          window.open("/request?fill=demo&demo=dashboard", "_blank");
         },
       },
-      advance: { kind: "action" },
+      advance: { kind: "event", event: "northstar-call-started" },
     },
     {
       id: "answer-call",
@@ -459,7 +441,10 @@ export function TutorialProvider() {
     setRunning(true);
     try {
       await step.action.run({ startCall, router, sarahId, sarahPhone });
-      go(index + 1);
+      // Only advance immediately for pure action steps. Steps that wait on a
+      // real event (e.g. the call starting after a cross-tab form submit) keep
+      // their button but advance via that event instead.
+      if (step.advance.kind === "action") go(index + 1);
     } catch {
       // run() already surfaced the error via toast.
     } finally {

@@ -228,8 +228,11 @@ export function LeadForm() {
     setSubmitting(true);
     const result = await submitLead(values);
     if (result.success) {
+      // Carry the dashboard-demo flag so the success page hands the call back
+      // to the dashboard tab instead of running the call in this tab.
+      const demo = searchParams.get("demo") === "dashboard" ? "&demo=dashboard" : "";
       router.push(
-        `/request/success?name=${encodeURIComponent(values.first_name)}&service=${values.service_type}&timeframe=${values.timeframe}&lead=${result.data?.leadId ?? ""}&phone=${encodeURIComponent(values.phone)}`
+        `/request/success?name=${encodeURIComponent(values.first_name)}&service=${values.service_type}&timeframe=${values.timeframe}&lead=${result.data?.leadId ?? ""}&phone=${encodeURIComponent(values.phone)}${demo}`
       );
     } else {
       toast.error(result.error);

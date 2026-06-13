@@ -84,7 +84,55 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
   const startCall = useCallback((options: StartCallOptions) => {
     runCounter.current += 1;
     setCall({ ...options, runId: runCounter.current });
+    // Let the guided tour advance off "a call started" (used by the
+    // cross-tab speed-to-lead handoff).
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent("northstar-call-started"));
+    }
   }, []);
+
+  // Cross-tab speed-to-lead handoff: when the user submits the public request
+  // form in a separate tab, that tab broadcasts here and the AI call starts on
+  // the dashboard automatically — no manual step back.
+  useEffect(() => {
+    const handled = new Set<number>();
+    const startSpeedToLead = (leadId: string, ts: number) => {
+      if (handled.has(ts)) return;
+      handled.add(ts);
+      startCall({
+        scenario: "speed_to_lead_outbound",
+        leadId,
+        callerName: "Northstar Exterior & Home",
+        subtitle: "AI Scheduling Assistant",
+        direction: "inbound",
+        navigateTo: `/app/leads/${leadId}`,
+      });
+    };
+    let bc: BroadcastChannel | null = null;
+    if (typeof BroadcastChannel !== "undefined") {
+      bc = new BroadcastChannel("northstar-demo");
+      bc.onmessage = (e) => {
+        if (e.data?.type === "speed_to_lead" && e.data.leadId) {
+          startSpeedToLead(e.data.leadId, e.data.ts ?? Date.now());
+        }
+      };
+    }
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === "northstar-demo-speed-to-lead" && e.newValue) {
+        try {
+          const d = JSON.parse(e.newValue);
+          if (d.leadId) startSpeedToLead(d.leadId, d.ts ?? Date.now());
+        } catch {
+          // ignore malformed
+        }
+      }
+    };
+    window.addEventListener("storage", onStorage);
+    return () => {
+      bc?.close();
+      window.removeEventListener("storage", onStorage);
+    };
+  }, [startCall]);
 
   const close = useCallback(() => {
     setCall(null);
