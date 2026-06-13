@@ -17,6 +17,8 @@ export function CallLauncher({
   callerPhone,
   subtitle,
   direction,
+  persona,
+  seedFields,
   buttonLabel,
   buttonVariant = "default",
   buttonSize = "default",
@@ -30,6 +32,8 @@ export function CallLauncher({
   callerPhone?: string | null;
   subtitle?: string | null;
   direction: "inbound" | "outbound";
+  persona?: "agent" | "customer";
+  seedFields?: Record<string, string | null>;
   buttonLabel: string;
   buttonVariant?: "default" | "outline" | "secondary";
   buttonSize?: "default" | "sm" | "lg";
@@ -53,6 +57,8 @@ export function CallLauncher({
           callerPhone,
           subtitle,
           direction,
+          persona,
+          seedFields,
           crmContext,
           navigateTo,
           onFinished,

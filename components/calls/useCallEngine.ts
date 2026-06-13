@@ -35,6 +35,10 @@ export interface CallEngineOptions {
   callerName: string;
   callerPhone?: string | null;
   direction: "inbound" | "outbound";
+  // "customer" = the AI plays the homeowner and the human is the company rep.
+  persona?: "agent" | "customer";
+  // Ground-truth facts to seed the summary (used by scripted + AI-customer modes).
+  seedFields?: Record<string, string | null>;
   onEvent?: (label: string) => void;
   onAnswered?: () => void;
   onFinished?: (result: CompleteCallResult) => void;
@@ -138,8 +142,11 @@ export function useCallEngine(options: CallEngineOptions) {
         transcriptTurns: turnsRef.current.slice(0, 200),
         durationSeconds: secondsRef.current,
         mode: modeRef.current === "scripted" ? "scripted_fallback" : "realtime",
+        // When the AI played the homeowner, its lines ARE the customer's.
+        aiRole: optionsRef.current.persona === "customer" ? "customer" : "agent",
         seedFields:
           scriptedSeed ??
+          optionsRef.current.seedFields ??
           (modeRef.current === "scripted" ? sessionRef.current?.scripted.seedFields : undefined),
       });
       if (!response.success) {
@@ -308,6 +315,10 @@ export function useCallEngine(options: CallEngineOptions) {
           leadId: opts.leadId,
           callerName: opts.callerName,
           callerPhone: opts.callerPhone,
+          persona: opts.persona ?? "agent",
+          // The existing-customer callback is AI-to-AI (TTS playback) — never
+          // mint a Realtime token for it.
+          forceScripted: opts.scenario === "existing_customer_call",
         }),
       });
       if (!res.ok) throw new Error("Session request failed");

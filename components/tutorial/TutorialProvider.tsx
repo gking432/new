@@ -6,6 +6,7 @@ import {
   ChevronLeft,
   ChevronRight,
   GraduationCap,
+  Headphones,
   Loader2,
   Mail,
   MessageSquareText,
@@ -48,6 +49,20 @@ interface Step {
 
 const INDEX_KEY = "northstar-tutorial-index";
 const ACTIVE_KEY = "northstar-tutorial-active";
+
+const JORDAN_SEED: Record<string, string | null> = {
+  first_name: "Jordan",
+  last_name: "Avery",
+  phone: "(414) 555-0123",
+  email: "jordan.avery@example.com",
+  address: "418 Lakeview Ct",
+  city: "Pewaukee",
+  active_leak: "yes",
+  insurance_started: "no",
+  preferred_contact_method: "phone",
+  service_type: "storm_damage",
+  urgency: "high",
+};
 
 export function TutorialProvider() {
   const router = useRouter();
@@ -172,7 +187,34 @@ export function TutorialProvider() {
     {
       id: "existing-answer",
       title: "8 · Answer — the AI already knows her",
-      body: "Notice the matched CRM record before you even pick up. The assistant greets Sarah by name and references her storm-damage request — no re-asking what we already know. The call logs a second touchpoint on her timeline. Click Next when it wraps.",
+      body: "Notice the matched CRM record before you pick up. This one's AI-to-AI: the assistant and Sarah both speak (different voices), greeting her by name and referencing her storm-damage request — no re-asking what we know. It logs a second touchpoint on her timeline. Click Next when it wraps.",
+      advance: { kind: "manual" },
+    },
+    {
+      id: "you-answer",
+      title: "Bonus · Now YOU take a call",
+      body: "Flip the roles: a new homeowner calls and you're the rep — the AI plays the customer. Click below, answer the phone in the top-left, and actually ask questions out loud.",
+      action: {
+        label: "A homeowner calls — you answer",
+        icon: Headphones,
+        run: (ctx) => {
+          ctx.startCall({
+            scenario: "new_inbound_call",
+            persona: "customer",
+            direction: "inbound",
+            callerName: "Jordan Avery",
+            callerPhone: "(414) 555-0123",
+            seedFields: JORDAN_SEED,
+            navigateTo: "/app/live-call",
+          });
+        },
+      },
+      advance: { kind: "action" },
+    },
+    {
+      id: "you-answer-watch",
+      title: "Bonus · Watch the form fill as you ask",
+      body: "The live intake form fills from what Jordan tells you and flags in RED anything you still need to ask for — so nothing slips on the call. Hang up when you're done; the AI writes the note and saves the lead. Click Next to continue.",
       advance: { kind: "manual" },
     },
     {

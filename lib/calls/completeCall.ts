@@ -13,6 +13,8 @@ export interface CompleteCallInput {
   transcriptTurns: TranscriptTurn[];
   durationSeconds: number;
   mode: "realtime" | "scripted_fallback";
+  /** "customer" = the AI played the homeowner; flip transcript roles for the summary. */
+  aiRole?: "agent" | "customer";
   /** Ground-truth facts from a scripted scenario, if any. */
   seedFields?: Record<string, string | null>;
 }
@@ -28,10 +30,16 @@ export interface CompleteCallResult {
   confirmationDraftId: string | null;
 }
 
-function turnsToText(turns: TranscriptTurn[]) {
+function turnsToText(turns: TranscriptTurn[], aiRole: "agent" | "customer" = "agent") {
+  // The summarizer always extracts the CUSTOMER's info, so label the homeowner's
+  // lines "Customer". Normally that's the human ("customer" speaker); in
+  // you-answer-an-AI-customer mode the homeowner is the "ai" speaker, so flip.
   return turns
     .filter((t) => t.speaker !== "system")
-    .map((t) => `${t.speaker === "ai" ? "AI" : "Customer"}: ${t.text}`)
+    .map((t) => {
+      const isCustomer = aiRole === "customer" ? t.speaker === "ai" : t.speaker === "customer";
+      return `${isCustomer ? "Customer" : "Agent"}: ${t.text}`;
+    })
     .join("\n");
 }
 
@@ -97,7 +105,7 @@ export async function completeCall(
     lead = (data as Lead | null) ?? null;
   }
 
-  const transcriptText = turnsToText(input.transcriptTurns);
+  const transcriptText = turnsToText(input.transcriptTurns, input.aiRole);
   const endedAt = new Date().toISOString();
 
   await supabase

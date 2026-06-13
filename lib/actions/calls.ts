@@ -22,6 +22,8 @@ const finishCallSchema = z.object({
     .max(200),
   durationSeconds: z.number().min(0).max(3600),
   mode: z.enum(["realtime", "scripted_fallback"]),
+  // "customer" = the AI's lines are the homeowner's (you-answer mode).
+  aiRole: z.enum(["agent", "customer"]).optional(),
   seedFields: z.record(z.string(), z.string().nullable()).optional(),
 });
 

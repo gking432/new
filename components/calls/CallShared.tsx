@@ -38,13 +38,19 @@ export function TranscriptBubble({ turn, live = false }: { turn: TranscriptTurn;
   );
 }
 
-/** Lightweight live field extraction for the side panel during a call. */
+/**
+ * Lightweight live field extraction for the side panel during a call.
+ * `customerSpeaker` says which transcript role is the homeowner — normally
+ * "customer", but "ai" in the you-answer-an-AI-customer mode where the AI
+ * plays the homeowner.
+ */
 export function extractLiveFields(
   turns: TranscriptTurn[],
-  seed?: Record<string, string | null>
+  seed?: Record<string, string | null>,
+  customerSpeaker: "ai" | "customer" = "customer"
 ): Record<string, string> {
   const customerText = turns
-    .filter((t) => t.speaker === "customer")
+    .filter((t) => t.speaker === customerSpeaker)
     .map((t) => t.text)
     .join(" ");
   const all = turns.map((t) => t.text).join(" ");

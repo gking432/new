@@ -29,10 +29,12 @@ import { appendDemoEvent } from "@/lib/demo-log";
 import { useRingtone } from "@/lib/ringtone";
 import { cn } from "@/lib/utils";
 import type { CallScenario } from "@/types/app";
+import { AiToAiPlayback } from "./AiToAiPlayback";
 import { TranscriptBubble, extractLiveFields } from "./CallShared";
 import { MockPhoneFrame, type PhoneFrameState } from "./MockPhoneFrame";
 import { ScriptedCallFallback } from "./ScriptedCallFallback";
 import { useCallEngine } from "./useCallEngine";
+import type { TranscriptTurn } from "@/types/app";
 
 export interface StartCallOptions {
   scenario: Exclude<CallScenario, "manual_call_note">;
@@ -41,6 +43,9 @@ export interface StartCallOptions {
   callerPhone?: string | null;
   subtitle?: string | null;
   direction: "inbound" | "outbound";
+  // "customer" = the AI plays the homeowner and the human is the company rep.
+  persona?: "agent" | "customer";
+  seedFields?: Record<string, string | null>;
   crmContext?: { label: string; value: string }[];
   /** Route to navigate to once the call connects (so you can browse the CRM mid-call). */
   navigateTo?: string;
@@ -52,12 +57,31 @@ interface CallContextValue {
   callActive: boolean;
 }
 
+/** Live call state shared with the rest of the app (the live-fill lead form). */
+export interface LiveCallState {
+  phase: string;
+  scenario: CallScenario;
+  persona: "agent" | "customer";
+  leadId?: string;
+  callerName: string;
+  callerPhone?: string | null;
+  turns: TranscriptTurn[];
+  extracted: Record<string, string>;
+  result: CompleteCallResult | null;
+}
+
 const CallContext = createContext<CallContextValue | null>(null);
+const LiveCallContext = createContext<LiveCallState | null>(null);
 
 export function useCall(): CallContextValue {
   const ctx = useContext(CallContext);
   if (!ctx) throw new Error("useCall must be used inside CallProvider");
   return ctx;
+}
+
+/** Read-only live state of the active call (null when no call). */
+export function useLiveCall(): LiveCallState | null {
+  return useContext(LiveCallContext);
 }
 
 /**
@@ -68,6 +92,7 @@ export function useCall(): CallContextValue {
  */
 export function CallProvider({ children }: { children: React.ReactNode }) {
   const [call, setCall] = useState<(StartCallOptions & { runId: number }) | null>(null);
+  const [live, setLive] = useState<LiveCallState | null>(null);
   const runCounter = useRef(0);
 
   const startCall = useCallback((options: StartCallOptions) => {
@@ -75,30 +100,43 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
     setCall({ ...options, runId: runCounter.current });
   }, []);
 
+  const close = useCallback(() => {
+    setCall(null);
+    setLive(null);
+  }, []);
+
   return (
     <CallContext.Provider value={{ startCall, callActive: call !== null }}>
-      {children}
-      {call && (
-        <ActiveCallWindow key={call.runId} options={call} onClose={() => setCall(null)} />
-      )}
+      <LiveCallContext.Provider value={live}>
+        {children}
+        {call && (
+          <ActiveCallWindow key={call.runId} options={call} publish={setLive} onClose={close} />
+        )}
+      </LiveCallContext.Provider>
     </CallContext.Provider>
   );
 }
 
 function ActiveCallWindow({
   options,
+  publish,
   onClose,
 }: {
   options: StartCallOptions;
+  publish: (state: LiveCallState | null) => void;
   onClose: () => void;
 }) {
   const router = useRouter();
+  const persona = options.persona ?? "agent";
+  const customerSpeaker = persona === "customer" ? "ai" : "customer";
   const engine = useCallEngine({
     scenario: options.scenario,
     leadId: options.leadId,
     callerName: options.callerName,
     callerPhone: options.callerPhone,
     direction: options.direction,
+    persona,
+    seedFields: options.seedFields,
     onEvent: appendDemoEvent,
     onAnswered: () => {
       if (options.navigateTo) router.push(options.navigateTo);
@@ -143,6 +181,22 @@ function ActiveCallWindow({
       setPos({ x: 16, y: 72 });
     }
   }, []);
+
+  // Publish live state so the live-fill lead form (and anything else) can read it.
+  useEffect(() => {
+    publish({
+      phase,
+      scenario: options.scenario,
+      persona,
+      leadId: options.leadId ?? result?.leadId ?? undefined,
+      callerName: options.callerName,
+      callerPhone: options.callerPhone,
+      turns,
+      extracted: extractLiveFields(turns, session?.scripted.seedFields, customerSpeaker),
+      result,
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase, turns, result]);
 
   // Ring while the call is incoming/dialing.
   useRingtone(phase === "incoming" || phase === "dialing");
@@ -365,7 +419,22 @@ function ActiveCallWindow({
                   </p>
                 )}
               </div>
-              {mode === "scripted" && session && (
+              {mode === "scripted" && session && options.scenario === "existing_customer_call" ? (
+                /* Existing-customer callback is AI ↔ AI: the assistant and the
+                   customer are both voiced (distinct voices), auto-playing. */
+                <AiToAiPlayback
+                  scenario={session.scripted}
+                  onAiLine={(text) => {
+                    pushTurn({ speaker: "ai", text, at: secondsRef.current });
+                    setAiSpeaking(true);
+                    setTimeout(() => setAiSpeaking(false), 1200);
+                  }}
+                  onCustomerLine={(text) =>
+                    pushTurn({ speaker: "customer", text, at: secondsRef.current })
+                  }
+                  onComplete={() => void endCall(session.scripted.seedFields)}
+                />
+              ) : mode === "scripted" && session ? (
                 <ScriptedCallFallback
                   scenario={session.scripted}
                   onAiLine={(text) => {
@@ -378,8 +447,8 @@ function ActiveCallWindow({
                   }
                   onComplete={() => void endCall(session.scripted.seedFields)}
                 />
-              )}
-              <LiveCaptured turns={turns} seed={session?.scripted.seedFields} />
+              ) : null}
+              <LiveCaptured turns={turns} seed={session?.scripted.seedFields} speaker={customerSpeaker} />
             </>
           )}
 
@@ -417,11 +486,13 @@ function ActiveCallWindow({
 function LiveCaptured({
   turns,
   seed,
+  speaker = "customer",
 }: {
   turns: Parameters<typeof extractLiveFields>[0];
   seed?: Record<string, string | null>;
+  speaker?: "ai" | "customer";
 }) {
-  const fields = extractLiveFields(turns, seed);
+  const fields = extractLiveFields(turns, seed, speaker);
   const entries = Object.entries(fields);
   if (entries.length === 0) return null;
   return (

@@ -7,6 +7,7 @@ import {
   CalendarCheck,
   Calculator,
   Cable,
+  Headphones,
   Loader2,
   Mail,
   MessageSquareText,
@@ -16,6 +17,20 @@ import {
   PhoneOutgoing,
   Zap,
 } from "lucide-react";
+
+const JORDAN_SEED: Record<string, string | null> = {
+  first_name: "Jordan",
+  last_name: "Avery",
+  phone: "(414) 555-0123",
+  email: "jordan.avery@example.com",
+  address: "418 Lakeview Ct",
+  city: "Pewaukee",
+  active_leak: "yes",
+  insurance_started: "no",
+  preferred_contact_method: "phone",
+  service_type: "storm_damage",
+  urgency: "high",
+};
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -167,10 +182,10 @@ export function DemoCenterClient({
           </Button>
         </ScenarioCard>
 
-        {/* 2. New inbound call */}
+        {/* 2. New inbound call — AI answers */}
         <ScenarioCard
           icon={PhoneIncoming}
-          title="Simulate New Inbound Call"
+          title="Simulate New Inbound Call (AI answers)"
           description="An unknown homeowner (Marcus Webb) calls the office. The AI answers, runs intake, creates the lead, books the inspection, and writes the CRM notes."
         >
           <CallLauncher
@@ -180,6 +195,25 @@ export function DemoCenterClient({
             direction="inbound"
             buttonLabel="Simulate inbound call"
             navigateTo="/app"
+          />
+        </ScenarioCard>
+
+        {/* 2b. You answer, AI is the customer */}
+        <ScenarioCard
+          icon={Headphones}
+          title="You Answer (AI is the customer)"
+          description="Flip it around: you're the rep and the AI plays the homeowner. The dashboard opens a live lead form that fills as you ask — and flags in red whatever you still need to get."
+        >
+          <CallLauncher
+            scenario="new_inbound_call"
+            persona="customer"
+            direction="inbound"
+            callerName="Jordan Avery"
+            callerPhone="(414) 555-0123"
+            seedFields={JORDAN_SEED}
+            navigateTo="/app/live-call"
+            buttonLabel="Answer as the rep"
+            buttonVariant="outline"
           />
         </ScenarioCard>
 
