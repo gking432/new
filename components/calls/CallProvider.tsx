@@ -15,7 +15,6 @@ import type { CompleteCallResult } from "@/lib/calls/completeCall";
 import { appendDemoEvent } from "@/lib/demo-log";
 import { useRingtone } from "@/lib/ringtone";
 import type { CallScenario } from "@/types/app";
-import { AiToAiPlayback } from "./AiToAiPlayback";
 import { extractLiveFields } from "./CallShared";
 import { MockPhoneFrame, type PhoneFrameState } from "./MockPhoneFrame";
 import { ScriptedCallFallback } from "./ScriptedCallFallback";
@@ -385,43 +384,21 @@ function ActiveCallWindow({
           onEnd={() => void endCall()}
           onToggleMute={toggleMute}
         >
-          {/* Existing-customer callback is AI ↔ AI (both voiced). */}
-          {phase === "connected" &&
-            mode === "scripted" &&
-            session &&
-            options.scenario === "existing_customer_call" && (
-              <AiToAiPlayback
-                scenario={session.scripted}
-                onAiLine={(text) => {
-                  pushTurn({ speaker: "ai", text, at: secondsRef.current });
-                  setAiSpeaking(true);
-                  setTimeout(() => setAiSpeaking(false), 1200);
-                }}
-                onCustomerLine={(text) =>
-                  pushTurn({ speaker: "customer", text, at: secondsRef.current })
-                }
-                onComplete={() => void endCall(session.scripted.seedFields)}
-              />
-            )}
-
           {/* Scripted (no API key) — click the customer's lines. */}
-          {phase === "connected" &&
-            mode === "scripted" &&
-            session &&
-            options.scenario !== "existing_customer_call" && (
-              <ScriptedCallFallback
-                scenario={session.scripted}
-                onAiLine={(text) => {
-                  pushTurn({ speaker: "ai", text, at: secondsRef.current });
-                  setAiSpeaking(true);
-                  setTimeout(() => setAiSpeaking(false), 1500);
-                }}
-                onCustomerLine={(text) =>
-                  pushTurn({ speaker: "customer", text, at: secondsRef.current })
-                }
-                onComplete={() => void endCall(session.scripted.seedFields)}
-              />
-            )}
+          {phase === "connected" && mode === "scripted" && session && (
+            <ScriptedCallFallback
+              scenario={session.scripted}
+              onAiLine={(text) => {
+                pushTurn({ speaker: "ai", text, at: secondsRef.current });
+                setAiSpeaking(true);
+                setTimeout(() => setAiSpeaking(false), 1500);
+              }}
+              onCustomerLine={(text) =>
+                pushTurn({ speaker: "customer", text, at: secondsRef.current })
+              }
+              onComplete={() => void endCall(session.scripted.seedFields)}
+            />
+          )}
 
           {phase === "connected" && mode !== "scripted" && realtimeError && (
             <p className="text-center text-[11px] text-amber-300">{realtimeError}</p>

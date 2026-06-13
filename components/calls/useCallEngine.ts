@@ -332,9 +332,6 @@ export function useCallEngine(options: CallEngineOptions) {
           callerName: opts.callerName,
           callerPhone: opts.callerPhone,
           persona: opts.persona ?? "agent",
-          // The existing-customer callback is AI-to-AI (TTS playback) — never
-          // mint a Realtime token for it.
-          forceScripted: opts.scenario === "existing_customer_call",
         }),
       });
       if (!res.ok) throw new Error("Session request failed");

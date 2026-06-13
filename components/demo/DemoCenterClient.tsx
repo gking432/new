@@ -223,7 +223,7 @@ export function DemoCenterClient({
           title="Simulate Existing Customer Call"
           description={
             sarahLead
-              ? `${sarahLead.first_name} ${sarahLead.last_name} calls back. The AI matches her number, pulls the CRM record, and you get sent to the dashboard with the live call floating on top.`
+              ? `${sarahLead.first_name} ${sarahLead.last_name} calls back — you play her. The AI matches her number, answers with her full history, and logs a second touchpoint. Real AI voice.`
               : "Requires the seeded Sarah Mitchell lead — run `npm run seed` first."
           }
         >

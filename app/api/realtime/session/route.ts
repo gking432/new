@@ -116,6 +116,9 @@ async function tryBetaMint(
   instructions: string,
   voice: string
 ): Promise<MintResult | MintFailure> {
+  // cedar/marin are GA-only; map to a beta-supported voice on the fallback path.
+  const betaVoice = ["cedar", "marin"].includes(voice) ? "sage" : voice;
+  voice = betaVoice;
   try {
     const res = await fetch("https://api.openai.com/v1/realtime/sessions", {
       method: "POST",
@@ -167,7 +170,7 @@ async function mintRealtimeSecret(args: {
   voice?: string;
 }): Promise<MintResult | { ok: false; errors: string[] }> {
   const errors: string[] = [];
-  const voice = args.voice ?? "alloy";
+  const voice = args.voice ?? "cedar";
 
   const ga = await tryGaMint(args.apiKey, args.model, args.instructions, false, voice);
   if (ga.ok) return ga;
@@ -303,10 +306,10 @@ export async function POST(request: Request) {
     persona === "customer"
       ? buildAiCustomerInstructions()
       : buildRealtimeInstructions({ scenario, lead, slots: slotLabels, maxSeconds });
-  // Agent voice is configurable (REALTIME_VOICE); the AI-customer gets a
-  // clearly different voice so the two roles never sound the same.
-  const agentVoice = process.env.REALTIME_VOICE || "alloy";
-  const voice = persona === "customer" ? "coral" : agentVoice;
+  // Agent voice is configurable (REALTIME_VOICE). marin/cedar are gpt-realtime's
+  // most natural (ChatGPT-like) voices; the AI-customer gets a different one.
+  const agentVoice = process.env.REALTIME_VOICE || "cedar";
+  const voice = persona === "customer" ? "marin" : agentVoice;
   const minted = await mintRealtimeSecret({ apiKey, model, instructions, voice });
   if (!minted.ok) {
     return NextResponse.json({

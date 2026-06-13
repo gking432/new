@@ -141,7 +141,7 @@ export function TutorialProvider() {
     {
       id: "existing-call",
       title: "7 · A known customer calls back",
-      body: "Now the magic of having a CRM: when an existing customer calls, the AI recognizes the number and pulls their whole history. Simulate Sarah Mitchell calling the office.",
+      body: "Now the magic of having a CRM: when an existing customer calls, the AI recognizes the number and pulls their whole history. You'll play Sarah Mitchell — start the call and talk to the assistant as her.",
       action: {
         label: "Sarah calls the office",
         icon: PhoneIncoming,
@@ -170,8 +170,8 @@ export function TutorialProvider() {
     },
     {
       id: "existing-answer",
-      title: "8 · Answer — the AI already knows her",
-      body: "Notice the matched CRM record before you pick up. This one's AI-to-AI: the assistant and Sarah both speak out loud (different voices), greeting her by name and referencing her storm-damage request — no re-asking what we know. It logs a second touchpoint on her timeline, then advances automatically.",
+      title: "8 · The AI already knows her",
+      body: "Notice the matched CRM record before the call connects. The assistant greets Sarah by name and references her storm-damage request — no re-asking what we know. Talk to it as Sarah (reschedule, ask about insurance, whatever). It logs a second touchpoint on her timeline, then advances when you hang up.",
       advance: { kind: "event", event: "northstar-call-done" },
     },
     {
@@ -461,7 +461,7 @@ export function TutorialProvider() {
       return "📞 You are the CUSTOMER — answer and act as the homeowner. Watch the AI take notes.";
     }
     if (live.scenario === "existing_customer_call") {
-      return "👀 Sit back and WATCH — this call is AI ↔ AI (our assistant and the customer, both out loud).";
+      return "📞 You are the CUSTOMER (Sarah) — the AI assistant answers and already knows her. Talk to it as her.";
     }
     if (live.persona === "customer") {
       return "🎧 You are the COMPANY REP — answer the call and ask the questions. Watch the form fill.";
