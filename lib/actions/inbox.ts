@@ -22,9 +22,17 @@ async function requireUser(supabase: SupabaseClient) {
  * seeded phone number to her lead, classifies the message, creates an urgent
  * task, drafts a reply for approval, and logs the timeline entry.
  */
-export async function simulateInboundText(): Promise<
-  ActionResult<{ communicationId: string; leadId: string | null; events: string[] }>
-> {
+export interface InboundResult {
+  communicationId: string;
+  leadId: string | null;
+  leadName: string;
+  events: string[];
+  // AI-assigned importance for the on-screen notification.
+  urgency: "urgent" | "high" | "medium" | "low";
+  headline: string;
+}
+
+export async function simulateInboundText(): Promise<ActionResult<InboundResult>> {
   const supabase = await createClient();
   try {
     await requireUser(supabase);
@@ -109,10 +117,21 @@ export async function simulateInboundText(): Promise<
       .single();
     if (draft) events.push("AI reply drafted — waiting for human approval");
 
+    // Existing customer reporting an active, worsening leak → an issue with
+    // urgency, even though they're not a brand-new lead.
+    events.push("AI reviewed the message and scored importance: HIGH (active leak worsening)");
+
     revalidatePath("/app", "layout");
     return {
       success: true,
-      data: { communicationId: comm.id, leadId: lead?.id ?? null, events },
+      data: {
+        communicationId: comm.id,
+        leadId: lead?.id ?? null,
+        leadName: lead ? `${lead.first_name} ${lead.last_name}` : "Sarah Mitchell",
+        events,
+        urgency: "high",
+        headline: "New text · Existing customer · Active leak worsening — High priority",
+      },
     };
   } catch (err) {
     return { success: false, error: err instanceof Error ? err.message : "Simulation failed" };
@@ -123,9 +142,7 @@ export async function simulateInboundText(): Promise<
  * Demo Center: simulates a new-prospect email, creates the lead, drafts a
  * reply for approval, and creates the follow-up task.
  */
-export async function simulateInboundEmail(): Promise<
-  ActionResult<{ communicationId: string; leadId: string | null; events: string[] }>
-> {
+export async function simulateInboundEmail(): Promise<ActionResult<InboundResult>> {
   const supabase = await createClient();
   try {
     await requireUser(supabase);
@@ -158,8 +175,8 @@ export async function simulateInboundEmail(): Promise<
           timeframe: "1_3_months",
           source: "email",
           stage: "new",
-          urgency: "medium",
-          lead_quality: "warm",
+          urgency: "high",
+          lead_quality: "hot",
           ai_status: "completed",
         })
         .select("*")
@@ -228,11 +245,20 @@ export async function simulateInboundEmail(): Promise<
       .select("id")
       .single();
     if (draft) events.push("AI reply drafted — waiting for human approval");
+    events.push("AI reviewed the email and scored importance: URGENT (new hot lead)");
 
     revalidatePath("/app", "layout");
     return {
       success: true,
-      data: { communicationId: comm.id, leadId: lead?.id ?? null, events },
+      data: {
+        communicationId: comm.id,
+        leadId: lead?.id ?? null,
+        leadName: lead ? `${lead.first_name} ${lead.last_name}` : "Greg Tomlinson",
+        events,
+        // A brand-new lead is the most urgent kind of inbound — speed to lead wins jobs.
+        urgency: "urgent",
+        headline: "New email · New lead · 12-window project before winter — Urgent, hot lead",
+      },
     };
   } catch (err) {
     return { success: false, error: err instanceof Error ? err.message : "Simulation failed" };

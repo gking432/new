@@ -63,6 +63,7 @@ export function LeadFilters({ profiles }: { profiles: Profile[] }) {
     <div className="flex flex-wrap items-center gap-2">
       <form
         className="relative"
+        data-tour="leads-search"
         onSubmit={(event) => {
           event.preventDefault();
           const value = String(new FormData(event.currentTarget).get("search") ?? "");

@@ -3,18 +3,7 @@
 import { useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import {
-  ArrowDownLeft,
-  ArrowUpRight,
-  Bot,
-  FileText,
-  Loader2,
-  Mail,
-  MessageSquareText,
-  Phone,
-  Send,
-  Trash2,
-} from "lucide-react";
+import { ArrowDownLeft, ArrowUpRight, Bot, Loader2, Mail, MessageSquareText, Send, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -34,64 +23,85 @@ import type { CommunicationWithLead } from "@/types/app";
 const CHANNEL_ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
   sms: MessageSquareText,
   email: Mail,
-  call: Phone,
-  form: FileText,
-  crm_import: FileText,
-  manual: FileText,
 };
+
+interface Conversation {
+  key: string;
+  channel: "sms" | "email";
+  lead: CommunicationWithLead["lead"];
+  participant: string;
+  messages: CommunicationWithLead[];
+  latest: CommunicationWithLead;
+  needsApproval: boolean;
+}
 
 export function InboxView({ communications }: { communications: CommunicationWithLead[] }) {
   const router = useRouter();
-  const [tab, setTab] = useState("messages");
+  const [tab, setTab] = useState("conversations");
   const [channelFilter, setChannelFilter] = useState<string | null>(null);
   const [search, setSearch] = useState("");
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [editedBody, setEditedBody] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
-  const live = communications.filter((c) => c.status !== "discarded");
+  // Inbox = SMS + email only (phone calls live in the Calls tab). Group every
+  // message into a conversation by lead+channel (or the other party's address
+  // when unmatched) so outbound-only threads — like a proactive confirmation
+  // text — still show up.
+  const conversations = useMemo(() => {
+    const relevant = communications.filter(
+      (c) => (c.channel === "sms" || c.channel === "email") && c.status !== "discarded"
+    );
+    const map = new Map<string, Conversation>();
+    for (const c of relevant) {
+      const channel = c.channel as "sms" | "email";
+      const party = c.direction === "inbound" ? c.from_value : c.to_value;
+      const key = c.lead_id ? `lead:${c.lead_id}:${channel}` : `addr:${party ?? "unknown"}:${channel}`;
+      const existing = map.get(key);
+      if (existing) {
+        existing.messages.push(c);
+      } else {
+        map.set(key, {
+          key,
+          channel,
+          lead: c.lead,
+          participant: c.lead ? `${c.lead.first_name} ${c.lead.last_name}` : (party ?? "Unknown"),
+          messages: [c],
+          latest: c,
+          needsApproval: false,
+        });
+      }
+    }
+    const list = [...map.values()];
+    for (const convo of list) {
+      convo.messages.sort((a, b) => a.created_at.localeCompare(b.created_at));
+      convo.latest = convo.messages[convo.messages.length - 1];
+      convo.needsApproval = convo.messages.some(
+        (m) => m.direction === "outbound" && m.status === "draft"
+      );
+    }
+    return list.sort((a, b) => b.latest.created_at.localeCompare(a.latest.created_at));
+  }, [communications]);
 
-  // The left list shows conversations, not raw rows: inbound messages and
-  // calls. Outbound drafts/sends appear inside the thread on the right.
-  const listItems = useMemo(() => {
-    let list =
-      tab === "approvals"
-        ? live.filter((c) => c.direction === "outbound" && c.status === "draft")
-        : live.filter((c) => c.direction === "inbound" || c.channel === "call");
+  const filtered = useMemo(() => {
+    let list = tab === "approvals" ? conversations.filter((c) => c.needsApproval) : conversations;
     if (channelFilter) list = list.filter((c) => c.channel === channelFilter);
     if (search.trim()) {
       const term = search.toLowerCase();
       list = list.filter(
         (c) =>
-          c.body?.toLowerCase().includes(term) ||
-          c.subject?.toLowerCase().includes(term) ||
-          c.from_value?.toLowerCase().includes(term) ||
-          `${c.lead?.first_name ?? ""} ${c.lead?.last_name ?? ""}`.toLowerCase().includes(term)
+          c.participant.toLowerCase().includes(term) ||
+          c.messages.some((m) => m.body?.toLowerCase().includes(term))
       );
     }
     return list;
-  }, [live, tab, channelFilter, search]);
+  }, [conversations, tab, channelFilter, search]);
 
-  const selected = listItems.find((c) => c.id === selectedId) ?? listItems[0] ?? null;
-
-  // Thread for the selected conversation: every message on the same channel
-  // for the same lead (or same phone/email when unmatched), oldest first.
-  const thread = useMemo(() => {
-    if (!selected || selected.channel === "call") return [];
-    return live
-      .filter((c) => {
-        if (c.channel !== selected.channel) return false;
-        if (selected.lead_id) return c.lead_id === selected.lead_id;
-        const key = selected.direction === "inbound" ? selected.from_value : selected.to_value;
-        return c.from_value === key || c.to_value === key;
-      })
-      .sort((a, b) => a.created_at.localeCompare(b.created_at));
-  }, [live, selected]);
-
-  const pendingDraft = thread.find((c) => c.direction === "outbound" && c.status === "draft");
-  const approvalsCount = live.filter(
-    (c) => c.direction === "outbound" && c.status === "draft"
-  ).length;
+  const selected = filtered.find((c) => c.key === selectedKey) ?? filtered[0] ?? null;
+  const pendingDraft = selected?.messages.find(
+    (m) => m.direction === "outbound" && m.status === "draft"
+  );
+  const approvalsCount = conversations.filter((c) => c.needsApproval).length;
 
   function approveAndSend(draftId: string) {
     startTransition(async () => {
@@ -125,12 +135,12 @@ export function InboxView({ communications }: { communications: CommunicationWit
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4" data-tour="inbox-root">
       <div className="flex flex-wrap items-center gap-3">
         <Tabs value={tab} onValueChange={setTab}>
           <TabsList>
-            <TabsTrigger value="messages">Conversations</TabsTrigger>
-            <TabsTrigger value="approvals">
+            <TabsTrigger value="conversations">Conversations</TabsTrigger>
+            <TabsTrigger value="approvals" data-tour="inbox-approvals">
               Approval queue
               {approvalsCount > 0 && (
                 <Badge className="ml-1.5 bg-red-500 text-white" variant="secondary">
@@ -141,13 +151,13 @@ export function InboxView({ communications }: { communications: CommunicationWit
           </TabsList>
         </Tabs>
         <div className="flex flex-wrap gap-1.5">
-          {["call", "sms", "email"].map((channel) => (
+          {["sms", "email"].map((channel) => (
             <Button
               key={channel}
               variant={channelFilter === channel ? "default" : "outline"}
               size="sm"
               onClick={() => setChannelFilter(channelFilter === channel ? null : channel)}
-              className="capitalize"
+              className="uppercase"
             >
               {channel}
             </Button>
@@ -165,50 +175,49 @@ export function InboxView({ communications }: { communications: CommunicationWit
         {/* Conversation list */}
         <Card className="lg:col-span-2">
           <CardContent className="max-h-[68vh] space-y-1 overflow-y-auto p-2">
-            {listItems.length === 0 ? (
+            {filtered.length === 0 ? (
               <p className="px-3 py-10 text-center text-sm text-muted-foreground">
-                Nothing here yet. Use the Demo Center to simulate an inbound text or email.
+                No conversations yet. Use the demo guide to simulate an inbound text or email.
               </p>
             ) : (
-              listItems.map((comm) => {
-                const Icon = CHANNEL_ICONS[comm.channel] ?? FileText;
+              filtered.map((convo) => {
+                const Icon = CHANNEL_ICONS[convo.channel] ?? MessageSquareText;
                 return (
                   <button
-                    key={comm.id}
+                    key={convo.key}
                     type="button"
+                    data-tour={selected?.key === convo.key ? "inbox-active-convo" : undefined}
                     onClick={() => {
-                      setSelectedId(comm.id);
+                      setSelectedKey(convo.key);
                       setEditedBody(null);
                     }}
                     className={cn(
                       "w-full rounded-md p-3 text-left transition-colors hover:bg-secondary/70",
-                      selected?.id === comm.id && "bg-secondary"
+                      selected?.key === convo.key && "bg-secondary"
                     )}
                   >
                     <div className="flex items-center gap-2">
                       <Icon className="h-3.5 w-3.5 shrink-0 text-primary" />
-                      {comm.direction === "inbound" ? (
+                      {convo.latest.direction === "inbound" ? (
                         <ArrowDownLeft className="h-3 w-3 text-muted-foreground" />
                       ) : (
                         <ArrowUpRight className="h-3 w-3 text-muted-foreground" />
                       )}
                       <span className="min-w-0 flex-1 truncate text-sm font-medium">
-                        {comm.lead
-                          ? `${comm.lead.first_name} ${comm.lead.last_name}`
-                          : (comm.from_value ?? "Unknown")}
+                        {convo.participant}
                       </span>
-                      {tab === "approvals" && (
+                      {convo.needsApproval && (
                         <Badge className="bg-amber-100 text-amber-800 text-[10px]" variant="secondary">
                           needs approval
                         </Badge>
                       )}
                     </div>
                     <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">
-                      {comm.subject ? `${comm.subject} — ` : ""}
-                      {comm.body}
+                      {convo.latest.subject ? `${convo.latest.subject} — ` : ""}
+                      {convo.latest.body}
                     </p>
                     <p className="mt-1 text-[10px] text-muted-foreground/70">
-                      {formatRelative(comm.created_at)}
+                      {formatRelative(convo.latest.created_at)}
                     </p>
                   </button>
                 );
@@ -217,67 +226,31 @@ export function InboxView({ communications }: { communications: CommunicationWit
           </CardContent>
         </Card>
 
-        {/* Conversation detail */}
+        {/* Conversation thread */}
         <Card className="lg:col-span-3">
           {selected ? (
             <CardContent className="flex max-h-[68vh] flex-col p-0">
-              {/* Header */}
               <div className="flex flex-wrap items-center gap-2 border-b p-4">
-                <h3 className="text-base font-semibold">
-                  {selected.lead
-                    ? `${selected.lead.first_name} ${selected.lead.last_name}`
-                    : (selected.from_value ?? "Unknown")}
-                </h3>
-                <Badge variant="secondary" className="capitalize">
+                <h3 className="text-base font-semibold">{selected.participant}</h3>
+                <Badge variant="secondary" className="uppercase">
                   {selected.channel}
                 </Badge>
-                <span className="text-xs text-muted-foreground">
-                  {selected.direction === "inbound"
-                    ? selected.from_value
-                    : selected.to_value}
-                </span>
                 <span className="flex-1" />
                 {selected.lead && (
                   <Button size="sm" variant="outline" asChild>
                     <Link href={`/app/leads/${selected.lead.id}`}>Open lead</Link>
                   </Button>
                 )}
-                {selected.call_id && (
-                  <Button size="sm" variant="outline" asChild>
-                    <Link href={`/app/calls/${selected.call_id}`}>View call</Link>
-                  </Button>
-                )}
               </div>
 
-              {/* Body */}
-              <div className="flex-1 overflow-y-auto p-4">
-                {selected.channel === "call" ? (
-                  <div className="space-y-3">
-                    <div className="whitespace-pre-wrap rounded-lg border bg-secondary/30 p-3 text-sm">
-                      {selected.body}
-                    </div>
-                    {selected.ai_summary && (
-                      <div className="rounded-lg border border-primary/20 bg-primary/5 p-3">
-                        <p className="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-primary">
-                          <Bot className="h-3.5 w-3.5" />
-                          AI call note
-                        </p>
-                        <p className="mt-1 text-sm">{selected.ai_summary}</p>
-                      </div>
-                    )}
-                  </div>
-                ) : selected.channel === "sms" ? (
-                  /* iMessage-style thread */
-                  <div className="space-y-2">
-                    {thread
-                      .filter((c) => c.status !== "draft")
+              <div className="flex-1 space-y-3 overflow-y-auto p-4">
+                {selected.channel === "sms"
+                  ? selected.messages
+                      .filter((m) => m.status !== "draft")
                       .map((msg) => (
                         <div
                           key={msg.id}
-                          className={cn(
-                            "flex",
-                            msg.direction === "inbound" ? "justify-start" : "justify-end"
-                          )}
+                          className={cn("flex", msg.direction === "inbound" ? "justify-start" : "justify-end")}
                         >
                           <div
                             className={cn(
@@ -301,13 +274,9 @@ export function InboxView({ communications }: { communications: CommunicationWit
                             </p>
                           </div>
                         </div>
-                      ))}
-                  </div>
-                ) : (
-                  /* Email thread */
-                  <div className="space-y-3">
-                    {thread
-                      .filter((c) => c.status !== "draft")
+                      ))
+                  : selected.messages
+                      .filter((m) => m.status !== "draft")
                       .map((msg) => (
                         <div key={msg.id} className="rounded-lg border p-3">
                           <p className="text-xs text-muted-foreground">
@@ -320,13 +289,15 @@ export function InboxView({ communications }: { communications: CommunicationWit
                           <p className="mt-1.5 whitespace-pre-wrap text-sm">{msg.body}</p>
                         </div>
                       ))}
-                  </div>
+                {selected.messages.filter((m) => m.status !== "draft").length === 0 && (
+                  <p className="text-sm text-muted-foreground">
+                    No sent messages yet — the AI-drafted reply below is waiting for your approval.
+                  </p>
                 )}
               </div>
 
-              {/* AI draft composer */}
               {pendingDraft && (
-                <div className="border-t bg-secondary/30 p-4">
+                <div className="border-t bg-secondary/30 p-4" data-tour="inbox-draft">
                   <p className="mb-2 flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-muted-foreground">
                     <Bot className="h-3.5 w-3.5 text-primary" />
                     AI-drafted reply — review before sending
@@ -341,7 +312,12 @@ export function InboxView({ communications }: { communications: CommunicationWit
                     className="bg-background"
                   />
                   <div className="mt-2 flex flex-wrap gap-2">
-                    <Button size="sm" disabled={pending} onClick={() => approveAndSend(pendingDraft.id)}>
+                    <Button
+                      size="sm"
+                      disabled={pending}
+                      onClick={() => approveAndSend(pendingDraft.id)}
+                      data-tour="inbox-approve"
+                    >
                       {pending ? (
                         <Loader2 className="h-3.5 w-3.5 animate-spin" />
                       ) : (

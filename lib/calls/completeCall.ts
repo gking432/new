@@ -139,6 +139,34 @@ export async function completeCall(
   let leadCreated = false;
   const fields = summary.extracted_fields;
 
+  // Resolve the caller's name from the best source available: extracted
+  // fields → the call's caller_name (minus our own placeholders) → the first
+  // self-introduction in the transcript. This prevents "Unknown Caller" when
+  // the caller gave their name but the structured extraction missed it.
+  const PLACEHOLDER_NAMES = new Set([
+    "unknown caller",
+    "northstar ai assistant",
+    "homeowner",
+    "",
+  ]);
+  function resolveCallerName(): { first: string; last: string } {
+    if (fields.first_name) {
+      return { first: fields.first_name, last: fields.last_name ?? "" };
+    }
+    const raw = call.caller_name?.trim() ?? "";
+    if (raw && !PLACEHOLDER_NAMES.has(raw.toLowerCase())) {
+      const [first, ...rest] = raw.split(/\s+/);
+      return { first, last: rest.join(" ") };
+    }
+    // Last resort: scan the transcript for "this is <Name>" / "I'm <Name>".
+    const intro = transcriptText.match(
+      /(?:this is|i'?m|my name is|it'?s)\s+([A-Z][a-z]+)(?:\s+([A-Z][a-z]+))?/
+    );
+    if (intro) return { first: intro[1], last: intro[2] ?? "" };
+    return { first: "New", last: "Caller" };
+  }
+  const resolvedName = resolveCallerName();
+
   // Dedupe: before creating a lead from an inbound call, check whether this
   // caller already exists by phone or email — repeat contacts attach to the
   // existing record instead of duplicating it.
@@ -164,8 +192,8 @@ export async function completeCall(
     const { data: contact } = await supabase
       .from("contacts")
       .insert({
-        first_name: fields.first_name,
-        last_name: fields.last_name,
+        first_name: resolvedName.first,
+        last_name: resolvedName.last,
         email: fields.email,
         phone: fields.phone ?? call.caller_phone,
         street_address: fields.address,
@@ -177,8 +205,8 @@ export async function completeCall(
     const { data: newLead } = await supabase
       .from("leads")
       .insert({
-        first_name: fields.first_name ?? "Unknown",
-        last_name: fields.last_name ?? "Caller",
+        first_name: resolvedName.first,
+        last_name: resolvedName.last,
         email: fields.email,
         phone: fields.phone ?? call.caller_phone,
         preferred_contact_method:
@@ -205,7 +233,12 @@ export async function completeCall(
       leadCreated = true;
       await supabase
         .from("calls")
-        .update({ lead_id: lead.id, contact_id: contact?.id ?? null })
+        .update({
+          lead_id: lead.id,
+          contact_id: contact?.id ?? null,
+          // Replace the "Unknown Caller" placeholder now that we know who it is.
+          caller_name: `${resolvedName.first} ${resolvedName.last}`.trim(),
+        })
         .eq("id", input.callId);
       await supabase.from("activities").insert({
         lead_id: lead.id,
@@ -306,22 +339,9 @@ export async function completeCall(
     if (!error) tasksCreated += 1;
   }
 
-  // ── Inbox records: the call itself + the confirmation draft ───────────────
-  await supabase.from("communications").insert({
-    lead_id: lead?.id ?? null,
-    call_id: input.callId,
-    channel: "call",
-    direction: call.direction,
-    status: "received",
-    from_value: call.caller_phone ?? call.caller_name,
-    to_value: call.callee_phone ?? call.callee_name,
-    subject: `${call.direction === "outbound" ? "Outbound" : "Inbound"} AI call`,
-    body: summary.summary,
-    ai_summary: summary.crm_note,
-    suggested_next_action: summary.next_action,
-    ai_generated: true,
-  });
-
+  // The call lives in the Calls tab and on the lead timeline — it is NOT an
+  // inbox conversation. Only the outbound confirmation draft (SMS) goes to the
+  // inbox for human approval.
   let confirmationDraftId: string | null = null;
   if (summary.confirmation_message_draft) {
     const { data: draft } = await supabase

@@ -1,7 +1,7 @@
 import { AppHeader } from "@/components/app/AppHeader";
 import { AppSidebar } from "@/components/app/AppSidebar";
 import { CallProvider } from "@/components/calls/CallProvider";
-import { DemoGuideWidget } from "@/components/demo/DemoGuideWidget";
+import { TutorialProvider } from "@/components/tutorial/TutorialProvider";
 import { getCurrentProfile } from "@/lib/db/queries";
 import { createClient } from "@/lib/supabase/server";
 
@@ -40,14 +40,14 @@ export default async function AppLayout({
 
   return (
     <CallProvider>
-      <div className="flex min-h-screen">
+      <div className="flex min-h-screen" data-app-main>
         <AppSidebar profile={profile} badges={badges} />
         <div className="flex min-w-0 flex-1 flex-col">
           <AppHeader profile={profile} />
           <main className="flex-1 p-4 sm:p-6">{children}</main>
         </div>
       </div>
-      <DemoGuideWidget audience="internal" />
+      <TutorialProvider />
     </CallProvider>
   );
 }

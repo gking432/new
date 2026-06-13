@@ -2,9 +2,11 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getScriptedScenario } from "@/lib/calls/scriptedScenarios";
 import { getAvailableSlots } from "@/lib/integrations/calendar/internalCalendar";
-import { buildRealtimeInstructions } from "@/lib/realtime/prompts";
+import { buildAiCustomerInstructions, buildRealtimeInstructions } from "@/lib/realtime/prompts";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { Lead } from "@/types/app";
+
+const DEFAULT_REALTIME_MODEL = "gpt-realtime-mini";
 
 /**
  * Creates a call record and (when configured) an ephemeral OpenAI Realtime
@@ -24,6 +26,9 @@ const requestSchema = z.object({
   leadId: z.string().uuid().optional(),
   callerName: z.string().max(120).optional(),
   callerPhone: z.string().max(40).optional(),
+  // "agent" = our AI answers/calls the human. "customer" = the AI plays the
+  // homeowner and the human is the company rep (you-answer-an-AI-customer mode).
+  persona: z.enum(["agent", "customer"]).optional(),
   forceScripted: z.boolean().optional(),
 });
 
@@ -56,14 +61,15 @@ async function tryGaMint(
   apiKey: string,
   model: string,
   instructions: string,
-  minimal: boolean
+  minimal: boolean,
+  voice: string
 ): Promise<MintResult | MintFailure> {
   try {
     const session: Record<string, unknown> = { type: "realtime", model, instructions };
     if (!minimal) {
       session.audio = {
         input: { transcription: { model: "gpt-4o-mini-transcribe" } },
-        output: { voice: "marin" },
+        output: { voice },
       };
     }
     const res = await fetch("https://api.openai.com/v1/realtime/client_secrets", {
@@ -95,7 +101,8 @@ async function tryGaMint(
 async function tryBetaMint(
   apiKey: string,
   model: string,
-  instructions: string
+  instructions: string,
+  voice: string
 ): Promise<MintResult | MintFailure> {
   try {
     const res = await fetch("https://api.openai.com/v1/realtime/sessions", {
@@ -108,7 +115,7 @@ async function tryBetaMint(
       body: JSON.stringify({
         model,
         instructions,
-        voice: "verse",
+        voice,
         input_audio_transcription: { model: "whisper-1" },
       }),
     });
@@ -145,22 +152,24 @@ async function mintRealtimeSecret(args: {
   apiKey: string;
   model: string;
   instructions: string;
+  voice?: string;
 }): Promise<MintResult | { ok: false; errors: string[] }> {
   const errors: string[] = [];
+  const voice = args.voice ?? "marin";
 
-  const ga = await tryGaMint(args.apiKey, args.model, args.instructions, false);
+  const ga = await tryGaMint(args.apiKey, args.model, args.instructions, false, voice);
   if (ga.ok) return ga;
   errors.push(ga.error);
   console.error("Realtime GA mint failed:", ga.error);
 
-  const gaMinimal = await tryGaMint(args.apiKey, args.model, args.instructions, true);
+  const gaMinimal = await tryGaMint(args.apiKey, args.model, args.instructions, true, voice);
   if (gaMinimal.ok) return gaMinimal;
   errors.push(gaMinimal.error);
 
-  const betaModel = args.model.startsWith("gpt-4o-realtime")
+  const betaModel = args.model.startsWith("gpt-4o")
     ? args.model
-    : "gpt-4o-realtime-preview";
-  const beta = await tryBetaMint(args.apiKey, betaModel, args.instructions);
+    : "gpt-4o-mini-realtime-preview";
+  const beta = await tryBetaMint(args.apiKey, betaModel, args.instructions, voice);
   if (beta.ok) return beta;
   errors.push(beta.error);
   console.error("Realtime beta mint failed:", beta.error);
@@ -180,7 +189,7 @@ export async function GET() {
   if (process.env.ENABLE_REALTIME_CALLS === "false") {
     return NextResponse.json({ ok: false, reason: "ENABLE_REALTIME_CALLS is set to false" });
   }
-  const model = process.env.REALTIME_MODEL || "gpt-realtime";
+  const model = process.env.REALTIME_MODEL || DEFAULT_REALTIME_MODEL;
   const minted = await mintRealtimeSecret({
     apiKey,
     model,
@@ -214,7 +223,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Backend is not configured" }, { status: 503 });
   }
 
-  const { scenario, leadId, callerName, callerPhone, forceScripted } = parsed.data;
+  const { scenario, leadId, callerName, callerPhone, persona = "agent", forceScripted } = parsed.data;
 
   let lead: Lead | null = null;
   if (leadId) {
@@ -278,9 +287,15 @@ export async function POST(request: Request) {
     });
   }
 
-  const model = process.env.REALTIME_MODEL || "gpt-realtime";
-  const instructions = buildRealtimeInstructions({ scenario, lead, slots: slotLabels, maxSeconds });
-  const minted = await mintRealtimeSecret({ apiKey, model, instructions });
+  const model = process.env.REALTIME_MODEL || DEFAULT_REALTIME_MODEL;
+  // persona "customer" = the AI plays the homeowner and the human is the rep.
+  const instructions =
+    persona === "customer"
+      ? buildAiCustomerInstructions()
+      : buildRealtimeInstructions({ scenario, lead, slots: slotLabels, maxSeconds });
+  // A distinct (warmer/feminine) voice when the AI is the customer.
+  const voice = persona === "customer" ? "coral" : "marin";
+  const minted = await mintRealtimeSecret({ apiKey, model, instructions, voice });
   if (!minted.ok) {
     return NextResponse.json({
       ...base,

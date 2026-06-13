@@ -21,13 +21,15 @@ import {
   PhoneOff,
   X,
 } from "lucide-react";
+import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import type { CompleteCallResult } from "@/lib/calls/completeCall";
 import { appendDemoEvent } from "@/lib/demo-log";
+import { useRingtone } from "@/lib/ringtone";
 import { cn } from "@/lib/utils";
 import type { CallScenario } from "@/types/app";
-import { TranscriptBubble } from "./CallShared";
+import { TranscriptBubble, extractLiveFields } from "./CallShared";
 import { MockPhoneFrame, type PhoneFrameState } from "./MockPhoneFrame";
 import { ScriptedCallFallback } from "./ScriptedCallFallback";
 import { useCallEngine } from "./useCallEngine";
@@ -136,11 +138,27 @@ function ActiveCallWindow({
   const windowRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
-    // Default position: top-right corner, below the header.
+    // Default position: top-left corner, below the header.
     if (typeof window !== "undefined") {
-      setPos({ x: Math.max(8, window.innerWidth - 376), y: 72 });
+      setPos({ x: 16, y: 72 });
     }
   }, []);
+
+  // Ring while the call is incoming/dialing.
+  useRingtone(phase === "incoming" || phase === "dialing");
+
+  // AI-answered calls don't get a "here's what the AI did" popup — the lead
+  // record is already open and refreshed. Show a brief toast, make sure we're
+  // on the (now-populated) lead, then close the window.
+  useEffect(() => {
+    if (phase !== "done") return;
+    toast.success("Call complete — lead, notes, and next steps are updated");
+    const leadId = result?.leadId;
+    if (leadId) router.push(`/app/leads/${leadId}`);
+    const t = setTimeout(onClose, 1800);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase]);
 
   const onDragStart = useCallback(
     (e: React.PointerEvent) => {
@@ -361,48 +379,24 @@ function ActiveCallWindow({
                   onComplete={() => void endCall(session.scripted.seedFields)}
                 />
               )}
+              <LiveCaptured turns={turns} seed={session?.scripted.seedFields} />
             </>
           )}
 
           {phase === "processing" && (
             <p className="flex items-center gap-2 py-4 text-sm text-muted-foreground">
               <Loader2 className="h-4 w-4 animate-spin" />
-              Generating transcript, CRM notes, and next steps…
+              Updating the lead record, notes, and next steps…
             </p>
           )}
 
-          {phase === "done" && result && (
-            <div className="space-y-3">
-              <div className="rounded-lg border border-primary/20 bg-primary/5 p-2.5">
-                <p className="text-[10px] font-medium uppercase tracking-wide text-primary">
-                  CRM note saved to the timeline
-                </p>
-                <p className="mt-1 text-sm">{result.summary.crm_note}</p>
-              </div>
-              <ul className="space-y-1 text-xs text-muted-foreground">
-                {result.leadCreated && <li>• New lead created from the call</li>}
-                {result.appointment && <li>• Inspection booked: {result.appointment.label}</li>}
-                {result.tasksCreated > 0 && <li>• {result.tasksCreated} follow-up task(s) created</li>}
-                {result.confirmationDraftId && <li>• Confirmation draft awaiting approval in the Inbox</li>}
-                <li>
-                  • Full transcript stored (
-                  {result.aiStatus === "completed" ? "AI summary" : "rule-based summary"})
-                </li>
-              </ul>
-              <div className="flex flex-wrap gap-2">
-                {result.leadId && (
-                  <Button asChild size="sm">
-                    <Link href={`/app/leads/${result.leadId}`}>Open lead</Link>
-                  </Button>
-                )}
-                <Button asChild size="sm" variant="outline">
-                  <Link href={`/app/calls/${result.callId}`}>Call record</Link>
-                </Button>
-                <Button size="sm" variant="ghost" onClick={onClose}>
-                  Dismiss
-                </Button>
-              </div>
-            </div>
+          {/* AI-answered calls get no result panel — the lead record is already
+              open and refreshed. A brief toast confirms, then the window closes. */}
+          {phase === "done" && (
+            <p className="flex items-center gap-2 py-4 text-sm text-status-success">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Call complete — opening the updated lead…
+            </p>
           )}
 
           {phase === "failed" && (
@@ -415,6 +409,34 @@ function ActiveCallWindow({
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+/** Live "info captured so far" list shown under the transcript during a call. */
+function LiveCaptured({
+  turns,
+  seed,
+}: {
+  turns: Parameters<typeof extractLiveFields>[0];
+  seed?: Record<string, string | null>;
+}) {
+  const fields = extractLiveFields(turns, seed);
+  const entries = Object.entries(fields);
+  if (entries.length === 0) return null;
+  return (
+    <div className="mt-3 rounded-lg border bg-secondary/40 p-2.5">
+      <p className="mb-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+        Captured so far → filling the CRM
+      </p>
+      <dl className="space-y-0.5 text-xs">
+        {entries.map(([key, value]) => (
+          <div key={key} className="flex justify-between gap-3">
+            <dt className="text-muted-foreground">{key}</dt>
+            <dd className="text-right font-medium">{value}</dd>
+          </div>
+        ))}
+      </dl>
     </div>
   );
 }

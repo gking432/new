@@ -115,3 +115,11 @@
 .call-ring-pulse {
   animation: call-ring 1.6s ease-out infinite;
 }
+
+/* Guided tour: make room for the right-docked tutorial rail on large screens
+   so the dashboard stays fully usable beside it. */
+@media (min-width: 1024px) {
+  body.tutorial-open [data-app-main] {
+    padding-right: 340px;
+  }
+}

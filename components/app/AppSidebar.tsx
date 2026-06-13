@@ -74,10 +74,12 @@ export function AppSidebar({
           const active = item.exact
             ? pathname === item.href
             : pathname.startsWith(item.href);
+          const tourId = item.href === "/app" ? "overview" : item.href.split("/").pop();
           return (
             <Link
               key={item.href}
               href={item.href}
+              data-tour={`nav-${tourId}`}
               className={cn(
                 "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors",
                 active

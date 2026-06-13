@@ -7,8 +7,12 @@ export interface AppointmentSlot {
   label: string;
 }
 
-/** Canonical demo start times offered inside each availability window. */
-const CANONICAL_STARTS = ["09:00", "10:30", "13:00", "14:30", "16:00"];
+/**
+ * Canonical demo start times offered inside each availability window —
+ * including evenings, since most homeowners work 9-to-5 and real home-service
+ * companies run after-hours and weekend inspections.
+ */
+const CANONICAL_STARTS = ["09:00", "10:30", "13:00", "14:30", "16:00", "17:30", "18:30"];
 
 function timeToMinutes(t: string) {
   const [h, m] = t.split(":").map(Number);
@@ -47,18 +51,29 @@ export async function getAvailableSlots(
       .lte("start_time", horizon.toISOString()),
   ]);
 
+  // Fallback coverage when no windows are configured: weekday daytime AND
+  // evenings, plus weekend daytime — so the assistant can always offer an
+  // after-5pm or weekend slot to a 9-to-5 homeowner.
   const activeWindows: Pick<
     AvailabilityWindow,
     "day_of_week" | "start_time" | "end_time" | "slot_minutes"
   >[] =
     windows && windows.length > 0
       ? windows
-      : [1, 2, 3, 4, 5].map((day) => ({
-          day_of_week: day,
-          start_time: "09:00",
-          end_time: "17:00",
-          slot_minutes: 60,
-        }));
+      : [
+          ...[1, 2, 3, 4, 5].map((day) => ({
+            day_of_week: day,
+            start_time: "09:00",
+            end_time: "20:00",
+            slot_minutes: 60,
+          })),
+          ...[0, 6].map((day) => ({
+            day_of_week: day,
+            start_time: "09:00",
+            end_time: "16:00",
+            slot_minutes: 60,
+          })),
+        ];
 
   const booked = ((appointments ?? []) as Pick<Appointment, "start_time" | "end_time" | "status">[])
     .filter((a) => a.status !== "cancelled")
