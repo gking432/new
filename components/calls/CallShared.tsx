@@ -96,6 +96,31 @@ export function CallResultPanel({
   audience: "internal" | "public";
   onDismiss?: () => void;
 }) {
+  if (result.failedContact || !result.summary) {
+    return (
+      <Card className="border-red-300">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-base text-red-700">
+            <FileText className="h-5 w-5" />
+            Contact unsuccessful
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3 text-sm">
+          <p>
+            The AI assistant couldn&apos;t complete the call, so nothing was guessed or filled in.
+            It&apos;s been flagged <strong>urgent</strong> and assigned to a sales rep for an
+            immediate manual follow-up.
+          </p>
+          {audience === "internal" && result.leadId && (
+            <Button asChild size="sm">
+              <Link href={`/app/leads/${result.leadId}`}>Open the lead</Link>
+            </Button>
+          )}
+        </CardContent>
+      </Card>
+    );
+  }
+  const summary = result.summary;
   return (
     <Card className="border-primary/30">
       <CardHeader>
@@ -110,7 +135,7 @@ export function CallResultPanel({
             <FileText className="h-3.5 w-3.5" />
             CRM note (saved to the timeline)
           </p>
-          <p className="mt-1.5 text-sm">{result.summary.crm_note}</p>
+          <p className="mt-1.5 text-sm">{summary.crm_note}</p>
         </div>
 
         <ul className="space-y-2 text-sm">
@@ -141,10 +166,10 @@ export function CallResultPanel({
           />
         </ul>
 
-        {result.summary.next_action && (
+        {summary.next_action && (
           <p className="text-sm text-muted-foreground">
             <span className="font-medium text-foreground">Recommended next action:</span>{" "}
-            {result.summary.next_action}
+            {summary.next_action}
           </p>
         )}
 

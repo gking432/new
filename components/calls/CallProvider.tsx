@@ -198,6 +198,16 @@ function ActiveCallWindow({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase, turns, result]);
 
+  // Let the guided tour know a call resolved (success or failure) so its
+  // call steps can advance.
+  useEffect(() => {
+    if (phase === "done" || phase === "failed") {
+      window.dispatchEvent(
+        new CustomEvent("northstar-call-done", { detail: { failed: phase === "failed" } })
+      );
+    }
+  }, [phase]);
+
   // Ring while the call is incoming/dialing.
   useRingtone(phase === "incoming" || phase === "dialing");
 
@@ -206,10 +216,16 @@ function ActiveCallWindow({
   // on the (now-populated) lead, then close the window.
   useEffect(() => {
     if (phase !== "done") return;
-    toast.success("Call complete — lead, notes, and next steps are updated");
+    if (result?.failedContact) {
+      toast.error("Contact unsuccessful — flagged URGENT and assigned to a rep for immediate follow-up", {
+        duration: 9000,
+      });
+    } else {
+      toast.success("Call complete — lead, notes, and next steps are updated");
+    }
     const leadId = result?.leadId;
     if (leadId) router.push(`/app/leads/${leadId}`);
-    const t = setTimeout(onClose, 1800);
+    const t = setTimeout(onClose, result?.failedContact ? 2600 : 1800);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase]);
@@ -462,9 +478,16 @@ function ActiveCallWindow({
           {/* AI-answered calls get no result panel — the lead record is already
               open and refreshed. A brief toast confirms, then the window closes. */}
           {phase === "done" && (
-            <p className="flex items-center gap-2 py-4 text-sm text-status-success">
+            <p
+              className={cn(
+                "flex items-center gap-2 py-4 text-sm",
+                result?.failedContact ? "text-red-600" : "text-status-success"
+              )}
+            >
               <Loader2 className="h-4 w-4 animate-spin" />
-              Call complete — opening the updated lead…
+              {result?.failedContact
+                ? "Contact unsuccessful — flagging for urgent follow-up…"
+                : "Call complete — opening the updated lead…"}
             </p>
           )}
 

@@ -55,20 +55,23 @@ export function Spotlight({ target, padding = 8 }: { target: string; padding?: n
 
   return (
     <div className="pointer-events-none fixed inset-0 z-30">
-      {/* Highlight ring around the target */}
+      {/* Dim everything + a bright gold glow ring around the target so it pops
+          even on the dark sidebar. */}
       <div
-        className="absolute rounded-lg ring-2 ring-brand-gold ring-offset-2 ring-offset-transparent transition-all duration-200"
+        className="absolute rounded-lg transition-all duration-200"
         style={{
           top: t,
           left: l,
           width: w,
           height: h,
-          boxShadow: "0 0 0 9999px rgba(15, 23, 20, 0.55)",
+          boxShadow:
+            "0 0 0 3px rgba(255,255,255,0.9), 0 0 0 6px rgba(199,154,59,1), 0 0 28px 10px rgba(199,154,59,0.85), 0 0 0 9999px rgba(10,15,13,0.68)",
         }}
       />
+      {/* Pulsing outline for extra motion. */}
       <div
-        className="absolute rounded-lg border-2 border-brand-gold/70 animate-pulse"
-        style={{ top: t, left: l, width: w, height: h }}
+        className="absolute rounded-lg border-2 border-brand-gold animate-pulse"
+        style={{ top: t - 4, left: l - 4, width: w + 8, height: h + 8 }}
       />
     </div>
   );

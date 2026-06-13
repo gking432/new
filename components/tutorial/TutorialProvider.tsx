@@ -18,7 +18,7 @@ import {
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { useCall } from "@/components/calls/CallProvider";
+import { useCall, useLiveCall } from "@/components/calls/CallProvider";
 import { createDemoSpeedToLead, getDemoGuideContext } from "@/lib/actions/demo";
 import { simulateInboundEmail, simulateInboundText } from "@/lib/actions/inbox";
 import { appendDemoEvent } from "@/lib/demo-log";
@@ -27,6 +27,7 @@ import { Spotlight } from "./Spotlight";
 type Advance =
   | { kind: "manual" }
   | { kind: "action" }
+  | { kind: "event"; event: string }
   | { kind: "navigate"; pathname: string }
   | { kind: "navigatePrefix"; prefix: string };
 
@@ -68,6 +69,7 @@ export function TutorialProvider() {
   const router = useRouter();
   const pathname = usePathname();
   const { startCall } = useCall();
+  const live = useLiveCall();
 
   const [active, setActive] = useState(false);
   const [index, setIndex] = useState(0);
@@ -119,8 +121,8 @@ export function TutorialProvider() {
     {
       id: "answer-call",
       title: "2 · Answer the call & watch the CRM fill itself",
-      body: "Answer the phone in the top-left corner. As you talk (or click through), watch the live transcript and the details the AI captures. When the call ends it creates the lead record, books the inspection, adds tasks, and drafts a confirmation text. Click Next once the call wraps up.",
-      advance: { kind: "manual" },
+      body: "Answer the phone in the top-left corner. You're the homeowner — talk to the assistant (or click through). Watch the live transcript and the details the AI captures. When the call ends it creates the lead, books the inspection, adds tasks, and drafts a confirmation text — then this advances automatically.",
+      advance: { kind: "event", event: "northstar-call-done" },
     },
     {
       id: "go-inbox-1",
@@ -133,10 +135,10 @@ export function TutorialProvider() {
     {
       id: "approve-1",
       title: "4 · Review & approve the AI draft",
-      body: "Open the conversation, tweak the AI-drafted text if you like, then Approve & send. In demo mode the send is simulated — and it shows up in the thread. Click Next when you've sent it.",
+      body: "Open the conversation, tweak the AI-drafted text if you like, then Approve & send. In demo mode the send is simulated and shows up in the thread — then this advances automatically.",
       spotlight: "inbox-draft",
       spotlightHint: "Find the AI-drafted reply and Approve & send",
-      advance: { kind: "manual" },
+      advance: { kind: "event", event: "northstar-comm-sent" },
     },
     {
       id: "go-leads",
@@ -148,10 +150,10 @@ export function TutorialProvider() {
     },
     {
       id: "open-lead",
-      title: "6 · Open a lead by searching",
-      body: "Type a name in the search box and click the row to open the full record: contact info, AI analysis, call history, the timeline, quote, and CRM-sync status — all in one place.",
-      spotlight: "leads-search",
-      spotlightHint: "Search a customer, then click their row",
+      title: "6 · Open the new lead",
+      body: "Your new lead is right at the top of the list. Click that top row to open the full record: contact info, AI analysis, call history, the timeline, quote, and CRM-sync status — all in one place. (Later you'll also see how to search and filter to find any lead.)",
+      spotlight: "leads-first-row",
+      spotlightHint: "Click the top row to open the lead",
       advance: { kind: "navigatePrefix", prefix: "/app/leads/" },
     },
     {
@@ -187,8 +189,8 @@ export function TutorialProvider() {
     {
       id: "existing-answer",
       title: "8 · Answer — the AI already knows her",
-      body: "Notice the matched CRM record before you pick up. This one's AI-to-AI: the assistant and Sarah both speak (different voices), greeting her by name and referencing her storm-damage request — no re-asking what we know. It logs a second touchpoint on her timeline. Click Next when it wraps.",
-      advance: { kind: "manual" },
+      body: "Notice the matched CRM record before you pick up. This one's AI-to-AI: the assistant and Sarah both speak out loud (different voices), greeting her by name and referencing her storm-damage request — no re-asking what we know. It logs a second touchpoint on her timeline, then advances automatically.",
+      advance: { kind: "event", event: "northstar-call-done" },
     },
     {
       id: "you-answer",
@@ -214,8 +216,8 @@ export function TutorialProvider() {
     {
       id: "you-answer-watch",
       title: "Bonus · Watch the form fill as you ask",
-      body: "The live intake form fills from what Jordan tells you and flags in RED anything you still need to ask for — so nothing slips on the call. Hang up when you're done; the AI writes the note and saves the lead. Click Next to continue.",
-      advance: { kind: "manual" },
+      body: "The live intake form fills from what Jordan tells you and flags in RED anything you still need to ask for — so nothing slips on the call. Hang up when you're done; the AI writes the note and saves the lead, then this advances. (This mode needs your mic + an OpenAI key — if it can't connect, it says so instead of inventing answers.)",
+      advance: { kind: "event", event: "northstar-call-done" },
     },
     {
       id: "text",
@@ -247,10 +249,10 @@ export function TutorialProvider() {
     {
       id: "text-approve",
       title: "11 · Approve Sarah's reply",
-      body: "Open her thread — you'll see her text and the AI's drafted response. Approve & send it. Click Next when done.",
+      body: "Open her thread — you'll see her text and the AI's drafted response. Approve & send it; this advances automatically once it's sent.",
       spotlight: "inbox-draft",
       spotlightHint: "Review the AI reply and Approve & send",
-      advance: { kind: "manual" },
+      advance: { kind: "event", event: "northstar-comm-sent" },
     },
     {
       id: "email",
@@ -278,10 +280,10 @@ export function TutorialProvider() {
     {
       id: "email-inbox",
       title: "13 · Why urgency scoring matters",
-      body: "New leads get flagged URGENT because speed-to-lead wins jobs; existing customers are lower priority unless they report a problem with completed work. You can click the notification or the Inbox to jump to the new lead's reply.",
-      spotlight: "nav-inbox",
-      spotlightHint: "Click Inbox (or the notification) →",
-      advance: { kind: "navigate", pathname: "/app/inbox" },
+      body: "That banner flagged the email URGENT — new leads are the most time-sensitive (speed-to-lead wins jobs), while existing customers are lower priority unless they report a problem with completed work. Open the new email thread here and approve the AI's reply, then click Next.",
+      spotlight: "inbox-draft",
+      spotlightHint: "Open the new email and review its AI reply",
+      advance: { kind: "manual" },
     },
     {
       id: "pipeline",
@@ -430,6 +432,28 @@ export function TutorialProvider() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pathname, active, index]);
 
+  // Advance steps that wait for a real interaction (a call finishing, a message
+  // being sent) — never via a button.
+  useEffect(() => {
+    if (!active || !step || step.advance.kind !== "event") return;
+    const ev = step.advance.event;
+    const handler = () => go(index + 1);
+    window.addEventListener(ev, handler);
+    return () => window.removeEventListener(ev, handler);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [active, index]);
+
+  // Safety net: a quiet "skip" only appears if the user is stuck on an
+  // interaction step for a while (so the tour is never a dead end).
+  const [showSafetySkip, setShowSafetySkip] = useState(false);
+  useEffect(() => {
+    setShowSafetySkip(false);
+    if (step?.advance.kind === "manual") return;
+    const t = setTimeout(() => setShowSafetySkip(true), 30_000);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [index]);
+
   async function runAction() {
     if (!step.action) return;
     setRunning(true);
@@ -441,6 +465,23 @@ export function TutorialProvider() {
     } finally {
       setRunning(false);
     }
+  }
+
+  // While a call is live, spell out exactly which role the user is playing.
+  function callRole(): string | null {
+    if (!live || !["incoming", "dialing", "connecting", "connected"].includes(live.phase)) {
+      return null;
+    }
+    if (live.scenario === "speed_to_lead_outbound") {
+      return "📞 You are the CUSTOMER — answer and act as the homeowner. Watch the AI take notes.";
+    }
+    if (live.scenario === "existing_customer_call") {
+      return "👀 Sit back and WATCH — this call is AI ↔ AI (our assistant and the customer, both out loud).";
+    }
+    if (live.persona === "customer") {
+      return "🎧 You are the COMPANY REP — answer the call and ask the questions. Watch the form fill.";
+    }
+    return "📞 You are the CUSTOMER (the caller) — the AI assistant is answering.";
   }
 
   if (!active) {
@@ -492,6 +533,12 @@ export function TutorialProvider() {
         </div>
 
         <div className="flex-1 overflow-y-auto p-4">
+          {callRole() && (
+            <p className="mb-3 rounded-lg border-2 border-brand-gold bg-brand-gold/15 px-3 py-2 text-sm font-semibold text-brand-dark">
+              {callRole()}
+            </p>
+          )}
+
           <h3 className="text-base font-semibold tracking-tight">{step.title}</h3>
           <p className="mt-2 text-sm text-muted-foreground">{step.body}</p>
 
@@ -536,14 +583,20 @@ export function TutorialProvider() {
                 <ChevronRight className="h-3.5 w-3.5" />
               </Button>
             )
-          ) : (
+          ) : showSafetySkip ? (
+            // Only appears if you've been stuck a while — keeps the tour from
+            // ever dead-ending without putting a fake "next" on real steps.
             <button
               type="button"
               onClick={() => go(index + 1)}
               className="text-xs text-muted-foreground underline-offset-2 hover:underline"
             >
-              Skip this step →
+              Stuck? Skip →
             </button>
+          ) : (
+            <span className="text-xs text-muted-foreground">
+              {step.advance.kind === "event" ? "Waiting for you…" : "Do it in the app to continue"}
+            </span>
           )}
         </div>
       </aside>

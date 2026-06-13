@@ -65,6 +65,8 @@ export function speak(text: string, v: TtsVoice): Promise<void> {
       return;
     }
     try {
+      // Chrome occasionally leaves the queue paused; nudge it before speaking.
+      window.speechSynthesis.resume();
       const utter = new SpeechSynthesisUtterance(text);
       if (v.voice) utter.voice = v.voice;
       utter.pitch = v.pitch;

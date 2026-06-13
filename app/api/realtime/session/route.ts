@@ -68,7 +68,17 @@ async function tryGaMint(
     const session: Record<string, unknown> = { type: "realtime", model, instructions };
     if (!minimal) {
       session.audio = {
-        input: { transcription: { model: "gpt-4o-mini-transcribe" } },
+        input: {
+          transcription: { model: "gpt-4o-mini-transcribe" },
+          // Server-side voice activity detection so the assistant WAITS for the
+          // other person to finish before replying (no barrelling ahead).
+          turn_detection: {
+            type: "server_vad",
+            threshold: 0.5,
+            prefix_padding_ms: 300,
+            silence_duration_ms: 800,
+          },
+        },
         output: { voice },
       };
     }
@@ -155,7 +165,7 @@ async function mintRealtimeSecret(args: {
   voice?: string;
 }): Promise<MintResult | { ok: false; errors: string[] }> {
   const errors: string[] = [];
-  const voice = args.voice ?? "marin";
+  const voice = args.voice ?? "alloy";
 
   const ga = await tryGaMint(args.apiKey, args.model, args.instructions, false, voice);
   if (ga.ok) return ga;
@@ -293,8 +303,10 @@ export async function POST(request: Request) {
     persona === "customer"
       ? buildAiCustomerInstructions()
       : buildRealtimeInstructions({ scenario, lead, slots: slotLabels, maxSeconds });
-  // A distinct (warmer/feminine) voice when the AI is the customer.
-  const voice = persona === "customer" ? "coral" : "marin";
+  // Agent voice is configurable (REALTIME_VOICE); the AI-customer gets a
+  // clearly different voice so the two roles never sound the same.
+  const agentVoice = process.env.REALTIME_VOICE || "alloy";
+  const voice = persona === "customer" ? "coral" : agentVoice;
   const minted = await mintRealtimeSecret({ apiKey, model, instructions, voice });
   if (!minted.ok) {
     return NextResponse.json({

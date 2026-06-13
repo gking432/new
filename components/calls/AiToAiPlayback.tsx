@@ -32,7 +32,19 @@ export function AiToAiPlayback({
     let cancelled = false;
 
     async function run() {
-      const voices = await pickTwoVoices();
+      // Resume + start speaking WITHIN the answer-click gesture window. We don't
+      // await voice loading before the first utterance (Chrome would otherwise
+      // block the audio); voices upgrade in the background for later lines.
+      if (typeof window !== "undefined" && window.speechSynthesis) {
+        window.speechSynthesis.resume();
+      }
+      let voices = {
+        agent: { voice: null, pitch: 1.0, rate: 1.02 } as TtsVoice,
+        customer: { voice: null, pitch: 1.22, rate: 1.06 } as TtsVoice,
+      };
+      void pickTwoVoices().then((v) => {
+        voices = v;
+      });
       const pause = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
       for (const step of scenario.steps) {

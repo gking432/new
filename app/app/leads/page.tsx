@@ -70,8 +70,12 @@ export default async function LeadsPage({
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {leads.map((lead) => (
-                  <TableRow key={lead.id} className="cursor-pointer">
+                {leads.map((lead, i) => (
+                  <TableRow
+                    key={lead.id}
+                    className="cursor-pointer"
+                    data-tour={i === 0 ? "leads-first-row" : undefined}
+                  >
                     <TableCell>
                       <Link
                         href={`/app/leads/${lead.id}`}

@@ -114,6 +114,7 @@ export function InboxView({ communications }: { communications: CommunicationWit
       if (sent.success) {
         toast.success("Approved & sent (simulated — nothing real was sent)");
         setEditedBody(null);
+        window.dispatchEvent(new CustomEvent("northstar-comm-sent"));
         router.refresh();
       } else {
         toast.error(sent.error ?? "Send failed");

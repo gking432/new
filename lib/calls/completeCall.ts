@@ -23,11 +23,23 @@ export interface CompleteCallResult {
   callId: string;
   leadId: string | null;
   leadCreated: boolean;
-  summary: CallSummaryOutput;
-  aiStatus: "completed" | "fallback";
+  /** True when the AI never actually made contact (empty/aborted call). */
+  failedContact: boolean;
+  summary: CallSummaryOutput | null;
+  aiStatus: "completed" | "fallback" | "failed";
   appointment: { id: string; start_time: string; label: string } | null;
   tasksCreated: number;
   confirmationDraftId: string | null;
+}
+
+async function findSalesRep(supabase: SupabaseClient): Promise<string | null> {
+  const { data } = await supabase
+    .from("profiles")
+    .select("id, role")
+    .order("role")
+    .limit(20);
+  const rep = (data ?? []).find((p) => p.role === "sales_rep") ?? (data ?? [])[0];
+  return rep?.id ?? null;
 }
 
 function turnsToText(turns: TranscriptTurn[], aiRole: "agent" | "customer" = "agent") {
@@ -108,10 +120,20 @@ export async function completeCall(
   const transcriptText = turnsToText(input.transcriptTurns, input.aiRole);
   const endedAt = new Date().toISOString();
 
+  // Did the customer actually say anything? Scripted/AI-to-AI calls always
+  // "happened" (the script IS the conversation). For a live Realtime call we
+  // require real customer turns — otherwise the call failed (no mic, aborted,
+  // no answer) and we must NEVER fabricate data from seeds.
+  const customerSpeaker = input.aiRole === "customer" ? "ai" : "customer";
+  const customerTurns = input.transcriptTurns.filter(
+    (t) => t.speaker === customerSpeaker && t.text.trim().length > 2
+  ).length;
+  const hadContact = input.mode === "scripted_fallback" || customerTurns >= 2;
+
   await supabase
     .from("calls")
     .update({
-      status: input.mode === "scripted_fallback" ? "scripted_fallback" : "completed",
+      status: !hadContact ? "failed" : input.mode === "scripted_fallback" ? "scripted_fallback" : "completed",
       ended_at: endedAt,
       duration_seconds: Math.max(1, Math.round(input.durationSeconds)),
       updated_at: endedAt,
@@ -120,10 +142,18 @@ export async function completeCall(
 
   await supabase.from("call_transcripts").insert({
     call_id: input.callId,
-    transcript_text: transcriptText || "(no transcript captured)",
+    transcript_text: transcriptText || "(no conversation captured — contact unsuccessful)",
     transcript_json: input.transcriptTurns,
     storage_visibility: "hidden",
   });
+
+  if (!hadContact) {
+    return handleFailedContact(supabase, call, lead, endedAt);
+  }
+
+  // Only scripted/AI-to-AI calls use seed facts as ground truth. Live calls are
+  // summarized purely from what was actually said, so nothing is invented.
+  const seedFields = input.mode === "scripted_fallback" ? input.seedFields : undefined;
 
   // For scripted calls the script's facts are ground truth — skip the AI and
   // use the deterministic summary so the demo is free and instant.
@@ -135,7 +165,7 @@ export async function completeCall(
           transcript: transcriptText,
           transcriptTurns: input.transcriptTurns,
           lead,
-          seedFields: input.seedFields,
+          seedFields,
         });
 
   await supabase
@@ -376,11 +406,116 @@ export async function completeCall(
     callId: input.callId,
     leadId: lead?.id ?? null,
     leadCreated,
+    failedContact: false,
     summary,
     aiStatus,
     appointment,
     tasksCreated,
     confirmationDraftId,
+  };
+}
+
+/**
+ * The AI never actually reached the customer (call aborted, no mic, no answer).
+ * We do NOT invent any data. Instead we flag it loudly: an urgent call-back
+ * task assigned to a sales rep, and a clear timeline note. A real lead's data
+ * is left untouched; a brand-new caller becomes a minimal "needs follow-up"
+ * lead built only from the caller ID we actually have.
+ */
+async function handleFailedContact(
+  supabase: SupabaseClient,
+  call: Call,
+  existingLead: Lead | null,
+  endedAt: string
+): Promise<CompleteCallResult> {
+  await supabase.from("calls").update({ ai_status: "failed" }).eq("id", call.id);
+
+  const rep = await findSalesRep(supabase);
+  let lead = existingLead;
+  let leadId = lead?.id ?? null;
+  let leadCreated = false;
+
+  // For an inbound call with no existing record, capture the caller ID we have
+  // (phone, and name only if it isn't a placeholder) so the lead isn't lost.
+  if (!lead && call.scenario === "new_inbound_call" && call.caller_phone) {
+    const existing = await findExistingLead(supabase, call.caller_phone);
+    if (existing) {
+      lead = existing;
+      leadId = existing.id;
+      await supabase.from("calls").update({ lead_id: existing.id }).eq("id", call.id);
+    } else {
+      const raw = call.caller_name?.trim() ?? "";
+      const real = raw && !["unknown caller", "homeowner", ""].includes(raw.toLowerCase());
+      const [first, ...rest] = (real ? raw : "Missed Call").split(/\s+/);
+      const { data: newLead } = await supabase
+        .from("leads")
+        .insert({
+          first_name: first,
+          last_name: rest.join(" "),
+          phone: call.caller_phone,
+          source: "phone_call",
+          stage: "new",
+          urgency: "emergency",
+          lead_quality: "warm",
+          ai_status: "failed",
+          description:
+            "Inbound call where the AI assistant could not complete intake (no contact was made). Needs immediate manual follow-up — no details were captured.",
+          assigned_to: rep,
+        })
+        .select("id")
+        .single();
+      if (newLead) {
+        leadId = newLead.id;
+        leadCreated = true;
+        await supabase.from("calls").update({ lead_id: newLead.id }).eq("id", call.id);
+      }
+    }
+  }
+
+  const who =
+    call.direction === "outbound"
+      ? (call.callee_name ?? "the homeowner")
+      : (call.caller_name && call.caller_name.toLowerCase() !== "unknown caller"
+          ? call.caller_name
+          : "the caller");
+
+  await supabase.from("tasks").insert({
+    lead_id: leadId,
+    assigned_to: rep,
+    title: `URGENT: AI couldn't reach ${who} — call back now`,
+    description:
+      "The AI scheduling assistant was unable to make contact — the call ended before any information was gathered. Follow up immediately by phone so we don't lose this lead.",
+    type: "call",
+    priority: "urgent",
+    status: "open",
+    due_at: new Date(Date.now() + 5 * 60_000).toISOString(),
+  });
+
+  if (leadId) {
+    await supabase
+      .from("leads")
+      .update({ assigned_to: rep, urgency: "emergency", updated_at: endedAt })
+      .eq("id", leadId);
+    await supabase.from("activities").insert({
+      lead_id: leadId,
+      type: "ai_call",
+      title: "AI call — contact unsuccessful",
+      description:
+        "The AI scheduling assistant could not reach the customer. Flagged urgent and assigned to a sales rep for immediate manual follow-up. No information was captured on this attempt.",
+      metadata: { call_id: call.id, failed: true },
+    });
+  }
+
+  return {
+    callId: call.id,
+    leadId,
+    leadCreated,
+    failedContact: true,
+    summary: null,
+    aiStatus: "failed",
+    appointment: null,
+    tasksCreated: 1,
+    confirmationDraftId: null,
   };
 }
 

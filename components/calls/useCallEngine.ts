@@ -144,10 +144,13 @@ export function useCallEngine(options: CallEngineOptions) {
         mode: modeRef.current === "scripted" ? "scripted_fallback" : "realtime",
         // When the AI played the homeowner, its lines ARE the customer's.
         aiRole: optionsRef.current.persona === "customer" ? "customer" : "agent",
+        // Seed facts are ONLY for scripted/AI-to-AI calls (the script is the
+        // conversation). Live calls are summarized purely from the transcript,
+        // so a failed/empty call never fabricates data.
         seedFields:
-          scriptedSeed ??
-          optionsRef.current.seedFields ??
-          (modeRef.current === "scripted" ? sessionRef.current?.scripted.seedFields : undefined),
+          modeRef.current === "scripted"
+            ? (scriptedSeed ?? optionsRef.current.seedFields ?? sessionRef.current?.scripted.seedFields)
+            : undefined,
       });
       if (!response.success) {
         setPhase("failed");
@@ -189,6 +192,19 @@ export function useCallEngine(options: CallEngineOptions) {
   const fallbackToScripted = useCallback(
     (reason?: string) => {
       cleanupMedia();
+      // The you-answer-an-AI-customer mode needs live voice (a human is on the
+      // line). Never fall back to the agent script — fail clearly instead so we
+      // don't pretend a conversation happened.
+      if (optionsRef.current.persona === "customer") {
+        setRealtimeError(reason ?? null);
+        setError(
+          reason
+            ? `Couldn't start live AI voice: ${reason}. Enable your mic and check AI voice status in the Demo Center.`
+            : "Live AI voice is required to answer as the rep."
+        );
+        setPhase("failed");
+        return;
+      }
       modeRef.current = "scripted";
       setMode("scripted");
       setPhase("connected");
@@ -334,6 +350,15 @@ export function useCallEngine(options: CallEngineOptions) {
       );
       if (s.mode === "realtime") {
         await connectRealtime(s);
+      } else if (opts.persona === "customer") {
+        // You-answer mode needs live voice; don't run the agent script.
+        setRealtimeError(s.realtime_error ?? null);
+        setError(
+          s.realtime_error
+            ? `Couldn't start live AI voice: ${s.realtime_error}`
+            : "Live AI voice is required to answer as the rep."
+        );
+        setPhase("failed");
       } else {
         modeRef.current = "scripted";
         setMode("scripted");
