@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArrowDownLeft, ArrowUpRight, Bot, Loader2, Mail, MessageSquareText, Send, Trash2 } from "lucide-react";
@@ -35,12 +35,21 @@ interface Conversation {
   needsApproval: boolean;
 }
 
-export function InboxView({ communications }: { communications: CommunicationWithLead[] }) {
+export function InboxView({
+  communications,
+  initialLeadId,
+}: {
+  communications: CommunicationWithLead[];
+  initialLeadId?: string;
+}) {
   const router = useRouter();
   const [tab, setTab] = useState("conversations");
   const [channelFilter, setChannelFilter] = useState<string | null>(null);
   const [search, setSearch] = useState("");
+  // Preselect the conversation for the customer we arrived from (Open Inbox on
+  // a lead) so you don't have to hunt for them again.
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
+  const [autoSelected, setAutoSelected] = useState(false);
   const [editedBody, setEditedBody] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
@@ -96,6 +105,15 @@ export function InboxView({ communications }: { communications: CommunicationWit
     }
     return list;
   }, [conversations, tab, channelFilter, search]);
+
+  useEffect(() => {
+    if (autoSelected || !initialLeadId) return;
+    const match = conversations.find((c) => c.lead?.id === initialLeadId);
+    if (match) {
+      setSelectedKey(match.key);
+      setAutoSelected(true);
+    }
+  }, [conversations, initialLeadId, autoSelected]);
 
   const selected = filtered.find((c) => c.key === selectedKey) ?? filtered[0] ?? null;
   const pendingDraft = selected?.messages.find(

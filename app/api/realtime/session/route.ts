@@ -6,7 +6,9 @@ import { buildAiCustomerInstructions, buildRealtimeInstructions } from "@/lib/re
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { Lead } from "@/types/app";
 
-const DEFAULT_REALTIME_MODEL = "gpt-realtime-mini";
+// Full gpt-realtime = ChatGPT-voice-mode quality. Set REALTIME_MODEL to
+// gpt-realtime-mini for a cheaper (slightly less natural) option.
+const DEFAULT_REALTIME_MODEL = "gpt-realtime";
 
 /**
  * Creates a call record and (when configured) an ephemeral OpenAI Realtime
@@ -176,9 +178,7 @@ async function mintRealtimeSecret(args: {
   if (gaMinimal.ok) return gaMinimal;
   errors.push(gaMinimal.error);
 
-  const betaModel = args.model.startsWith("gpt-4o")
-    ? args.model
-    : "gpt-4o-mini-realtime-preview";
+  const betaModel = args.model.startsWith("gpt-4o") ? args.model : "gpt-4o-realtime-preview";
   const beta = await tryBetaMint(args.apiKey, betaModel, args.instructions, voice);
   if (beta.ok) return beta;
   errors.push(beta.error);

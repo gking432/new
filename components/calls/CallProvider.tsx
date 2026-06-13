@@ -8,29 +8,15 @@ import {
   useRef,
   useState,
 } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
-import {
-  AlertTriangle,
-  ChevronDown,
-  ChevronUp,
-  GripHorizontal,
-  Loader2,
-  Mic,
-  MicOff,
-  PhoneOff,
-  X,
-} from "lucide-react";
+import { GripHorizontal, Loader2, X } from "lucide-react";
 import { toast } from "sonner";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import type { CompleteCallResult } from "@/lib/calls/completeCall";
 import { appendDemoEvent } from "@/lib/demo-log";
 import { useRingtone } from "@/lib/ringtone";
-import { cn } from "@/lib/utils";
 import type { CallScenario } from "@/types/app";
 import { AiToAiPlayback } from "./AiToAiPlayback";
-import { TranscriptBubble, extractLiveFields } from "./CallShared";
+import { extractLiveFields } from "./CallShared";
 import { MockPhoneFrame, type PhoneFrameState } from "./MockPhoneFrame";
 import { ScriptedCallFallback } from "./ScriptedCallFallback";
 import { useCallEngine } from "./useCallEngine";
@@ -151,7 +137,6 @@ function ActiveCallWindow({
     mode,
     session,
     turns,
-    liveAiText,
     seconds,
     secondsRef,
     muted,
@@ -251,14 +236,6 @@ function ActiveCallWindow({
     dragRef.current = null;
   }, []);
 
-  const [expanded, setExpanded] = useState(true);
-  const transcriptBoxRef = useRef<HTMLDivElement | null>(null);
-  useEffect(() => {
-    transcriptBoxRef.current?.scrollTo({ top: 99999, behavior: "smooth" });
-  }, [turns, liveAiText]);
-
-  const timer = `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
-
   // ── Ringing: full phone frame as a centered overlay ─────────────────────
   if (phase === "incoming" || phase === "dialing" || phase === "connecting") {
     const frameState: PhoneFrameState =
@@ -298,239 +275,130 @@ function ActiveCallWindow({
     );
   }
 
-  // ── Connected / processing / done / failed: floating draggable window ───
+  // ── Connected / processing / done / failed: a floating, draggable PHONE ──
+  // It's literally just the phone. The live transcript + the CRM filling in
+  // happen on the lead page behind it.
   if (!pos) return null;
+  const frameState: PhoneFrameState =
+    phase === "connected" ? "connected" : phase === "failed" ? "failed" : "ended";
   return (
     <div
       ref={windowRef}
-      className="fixed z-50 w-[360px] max-w-[calc(100vw-16px)] overflow-hidden rounded-xl border bg-card shadow-2xl"
+      className="fixed z-50 w-[300px] max-w-[calc(100vw-16px)]"
       style={{ left: pos.x, top: pos.y }}
     >
       <audio ref={audioRef} autoPlay className="hidden" />
 
-      {/* Drag handle / header */}
+      {/* Slim drag grip above the phone */}
       <div
-        className={cn(
-          "flex cursor-grab touch-none items-center gap-2 px-3 py-2 active:cursor-grabbing",
-          phase === "connected" ? "bg-brand-dark text-white" : "bg-secondary"
-        )}
+        className="flex cursor-grab touch-none items-center justify-center gap-2 rounded-t-2xl bg-black/70 px-3 py-1.5 text-white active:cursor-grabbing"
         onPointerDown={onDragStart}
         onPointerMove={onDragMove}
         onPointerUp={onDragEnd}
       >
-        {phase === "connected" ? (
-          <>
-            <span className="relative flex h-2.5 w-2.5">
-              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-400 opacity-75" />
-              <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-red-500" />
-            </span>
-            <span className="text-xs font-bold uppercase tracking-widest">Live call</span>
-          </>
-        ) : (
-          <span className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
-            {phase === "processing" ? "Wrapping up…" : phase === "done" ? "Call complete" : "Call"}
+        {phase === "connected" && (
+          <span className="relative flex h-2 w-2">
+            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-400 opacity-75" />
+            <span className="relative inline-flex h-2 w-2 rounded-full bg-red-500" />
           </span>
         )}
-        <span className={cn("min-w-0 flex-1 truncate text-sm", phase === "connected" ? "text-white/80" : "text-foreground")}>
-          {options.callerName}
-          {phase === "connected" && <span className="ml-2 tabular-nums text-white/60">{timer}</span>}
+        <span className="text-[10px] font-bold uppercase tracking-widest text-white/80">
+          {phase === "connected"
+            ? "Live call"
+            : phase === "processing"
+              ? "Wrapping up"
+              : phase === "failed"
+                ? "Call failed"
+                : "Call complete"}
         </span>
-        <GripHorizontal className={cn("h-4 w-4", phase === "connected" ? "text-white/40" : "text-muted-foreground")} />
-        <button
-          type="button"
-          className={cn(
-            "rounded p-0.5",
-            phase === "connected" ? "text-white/60 hover:text-white" : "text-muted-foreground hover:text-foreground"
-          )}
-          onClick={() => setExpanded((v) => !v)}
-          aria-label={expanded ? "Collapse" : "Expand"}
-        >
-          {expanded ? <ChevronDown className="h-4 w-4" /> : <ChevronUp className="h-4 w-4" />}
-        </button>
-        {phase !== "connected" && phase !== "processing" && (
+        <GripHorizontal className="h-3.5 w-3.5 text-white/40" />
+        {(phase === "failed" || phase === "done") && (
           <button
             type="button"
-            className="rounded p-0.5 text-muted-foreground hover:text-foreground"
+            className="text-white/60 hover:text-white"
             onClick={onClose}
             aria-label="Close"
           >
-            <X className="h-4 w-4" />
+            <X className="h-3.5 w-3.5" />
           </button>
         )}
       </div>
 
-      {/* Connected controls */}
-      {phase === "connected" && (
-        <div className="flex items-center gap-2 border-b bg-brand-dark/95 px-3 pb-2.5 pt-1">
-          <div className="flex h-6 flex-1 items-center gap-0.5 overflow-hidden">
-            {[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11].map((i) => (
-              <span
-                key={i}
-                className={cn(
-                  "call-wave-bar w-0.5 rounded-full",
-                  aiSpeaking ? "bg-emerald-400" : "bg-white/25"
-                )}
-                style={{
-                  height: `${[8, 13, 18, 22, 18, 13, 8, 13, 18, 22, 18, 13][i]}px`,
-                  animationDelay: `${i * 0.1}s`,
+      <div className="-mt-1">
+        <MockPhoneFrame
+          state={frameState}
+          name={options.callerName}
+          phone={options.callerPhone}
+          subtitle={options.subtitle}
+          seconds={seconds}
+          muted={muted}
+          aiSpeaking={aiSpeaking}
+          showMute={mode !== "scripted"}
+          onEnd={() => void endCall()}
+          onToggleMute={toggleMute}
+        >
+          {/* Existing-customer callback is AI ↔ AI (both voiced). */}
+          {phase === "connected" &&
+            mode === "scripted" &&
+            session &&
+            options.scenario === "existing_customer_call" && (
+              <AiToAiPlayback
+                scenario={session.scripted}
+                onAiLine={(text) => {
+                  pushTurn({ speaker: "ai", text, at: secondsRef.current });
+                  setAiSpeaking(true);
+                  setTimeout(() => setAiSpeaking(false), 1200);
                 }}
+                onCustomerLine={(text) =>
+                  pushTurn({ speaker: "customer", text, at: secondsRef.current })
+                }
+                onComplete={() => void endCall(session.scripted.seedFields)}
               />
-            ))}
-          </div>
-          {mode !== "scripted" && (
-            <Button
-              size="icon"
-              variant="ghost"
-              className="h-8 w-8 text-white/80 hover:bg-white/10 hover:text-white"
-              onClick={toggleMute}
-              title={muted ? "Unmute" : "Mute"}
-            >
-              {muted ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
-            </Button>
-          )}
-          {options.leadId && (
-            <Button asChild size="sm" variant="secondary" className="h-8">
-              <Link href={`/app/leads/${options.leadId}`}>Open lead</Link>
-            </Button>
-          )}
-          <Button
-            size="icon"
-            className="h-8 w-8 bg-red-500 text-white hover:bg-red-600"
-            onClick={() => void endCall()}
-            title="End call"
-          >
-            <PhoneOff className="h-4 w-4" />
-          </Button>
-        </div>
-      )}
+            )}
 
-      {/* Body */}
-      {expanded && (
-        <div className="max-h-[55vh] overflow-y-auto p-3">
-          {phase === "connected" && (
-            <>
-              {mode === "scripted" && (
-                <div className="mb-2 space-y-1.5">
-                  <Badge variant="secondary" className="text-[10px]">
-                    Scripted demo mode
-                  </Badge>
-                  {realtimeError && (
-                    <p className="flex items-start gap-1.5 rounded-md border border-amber-300 bg-amber-50 p-2 text-xs text-amber-800">
-                      <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-                      Live AI voice unavailable: {realtimeError}
-                    </p>
-                  )}
-                </div>
-              )}
-              <div ref={transcriptBoxRef} className="max-h-44 space-y-2 overflow-y-auto pr-1">
-                {turns.map((turn, i) => (
-                  <TranscriptBubble key={i} turn={turn} />
-                ))}
-                {liveAiText && <TranscriptBubble turn={{ speaker: "ai", text: liveAiText }} live />}
-                {turns.length === 0 && !liveAiText && (
-                  <p className="text-xs text-muted-foreground">
-                    {mode === "scripted"
-                      ? "Pick the customer's lines below."
-                      : "Speak after the assistant greets you…"}
-                  </p>
-                )}
-              </div>
-              {mode === "scripted" && session && options.scenario === "existing_customer_call" ? (
-                /* Existing-customer callback is AI ↔ AI: the assistant and the
-                   customer are both voiced (distinct voices), auto-playing. */
-                <AiToAiPlayback
-                  scenario={session.scripted}
-                  onAiLine={(text) => {
-                    pushTurn({ speaker: "ai", text, at: secondsRef.current });
-                    setAiSpeaking(true);
-                    setTimeout(() => setAiSpeaking(false), 1200);
-                  }}
-                  onCustomerLine={(text) =>
-                    pushTurn({ speaker: "customer", text, at: secondsRef.current })
-                  }
-                  onComplete={() => void endCall(session.scripted.seedFields)}
-                />
-              ) : mode === "scripted" && session ? (
-                <ScriptedCallFallback
-                  scenario={session.scripted}
-                  onAiLine={(text) => {
-                    pushTurn({ speaker: "ai", text, at: secondsRef.current });
-                    setAiSpeaking(true);
-                    setTimeout(() => setAiSpeaking(false), 1500);
-                  }}
-                  onCustomerLine={(text) =>
-                    pushTurn({ speaker: "customer", text, at: secondsRef.current })
-                  }
-                  onComplete={() => void endCall(session.scripted.seedFields)}
-                />
-              ) : null}
-              <LiveCaptured turns={turns} seed={session?.scripted.seedFields} speaker={customerSpeaker} />
-            </>
+          {/* Scripted (no API key) — click the customer's lines. */}
+          {phase === "connected" &&
+            mode === "scripted" &&
+            session &&
+            options.scenario !== "existing_customer_call" && (
+              <ScriptedCallFallback
+                scenario={session.scripted}
+                onAiLine={(text) => {
+                  pushTurn({ speaker: "ai", text, at: secondsRef.current });
+                  setAiSpeaking(true);
+                  setTimeout(() => setAiSpeaking(false), 1500);
+                }}
+                onCustomerLine={(text) =>
+                  pushTurn({ speaker: "customer", text, at: secondsRef.current })
+                }
+                onComplete={() => void endCall(session.scripted.seedFields)}
+              />
+            )}
+
+          {phase === "connected" && mode !== "scripted" && realtimeError && (
+            <p className="text-center text-[11px] text-amber-300">{realtimeError}</p>
           )}
 
           {phase === "processing" && (
-            <p className="flex items-center gap-2 py-4 text-sm text-muted-foreground">
-              <Loader2 className="h-4 w-4 animate-spin" />
-              Updating the lead record, notes, and next steps…
+            <p className="flex items-center justify-center gap-2 text-xs text-white/70">
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              Updating the lead…
             </p>
           )}
 
-          {/* AI-answered calls get no result panel — the lead record is already
-              open and refreshed. A brief toast confirms, then the window closes. */}
           {phase === "done" && (
-            <p
-              className={cn(
-                "flex items-center gap-2 py-4 text-sm",
-                result?.failedContact ? "text-red-600" : "text-status-success"
-              )}
-            >
-              <Loader2 className="h-4 w-4 animate-spin" />
+            <p className="text-center text-xs text-white/70">
               {result?.failedContact
-                ? "Contact unsuccessful — flagging for urgent follow-up…"
-                : "Call complete — opening the updated lead…"}
+                ? "Contact unsuccessful — flagging follow-up…"
+                : "Updating the lead…"}
             </p>
           )}
 
-          {phase === "failed" && (
-            <div className="space-y-2 py-2">
-              <p className="text-sm text-red-600">{error ?? "Call failed."}</p>
-              <Button size="sm" variant="outline" onClick={onClose}>
-                Close
-              </Button>
-            </div>
+          {phase === "failed" && error && (
+            <p className="text-center text-[11px] text-red-300">{error}</p>
           )}
-        </div>
-      )}
-    </div>
-  );
-}
-
-/** Live "info captured so far" list shown under the transcript during a call. */
-function LiveCaptured({
-  turns,
-  seed,
-  speaker = "customer",
-}: {
-  turns: Parameters<typeof extractLiveFields>[0];
-  seed?: Record<string, string | null>;
-  speaker?: "ai" | "customer";
-}) {
-  const fields = extractLiveFields(turns, seed, speaker);
-  const entries = Object.entries(fields);
-  if (entries.length === 0) return null;
-  return (
-    <div className="mt-3 rounded-lg border bg-secondary/40 p-2.5">
-      <p className="mb-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-        Captured so far → filling the CRM
-      </p>
-      <dl className="space-y-0.5 text-xs">
-        {entries.map(([key, value]) => (
-          <div key={key} className="flex justify-between gap-3">
-            <dt className="text-muted-foreground">{key}</dt>
-            <dd className="text-right font-medium">{value}</dd>
-          </div>
-        ))}
-      </dl>
+        </MockPhoneFrame>
+      </div>
     </div>
   );
 }

@@ -14,6 +14,7 @@ import {
 import { Separator } from "@/components/ui/separator";
 import { ActivityTimeline } from "@/components/app/ActivityTimeline";
 import { LeadActionPanel } from "@/components/app/LeadActionPanel";
+import { LeadLiveCallPanel } from "@/components/app/LeadLiveCallPanel";
 import { LeadPhase2Cards } from "@/components/app/LeadPhase2Cards";
 import { LeadAssignSelect } from "@/components/app/LeadAssignSelect";
 import { LeadStageSelect } from "@/components/app/LeadStageSelect";
@@ -161,22 +162,40 @@ export default async function LeadDetailPage({
           </Card>
         </div>
 
-        {/* Center: AI analysis + timeline */}
+        {/* Center: live call → timeline (prominent) → collapsed AI analysis */}
         <div className="space-y-6 xl:col-span-2">
+          <LeadLiveCallPanel leadId={lead.id} />
+
           <Card>
             <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Bot className="h-4 w-4 text-primary" />
-                AI Lead Summary
-              </CardTitle>
-              {analysis ? (
-                <CardDescription>
-                  {lead.ai_status === "completed" ? "AI analysis" : "Rule-based fallback"} ·{" "}
-                  {formatDate(analysis.created_at)}
-                </CardDescription>
-              ) : null}
+              <CardTitle>Activity Timeline</CardTitle>
+              <CardDescription>
+                Every touchpoint — and where you can log a note by hand.
+              </CardDescription>
             </CardHeader>
-            <CardContent className="space-y-4">
+            <CardContent>
+              <ActivityTimeline leadId={lead.id} activities={lead.activities ?? []} />
+            </CardContent>
+          </Card>
+
+          <details className="group rounded-xl border bg-card">
+            <summary className="flex cursor-pointer list-none items-center gap-2 p-5 text-sm font-semibold">
+              <Bot className="h-4 w-4 text-primary" />
+              AI Lead Analysis
+              {analysis ? (
+                <span className="text-xs font-normal text-muted-foreground">
+                  · {lead.ai_status === "completed" ? "AI" : "rule-based"} ·{" "}
+                  {formatDate(analysis.created_at)}
+                </span>
+              ) : null}
+              <span className="ml-auto text-xs font-normal text-muted-foreground group-open:hidden">
+                Show analysis ▾
+              </span>
+              <span className="ml-auto hidden text-xs font-normal text-muted-foreground group-open:inline">
+                Hide ▴
+              </span>
+            </summary>
+            <div className="space-y-4 px-5 pb-5">
               {!analysis ? (
                 <p className="text-sm text-muted-foreground">
                   No analysis yet. Use &quot;Re-run AI Analysis&quot; in the action panel.
@@ -254,17 +273,8 @@ export default async function LeadDetailPage({
                   )}
                 </>
               )}
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>Activity Timeline</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <ActivityTimeline leadId={lead.id} activities={lead.activities ?? []} />
-            </CardContent>
-          </Card>
+            </div>
+          </details>
         </div>
 
         {/* Right: action panel */}

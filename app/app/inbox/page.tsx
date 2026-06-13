@@ -5,7 +5,12 @@ import { createClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
 
-export default async function InboxPage() {
+export default async function InboxPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ lead?: string }>;
+}) {
+  const { lead } = await searchParams;
   const supabase = await createClient();
   const communications = await getCommunications(supabase);
 
@@ -22,7 +27,7 @@ export default async function InboxPage() {
           to generate inbound messages.
         </p>
       </div>
-      <InboxView communications={communications} />
+      <InboxView communications={communications} initialLeadId={lead} />
     </div>
   );
 }

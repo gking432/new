@@ -45,7 +45,7 @@ export function AppHeader({ profile }: { profile: Profile | null }) {
         />
       </form>
       <Button asChild size="sm" className="ml-auto md:ml-0">
-        <Link href="/request" target="_blank">
+        <Link href="/app/leads/new">
           <Plus className="h-4 w-4" />
           New Lead
         </Link>

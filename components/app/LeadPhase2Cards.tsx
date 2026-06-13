@@ -146,7 +146,7 @@ export function LeadPhase2Cards({
               </div>
             ))}
             <Button variant="outline" size="sm" asChild>
-              <Link href="/app/inbox">Open Inbox</Link>
+              <Link href={`/app/inbox?lead=${lead.id}`}>Open Inbox</Link>
             </Button>
           </CardContent>
         </Card>

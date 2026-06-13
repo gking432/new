@@ -194,7 +194,7 @@ export function DemoCenterClient({
             callerPhone="(262) 555-0114"
             direction="inbound"
             buttonLabel="Simulate inbound call"
-            navigateTo="/app"
+            navigateTo="/app/leads/new"
           />
         </ScenarioCard>
 
@@ -211,7 +211,7 @@ export function DemoCenterClient({
             callerName="Jordan Avery"
             callerPhone="(414) 555-0123"
             seedFields={JORDAN_SEED}
-            navigateTo="/app/live-call"
+            navigateTo="/app/leads/new"
             buttonLabel="Answer as the rep"
             buttonVariant="outline"
           />

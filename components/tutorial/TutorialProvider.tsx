@@ -207,7 +207,7 @@ export function TutorialProvider() {
             callerName: "Jordan Avery",
             callerPhone: "(414) 555-0123",
             seedFields: JORDAN_SEED,
-            navigateTo: "/app/live-call",
+            navigateTo: "/app/leads/new",
           });
         },
       },
