@@ -83,7 +83,7 @@ cp .env.example .env.local
    - `supabase/migrations/003_seed_data.sql`
    - `supabase/migrations/004_phase2_schema.sql` (calls, inbox, appointments, CRM sync, quotes)
 
-### 3. Seed demo data
+### 3. Set up demo users
 
 ```bash
 npm run seed
@@ -98,9 +98,14 @@ Creates four demo users (password `demo-password`):
 | `sales@northstar-demo.com` | Sales Rep |
 | `ops@northstar-demo.com` | Operations Manager |
 
-…plus 25 leads, tasks, feedback, and Phase 2 demo data: a completed AI call on
-Sarah Mitchell's lead (with hidden transcript), a booked inspection, an inbox
-draft awaiting approval, and property research records. Safe to re-run.
+The dashboard intentionally starts as a **blank slate** — no leads, customers,
+tasks, or messages. The only records that appear are the ones created live
+during the demo (form submissions, calls, texts, emails). The existing-customer
+and inbound-text scenarios reference the most recent lead you've created.
+
+Re-running `npm run seed` clears all customer/operational data back to a blank
+slate (config — users, settings, automations, availability — is preserved). For
+the old sample dataset during development, run `SEED_SAMPLE=1 npm run seed`.
 
 ### 4. AI (optional, recommended)
 

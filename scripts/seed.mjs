@@ -496,13 +496,21 @@ async function seedPhase2(profiles, leads) {
 }
 
 async function main() {
-  console.log("Seeding Home Service AI Command Center demo data…\n");
+  console.log("Setting up Home Service AI Command Center…\n");
   const profiles = await ensureUsers();
   await clearOperationalData();
-  const leads = await seedLeads(profiles);
-  await seedTasks(profiles, leads);
-  await seedFeedback();
-  await seedPhase2(profiles, leads);
+  // Blank slate by default — the demo starts with NO leads/customers, and the
+  // only records that show up are the ones created live during the demo. Set
+  // SEED_SAMPLE=1 if you ever want the old sample dataset for development.
+  if (process.env.SEED_SAMPLE === "1") {
+    const leads = await seedLeads(profiles);
+    await seedTasks(profiles, leads);
+    await seedFeedback();
+    await seedPhase2(profiles, leads);
+    console.log("✓ seeded sample customer data (SEED_SAMPLE=1)");
+  } else {
+    console.log("✓ blank slate — no demo leads or customers (set SEED_SAMPLE=1 for sample data)");
+  }
   console.log("\nDone. Log in with admin@northstar-demo.com / demo-password");
 }
 

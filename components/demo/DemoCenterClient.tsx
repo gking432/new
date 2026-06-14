@@ -38,27 +38,19 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { CallLauncher } from "@/components/calls/CallLauncher";
 import { useCall } from "@/components/calls/CallProvider";
 import { syncLeadToHubSpot } from "@/lib/actions/crm";
-import { createDemoSpeedToLead } from "@/lib/actions/demo";
+import {
+  createDemoSpeedToLead,
+  getDemoGuideContext,
+  type DemoLatestLead,
+} from "@/lib/actions/demo";
 import { simulateInboundEmail, simulateInboundText } from "@/lib/actions/inbox";
 import { appendDemoEvent } from "@/lib/demo-log";
 import { DemoEventLog } from "./DemoEventLog";
 
-interface SarahLead {
-  id: string;
-  first_name: string;
-  last_name: string;
-  phone: string | null;
-  stage: string;
-  urgency: string;
-  service_type: string;
-}
-
 export function DemoCenterClient({
-  sarahLead,
   latestLead,
 }: {
-  sarahLead: SarahLead | null;
-  latestLead: { id: string; first_name: string; last_name: string } | null;
+  latestLead: DemoLatestLead | null;
 }) {
   const router = useRouter();
   const { startCall, callActive } = useCall();
@@ -82,17 +74,41 @@ export function DemoCenterClient({
     startCall({
       scenario: "speed_to_lead_outbound",
       leadId: result.data.leadId,
-      callerName: result.data.name,
-      callerPhone: result.data.phone,
-      subtitle: "Calling the homeowner",
-      direction: "outbound",
-      navigateTo: "/app",
+      callerName: "Northstar Exterior & Home",
+      subtitle: "AI Scheduling Assistant",
+      direction: "inbound",
+      navigateTo: `/app/leads/${result.data.leadId}`,
+    });
+  }
+
+  async function runExistingCustomerCall() {
+    setBusy("existing");
+    const ctx = await getDemoGuideContext();
+    setBusy(null);
+    if (!ctx.latestLead) {
+      toast.error("No customers yet — run the speed-to-lead demo first.");
+      return;
+    }
+    const l = ctx.latestLead;
+    startCall({
+      scenario: "existing_customer_call",
+      leadId: l.id,
+      callerName: `${l.first_name} ${l.last_name}`,
+      callerPhone: l.phone,
+      subtitle: `${l.service_type.replace(/_/g, " ")} lead`,
+      direction: "inbound",
+      navigateTo: `/app/leads/${l.id}`,
+      crmContext: [
+        { label: "Name", value: `${l.first_name} ${l.last_name}` },
+        { label: "Stage", value: l.stage.replace(/_/g, " ") },
+        { label: "Service", value: l.service_type.replace(/_/g, " ") },
+      ],
     });
   }
 
   async function runInboundText() {
     setBusy("text");
-    appendDemoEvent("Inbound text received from (414) 555-0188…");
+    appendDemoEvent("Inbound text received from a customer…");
     const result = await simulateInboundText();
     setBusy(null);
     if (!result.success) {
@@ -222,41 +238,26 @@ export function DemoCenterClient({
           icon={Phone}
           title="Simulate Existing Customer Call"
           description={
-            sarahLead
-              ? `${sarahLead.first_name} ${sarahLead.last_name} calls back — you play her. The AI matches her number, answers with her full history, and logs a second touchpoint. Real AI voice.`
-              : "Requires the seeded Sarah Mitchell lead — run `npm run seed` first."
+            latestLead
+              ? `${latestLead.first_name} ${latestLead.last_name} (your latest lead) calls back — you play them. The AI matches the number, answers with their full history, and logs a second touchpoint. Real AI voice.`
+              : "Create a lead first (run the speed-to-lead demo) — then they can call back."
           }
         >
-          {sarahLead ? (
-            <CallLauncher
-              scenario="existing_customer_call"
-              leadId={sarahLead.id}
-              callerName={`${sarahLead.first_name} ${sarahLead.last_name}`}
-              callerPhone={sarahLead.phone}
-              subtitle={`${sarahLead.service_type.replace(/_/g, " ")} lead`}
-              direction="inbound"
-              buttonLabel="Simulate callback"
-              buttonVariant="outline"
-              navigateTo="/app"
-              crmContext={[
-                { label: "Name", value: `${sarahLead.first_name} ${sarahLead.last_name}` },
-                { label: "Stage", value: sarahLead.stage.replace(/_/g, " ") },
-                { label: "Urgency", value: sarahLead.urgency },
-                { label: "Service", value: sarahLead.service_type.replace(/_/g, " ") },
-              ]}
-            />
-          ) : (
-            <Button variant="outline" disabled>
-              Seed data required
-            </Button>
-          )}
+          <Button
+            variant="outline"
+            onClick={runExistingCustomerCall}
+            disabled={busy !== null || callActive}
+          >
+            {busy === "existing" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Phone className="h-4 w-4" />}
+            Simulate callback
+          </Button>
         </ScenarioCard>
 
         {/* 4. Inbound text */}
         <ScenarioCard
           icon={MessageSquareText}
           title="Simulate Inbound Text"
-          description="Sarah texts an urgent update. The AI matches her number, flags the worsening leak, creates a task, and drafts a reply — review it in a real message thread."
+          description="Your latest customer texts an urgent update. The AI matches the number, scores it High, creates a task, and drafts a reply — review it in a real message thread."
         >
           <Button variant="outline" onClick={runInboundText} disabled={busy !== null}>
             {busy === "text" ? <Loader2 className="h-4 w-4 animate-spin" /> : <MessageSquareText className="h-4 w-4" />}

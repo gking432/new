@@ -120,7 +120,7 @@ function InternalGuide({ close }: { close: () => void }) {
   const [sarah, setSarah] = useState<SarahLead | null>(null);
 
   useEffect(() => {
-    void getDemoGuideContext().then((ctx) => setSarah(ctx.sarah));
+    void getDemoGuideContext().then((ctx) => setSarah(ctx.latestLead));
   }, []);
 
   async function runSpeedToLead() {

@@ -34,8 +34,6 @@ type Advance =
 interface RunCtx {
   startCall: ReturnType<typeof useCall>["startCall"];
   router: ReturnType<typeof useRouter>;
-  sarahId: string | null;
-  sarahPhone: string | null;
 }
 
 interface Step {
@@ -74,8 +72,6 @@ export function TutorialProvider() {
   const [active, setActive] = useState(false);
   const [index, setIndex] = useState(0);
   const [running, setRunning] = useState(false);
-  const [sarahId, setSarahId] = useState<string | null>(null);
-  const [sarahPhone, setSarahPhone] = useState<string | null>(null);
   const enteredAtPath = useRef<string>("");
 
   // ── Step definitions ──────────────────────────────────────────────────────
@@ -141,27 +137,28 @@ export function TutorialProvider() {
     {
       id: "existing-call",
       title: "7 · A known customer calls back",
-      body: "Now the magic of having a CRM: when an existing customer calls, the AI recognizes the number and pulls their whole history. You'll play Sarah Mitchell — start the call and talk to the assistant as her.",
+      body: "Now the magic of having a CRM: when an existing customer calls, the AI recognizes the number and pulls their whole history. The customer you just created calls back — you'll play them, and talk to the assistant as the customer.",
       action: {
-        label: "Sarah calls the office",
+        label: "Your customer calls back",
         icon: PhoneIncoming,
-        run: (ctx) => {
-          if (!ctx.sarahId) {
-            toast.error("Run `npm run seed` to load Sarah Mitchell first");
-            throw new Error("missing sarah");
+        run: async (ctx) => {
+          const { latestLead: l } = await getDemoGuideContext();
+          if (!l) {
+            toast.error("Create a lead first — do step 1 (submit the request form).");
+            throw new Error("no lead");
           }
           ctx.startCall({
             scenario: "existing_customer_call",
-            leadId: ctx.sarahId,
-            callerName: "Sarah Mitchell",
-            callerPhone: ctx.sarahPhone,
-            subtitle: "storm damage lead",
+            leadId: l.id,
+            callerName: `${l.first_name} ${l.last_name}`,
+            callerPhone: l.phone,
+            subtitle: `${l.service_type.replace(/_/g, " ")} lead`,
             direction: "inbound",
-            navigateTo: `/app/leads/${ctx.sarahId}`,
+            navigateTo: `/app/leads/${l.id}`,
             crmContext: [
-              { label: "Name", value: "Sarah Mitchell" },
-              { label: "Service", value: "storm damage" },
-              { label: "Status", value: "active leak reported" },
+              { label: "Name", value: `${l.first_name} ${l.last_name}` },
+              { label: "Stage", value: l.stage.replace(/_/g, " ") },
+              { label: "Service", value: l.service_type.replace(/_/g, " ") },
             ],
           });
         },
@@ -170,8 +167,8 @@ export function TutorialProvider() {
     },
     {
       id: "existing-answer",
-      title: "8 · The AI already knows her",
-      body: "Notice the matched CRM record before the call connects. The assistant greets Sarah by name and references her storm-damage request — no re-asking what we know. Talk to it as Sarah (reschedule, ask about insurance, whatever). It logs a second touchpoint on her timeline, then advances when you hang up.",
+      title: "8 · The AI already knows them",
+      body: "Notice the matched CRM record before the call connects. The assistant greets the customer by name and references their request — no re-asking what we know. Talk to it as the customer (reschedule, ask about insurance, whatever). It logs a second touchpoint on their timeline, then advances when you hang up.",
       advance: { kind: "event", event: "northstar-call-done" },
     },
     {
@@ -364,10 +361,6 @@ export function TutorialProvider() {
       setActive(true);
       setIndex(Number(sessionStorage.getItem(INDEX_KEY) ?? 0));
     }
-    void getDemoGuideContext().then((ctx) => {
-      setSarahId(ctx.sarah?.id ?? null);
-      setSarahPhone(ctx.sarah?.phone ?? null);
-    });
   }, []);
 
   useEffect(() => {
@@ -440,7 +433,7 @@ export function TutorialProvider() {
     if (!step.action) return;
     setRunning(true);
     try {
-      await step.action.run({ startCall, router, sarahId, sarahPhone });
+      await step.action.run({ startCall, router });
       // Only advance immediately for pure action steps. Steps that wait on a
       // real event (e.g. the call starting after a cross-tab form submit) keep
       // their button but advance via that event instead.

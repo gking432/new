@@ -38,27 +38,30 @@ export async function simulateInboundText(): Promise<ActionResult<InboundResult>
     await requireUser(supabase);
     const events: string[] = [];
 
-    const phone = "(414) 555-0188";
-    const body =
-      "Hi this is Sarah. Tomorrow after 2 works for the roof inspection. Also the ceiling spot got a little bigger overnight.";
-
+    // Blank-slate demo: the "existing customer" texting in is the most recent
+    // lead the demoer created (not a hardcoded Sarah).
     const { data: lead } = await supabase
       .from("leads")
       .select("*")
-      .eq("phone", phone)
       .order("created_at", { ascending: false })
       .limit(1)
       .maybeSingle();
-    events.push(
-      lead
-        ? `Matched ${phone} to CRM record: ${lead.first_name} ${lead.last_name}`
-        : `No CRM match for ${phone} — saved as unmatched`
-    );
+    if (!lead) {
+      return {
+        success: false,
+        error: "No customers yet — run the speed-to-lead demo first so there's someone to text.",
+      };
+    }
+
+    const phone = lead.phone ?? "(unknown)";
+    const firstName = lead.first_name;
+    const body = `Hi, it's ${firstName}. Following up on my request — is someone still able to come out soon? Things seem to be getting worse since we talked.`;
+    events.push(`Matched ${phone} to CRM record: ${lead.first_name} ${lead.last_name}`);
 
     const { data: comm, error } = await supabase
       .from("communications")
       .insert({
-        lead_id: lead?.id ?? null,
+        lead_id: lead.id,
         channel: "sms",
         direction: "inbound",
         status: "received",
@@ -66,9 +69,8 @@ export async function simulateInboundText(): Promise<ActionResult<InboundResult>
         to_value: "Northstar Exterior & Home",
         body,
         ai_summary:
-          "Customer confirmed tomorrow afternoon works for the inspection and reported the ceiling water stain has grown overnight — urgent update.",
-        suggested_next_action:
-          "Confirm the 2:30 PM inspection and flag the worsening stain for the inspector.",
+          "Existing customer following up on their request and reporting the situation is worsening — time-sensitive.",
+        suggested_next_action: "Call them back today to confirm the inspection and reassure them.",
         ai_generated: false,
       })
       .select("id")
@@ -76,61 +78,56 @@ export async function simulateInboundText(): Promise<ActionResult<InboundResult>
     if (error || !comm) return { success: false, error: "Could not save the text" };
     events.push("Inbound text saved and classified as an urgent update");
 
-    if (lead) {
-      await supabase.from("tasks").insert({
-        lead_id: lead.id,
-        title: `Urgent: ceiling stain growing — confirm tomorrow's inspection (${lead.first_name})`,
-        description:
-          "Customer texted that the water stain grew overnight. Confirm the 2:30 PM inspection and let the inspector know to prioritize the affected area.",
-        type: "call",
-        priority: "urgent",
-        status: "open",
-        due_at: new Date(Date.now() + 30 * 60_000).toISOString(),
-      });
-      events.push("Urgent task created for the assigned rep");
+    await supabase.from("tasks").insert({
+      lead_id: lead.id,
+      title: `Urgent: ${firstName} texted — situation worsening, confirm the inspection`,
+      description:
+        "Customer texted that things are getting worse and asked when someone can come out. Call back today to confirm and reassure.",
+      type: "call",
+      priority: "urgent",
+      status: "open",
+      due_at: new Date(Date.now() + 30 * 60_000).toISOString(),
+    });
+    events.push("Urgent task created for the assigned rep");
 
-      await supabase.from("activities").insert({
-        lead_id: lead.id,
-        type: "sms",
-        title: "Inbound text received",
-        description: body,
-        metadata: { communication_id: comm.id },
-      });
-      events.push("Timeline entry added to the lead");
-    }
+    await supabase.from("activities").insert({
+      lead_id: lead.id,
+      type: "sms",
+      title: "Inbound text received",
+      description: body,
+      metadata: { communication_id: comm.id },
+    });
+    events.push("Timeline entry added to the lead");
 
     const { data: draft } = await supabase
       .from("communications")
       .insert({
-        lead_id: lead?.id ?? null,
+        lead_id: lead.id,
         channel: "sms",
         direction: "outbound",
         status: "draft",
         from_value: "Northstar Exterior & Home",
         to_value: phone,
-        subject: "Re: inspection confirmation",
-        body: `Hi ${lead?.first_name ?? "Sarah"}, you're confirmed for tomorrow at 2:30 PM. Thanks for the heads-up about the ceiling — we've flagged it for the inspector so they check that area first. If anything changes before then, just reply here.`,
+        subject: "Re: your request",
+        body: `Hi ${firstName}, thanks for the update — we've got you flagged as a priority and someone will reach out today to lock in a time. Reply here if anything changes in the meantime.`,
         ai_generated: true,
         human_approved: false,
       })
       .select("id")
       .single();
     if (draft) events.push("AI reply drafted — waiting for human approval");
-
-    // Existing customer reporting an active, worsening leak → an issue with
-    // urgency, even though they're not a brand-new lead.
-    events.push("AI reviewed the message and scored importance: HIGH (active leak worsening)");
+    events.push("AI reviewed the message and scored importance: HIGH (existing customer, worsening)");
 
     revalidatePath("/app", "layout");
     return {
       success: true,
       data: {
         communicationId: comm.id,
-        leadId: lead?.id ?? null,
-        leadName: lead ? `${lead.first_name} ${lead.last_name}` : "Sarah Mitchell",
+        leadId: lead.id,
+        leadName: `${lead.first_name} ${lead.last_name}`,
         events,
         urgency: "high",
-        headline: "New text · Existing customer · Active leak worsening — High priority",
+        headline: `New text · ${lead.first_name} ${lead.last_name} · situation worsening — High priority`,
       },
     };
   } catch (err) {
