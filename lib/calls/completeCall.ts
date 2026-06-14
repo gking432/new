@@ -358,6 +358,8 @@ export async function completeCall(
       type: "ai_call",
       title: `AI call ${call.direction === "outbound" ? "placed" : "handled"} (${call.scenario.replace(/_/g, " ")})`,
       description: summary.crm_note,
+      // Sort just after the "lead created" entry from the same execution.
+      created_at: new Date(Date.now() + 1500).toISOString(),
       metadata: { call_id: input.callId, ai_status: aiStatus, mode: input.mode },
     });
   }
@@ -378,20 +380,25 @@ export async function completeCall(
   }
 
   // The call lives in the Calls tab and on the lead timeline — it is NOT an
-  // inbox conversation. Only the outbound confirmation draft (SMS) goes to the
-  // inbox for human approval.
+  // inbox conversation. Only the outbound confirmation draft goes to the inbox
+  // for human approval. Channel by scenario: a rep-answered inbound intake
+  // confirms by EMAIL; the speed-to-lead callback confirms by SMS.
   let confirmationDraftId: string | null = null;
   if (summary.confirmation_message_draft) {
+    const channel = call.scenario === "new_inbound_call" ? "email" : "sms";
     const { data: draft } = await supabase
       .from("communications")
       .insert({
         lead_id: lead?.id ?? null,
         call_id: input.callId,
-        channel: "sms",
+        channel,
         direction: "outbound",
         status: "draft",
         from_value: "Northstar Exterior & Home",
-        to_value: lead?.phone ?? fields.phone ?? null,
+        to_value:
+          channel === "email"
+            ? (lead?.email ?? fields.email ?? null)
+            : (lead?.phone ?? fields.phone ?? null),
         subject: "Appointment confirmation",
         body: summary.confirmation_message_draft,
         ai_generated: true,

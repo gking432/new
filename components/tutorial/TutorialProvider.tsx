@@ -83,9 +83,36 @@ export function TutorialProvider() {
       advance: { kind: "manual" },
     },
     {
+      id: "you-answer",
+      title: "The AI works even when YOUR team answers",
+      body: "Not every company wants an AI answering their phones — so first, here's what the AI does even when your own rep takes the call: it listens on the line, fills the lead form in real time, and writes the notes, while you just talk to the customer. Click below, then answer the phone in the top-left and have a normal conversation out loud.",
+      action: {
+        label: "A homeowner calls — you answer as the rep",
+        icon: Headphones,
+        run: (ctx) => {
+          ctx.startCall({
+            scenario: "new_inbound_call",
+            persona: "customer",
+            direction: "inbound",
+            callerName: "Jordan Avery",
+            callerPhone: "(414) 555-0123",
+            seedFields: JORDAN_SEED,
+            navigateTo: "/app/leads/new",
+          });
+        },
+      },
+      advance: { kind: "action" },
+    },
+    {
+      id: "you-answer-watch",
+      title: "Watch the lead form fill itself",
+      body: "As you talk, the intake form fills from what the homeowner tells you and flags in RED anything you still need to ask for — so nothing slips on the call. Hang up when you're done; the AI writes the note and saves the lead, then this advances. (Needs your mic + an OpenAI key — if it can't connect, it says so instead of inventing answers.)",
+      advance: { kind: "event", event: "northstar-call-done" },
+    },
+    {
       id: "speed-to-lead",
-      title: "1 · Submit a request as the customer",
-      body: "Open our public website in a new tab and fill out the request form — use your own info or hit “Auto-fill demo customer,” then click Submit. You're playing the CUSTOMER. The moment you submit, a phone call from our AI scheduling assistant pops up right here on the dashboard — act as the homeowner and watch the AI fill the CRM and book your appointment. (Leave this tour open; it continues automatically when the call starts.)",
+      title: "Speed to lead — a request from your website",
+      body: "Now the other way around: a homeowner submits your website form and the AI calls them back in seconds to book the inspection. Open the public site in a new tab, fill it out (or hit “Auto-fill demo customer”), and submit. You're the CUSTOMER — the tab closes and the AI's call pops up here on the dashboard. Leave this tour open; it continues when the call starts.",
       action: {
         label: "Open the front-end website",
         icon: PhoneOutgoing,
@@ -98,13 +125,13 @@ export function TutorialProvider() {
     },
     {
       id: "answer-call",
-      title: "2 · Answer the call & watch the CRM fill itself",
-      body: "Answer the phone in the top-left corner. You're the homeowner — talk to the assistant (or click through). Watch the live transcript and the details the AI captures. When the call ends it creates the lead, books the inspection, adds tasks, and drafts a confirmation text — then this advances automatically.",
+      title: "Answer the AI's callback",
+      body: "Answer the phone in the top-left corner. You're the homeowner — talk to Riley and let her book your inspection. When the call ends it creates the lead, books the inspection, adds tasks, and drafts a confirmation — then this advances automatically.",
       advance: { kind: "event", event: "northstar-call-done" },
     },
     {
       id: "go-inbox-1",
-      title: "3 · The confirmation text needs your OK",
+      title: "The confirmation needs your OK",
       body: "Nothing goes to a customer without a human approving it first. Head to the Inbox — click it in the sidebar.",
       spotlight: "nav-inbox",
       spotlightHint: "Click Inbox in the sidebar →",
@@ -112,15 +139,15 @@ export function TutorialProvider() {
     },
     {
       id: "approve-1",
-      title: "4 · Review & approve the AI draft",
-      body: "Open the conversation, tweak the AI-drafted text if you like, then Approve & send. In demo mode the send is simulated and shows up in the thread — then this advances automatically.",
+      title: "Review & approve the AI draft",
+      body: "Open the conversation, tweak the AI-drafted message if you like, then Approve & send. In demo mode the send is simulated and shows up in the thread — then this advances automatically.",
       spotlight: "inbox-draft",
       spotlightHint: "Find the AI-drafted reply and Approve & send",
       advance: { kind: "event", event: "northstar-comm-sent" },
     },
     {
       id: "go-leads",
-      title: "5 · The heart of a CRM: the customer's info in front of you",
+      title: "The heart of a CRM: the customer's record",
       body: "A CRM only earns its keep when everything about a customer is one click away. Open the Leads list.",
       spotlight: "nav-leads",
       spotlightHint: "Click Leads in the sidebar →",
@@ -128,23 +155,23 @@ export function TutorialProvider() {
     },
     {
       id: "open-lead",
-      title: "6 · Open the new lead",
-      body: "Your new lead is right at the top of the list. Click that top row to open the full record: contact info, AI analysis, call history, the timeline, quote, and CRM-sync status — all in one place. (Later you'll also see how to search and filter to find any lead.)",
+      title: "Open the lead",
+      body: "Your newest lead is right at the top of the list. Click that top row to open the full record: contact info, AI analysis, call history, the timeline, quote, and CRM-sync status — all in one place.",
       spotlight: "leads-first-row",
       spotlightHint: "Click the top row to open the lead",
       advance: { kind: "navigatePrefix", prefix: "/app/leads/" },
     },
     {
       id: "existing-call",
-      title: "7 · A known customer calls back",
-      body: "Now the magic of having a CRM: when an existing customer calls, the AI recognizes the number and pulls their whole history. The customer you just created calls back — you'll play them, and talk to the assistant as the customer.",
+      title: "A known customer calls back to reschedule",
+      body: "Here's the payoff of having the record: a customer you've already worked with calls in. The AI answers, recognizes them from their number, sees their existing appointment, and moves it — no new booking, no re-asking. You'll play the customer; ask to reschedule.",
       action: {
         label: "Your customer calls back",
         icon: PhoneIncoming,
         run: async (ctx) => {
           const { latestLead: l } = await getDemoGuideContext();
           if (!l) {
-            toast.error("Create a lead first — do step 1 (submit the request form).");
+            toast.error("Create a lead first — run the speed-to-lead step.");
             throw new Error("no lead");
           }
           ctx.startCall({
@@ -167,43 +194,16 @@ export function TutorialProvider() {
     },
     {
       id: "existing-answer",
-      title: "8 · The AI already knows them",
-      body: "Notice the matched CRM record before the call connects. The assistant greets the customer by name and references their request — no re-asking what we know. Talk to it as the customer (reschedule, ask about insurance, whatever). It logs a second touchpoint on their timeline, then advances when you hang up.",
-      advance: { kind: "event", event: "northstar-call-done" },
-    },
-    {
-      id: "you-answer",
-      title: "Bonus · Now YOU take a call",
-      body: "Flip the roles: a new homeowner calls and you're the rep — the AI plays the customer. Click below, answer the phone in the top-left, and actually ask questions out loud.",
-      action: {
-        label: "A homeowner calls — you answer",
-        icon: Headphones,
-        run: (ctx) => {
-          ctx.startCall({
-            scenario: "new_inbound_call",
-            persona: "customer",
-            direction: "inbound",
-            callerName: "Jordan Avery",
-            callerPhone: "(414) 555-0123",
-            seedFields: JORDAN_SEED,
-            navigateTo: "/app/leads/new",
-          });
-        },
-      },
-      advance: { kind: "action" },
-    },
-    {
-      id: "you-answer-watch",
-      title: "Bonus · Watch the form fill as you ask",
-      body: "The live intake form fills from what Jordan tells you and flags in RED anything you still need to ask for — so nothing slips on the call. Hang up when you're done; the AI writes the note and saves the lead, then this advances. (This mode needs your mic + an OpenAI key — if it can't connect, it says so instead of inventing answers.)",
+      title: "The AI already knows them",
+      body: "Notice the matched CRM record before the call connects. The assistant greets the customer by name, references their request, and treats this as moving their existing appointment — not a new booking. It logs a second touchpoint on their timeline, then advances when you hang up.",
       advance: { kind: "event", event: "northstar-call-done" },
     },
     {
       id: "text",
-      title: "9 · Customers text, too",
-      body: "Sarah sends an urgent text update. The AI matches her number, reviews the message, scores its importance, creates a task, and drafts a reply.",
+      title: "Customers text, too",
+      body: "Your customer sends a text update. The AI matches their number, reviews the message, scores its importance, creates a task, and drafts a reply.",
       action: {
-        label: "Sarah sends a text",
+        label: "Your customer texts in",
         icon: MessageSquareText,
         run: async () => {
           const r = await simulateInboundText();
@@ -219,23 +219,23 @@ export function TutorialProvider() {
     },
     {
       id: "text-inbox",
-      title: "10 · Handle the text",
-      body: "See the banner that popped up top-center? The AI scored this High priority — an existing customer reporting a worsening leak. Open the Inbox to reply.",
+      title: "Handle the text",
+      body: "See the banner that popped up top-center? The AI scored this High priority — an existing customer with a worsening situation. Open the Inbox to reply.",
       spotlight: "nav-inbox",
       spotlightHint: "Click Inbox (or the notification) →",
       advance: { kind: "navigate", pathname: "/app/inbox" },
     },
     {
       id: "text-approve",
-      title: "11 · Approve Sarah's reply",
-      body: "Open her thread — you'll see her text and the AI's drafted response. Approve & send it; this advances automatically once it's sent.",
+      title: "Approve the reply",
+      body: "Open their thread — you'll see the inbound text and the AI's drafted response. Approve & send it; this advances automatically once it's sent.",
       spotlight: "inbox-draft",
       spotlightHint: "Review the AI reply and Approve & send",
       advance: { kind: "event", event: "northstar-comm-sent" },
     },
     {
       id: "email",
-      title: "12 · A brand-new lead emails in",
+      title: "A brand-new lead emails in",
       body: "A prospect emails about replacing 12 windows. The AI reads it, creates the lead, classifies the service, and — because new leads are the most time-sensitive — scores it URGENT.",
       action: {
         label: "New prospect emails in",
@@ -258,7 +258,7 @@ export function TutorialProvider() {
     },
     {
       id: "email-inbox",
-      title: "13 · Why urgency scoring matters",
+      title: "Why urgency scoring matters",
       body: "That banner flagged the email URGENT — new leads are the most time-sensitive (speed-to-lead wins jobs), while existing customers are lower priority unless they report a problem with completed work. Open the new email thread here and approve the AI's reply, then click Next.",
       spotlight: "inbox-draft",
       spotlightHint: "Open the new email and review its AI reply",
@@ -266,7 +266,7 @@ export function TutorialProvider() {
     },
     {
       id: "pipeline",
-      title: "14 · Pipeline",
+      title: "Pipeline",
       body: "Every lead organized by stage, from New to Won. Drag-style stage changes, per-column collapse to focus, and the dollar value sitting in each stage. Open Pipeline.",
       spotlight: "nav-pipeline",
       spotlightHint: "Click Pipeline →",
@@ -274,7 +274,7 @@ export function TutorialProvider() {
     },
     {
       id: "tasks",
-      title: "15 · Tasks",
+      title: "Tasks",
       body: "The team's to-do list — call-backs, follow-ups, inspections — created by you, by the AI, and by automations, sorted by urgency and due date. Open Tasks.",
       spotlight: "nav-tasks",
       spotlightHint: "Click Tasks →",
@@ -282,7 +282,7 @@ export function TutorialProvider() {
     },
     {
       id: "appointments",
-      title: "16 · Appointments",
+      title: "Appointments",
       body: "The estimator calendar the AI books against — and notice it includes evenings and weekends, because that's when most homeowners are actually available. Open Appointments.",
       spotlight: "nav-appointments",
       spotlightHint: "Click Appointments →",
@@ -290,7 +290,7 @@ export function TutorialProvider() {
     },
     {
       id: "follow-up",
-      title: "17 · Follow-Up generator",
+      title: "Follow-Up generator",
       body: "Generate an AI draft for any lead — SMS, email, call script, voicemail, review response — in whatever tone you pick. Everything stays a draft until a human approves it. Open Follow-Up.",
       spotlight: "nav-follow-up",
       spotlightHint: "Click Follow-Up →",
@@ -298,7 +298,7 @@ export function TutorialProvider() {
     },
     {
       id: "quote-tool",
-      title: "18 · Quote Intelligence",
+      title: "Quote Intelligence",
       body: "An internal ballpark estimator from property details + storm context. It's always labeled 'requires inspection before a final quote' and never customer-facing. Open Quote Tool.",
       spotlight: "nav-quote-tool",
       spotlightHint: "Click Quote Tool →",
@@ -306,7 +306,7 @@ export function TutorialProvider() {
     },
     {
       id: "feedback",
-      title: "19 · Feedback analyzer",
+      title: "Feedback analyzer",
       body: "Paste a review or survey reply — the AI scores sentiment and risk, categorizes it, and routes anything negative to a manager within a business day. Open Feedback.",
       spotlight: "nav-feedback",
       spotlightHint: "Click Feedback →",
@@ -314,7 +314,7 @@ export function TutorialProvider() {
     },
     {
       id: "automations",
-      title: "20 · Automations",
+      title: "Automations",
       body: "Plain-English business rules — 'urgent storm lead → create a 15-minute call task' — with an audit log of every time they fire. Open Automations.",
       spotlight: "nav-automations",
       spotlightHint: "Click Automations →",
@@ -322,7 +322,7 @@ export function TutorialProvider() {
     },
     {
       id: "reports",
-      title: "21 · Reports",
+      title: "Reports",
       body: "The numbers that run the business: booking rate, pipeline value, lead-source ROI, urgency mix, and response times. Open Reports.",
       spotlight: "nav-reports",
       spotlightHint: "Click Reports →",
@@ -330,7 +330,7 @@ export function TutorialProvider() {
     },
     {
       id: "crm-sync",
-      title: "22 · CRM Sync",
+      title: "CRM Sync",
       body: "Use this as your CRM, or as an AI layer on top of an existing one: push clean contacts, deals, and AI notes to HubSpot — or dry-run to see the exact payload without touching anything. Open CRM Sync.",
       spotlight: "nav-crm-sync",
       spotlightHint: "Click CRM Sync →",
@@ -338,7 +338,7 @@ export function TutorialProvider() {
     },
     {
       id: "settings",
-      title: "23 · Settings",
+      title: "Settings",
       body: "Company profile, AI on/off toggles, default tone, and the team roster. Open Settings.",
       spotlight: "nav-settings",
       spotlightHint: "Click Settings →",

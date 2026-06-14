@@ -114,6 +114,7 @@ export function LeadIntakeForm() {
       set("phone", extracted["Phone"] ?? "");
       set("email", extracted["Email"] ?? "");
       set("street_address", extracted["Address"] ?? "");
+      set("city", extracted["City"] ?? "");
       const svc = mapService(extracted["Service"]);
       if (svc && !touched.current.has("service_type") && !next.service_type) {
         next.service_type = svc;

@@ -96,6 +96,7 @@ export async function simulateInboundText(): Promise<ActionResult<InboundResult>
       title: "Inbound text received",
       description: body,
       metadata: { communication_id: comm.id },
+      created_at: new Date().toISOString(),
     });
     events.push("Timeline entry added to the lead");
 
@@ -311,9 +312,10 @@ export async function simulateSendCommunication(id: string): Promise<ActionResul
         lead_id: record.lead_id,
         user_id: user.id,
         type: record.channel,
-        title: `${record.channel === "email" ? "Email" : "Text"} send simulated (demo mode)`,
+        title: `${record.channel === "email" ? "Email" : "Text"} sent to customer (simulated)`,
         description: record.body,
         metadata: { communication_id: id, simulated: true },
+        created_at: new Date().toISOString(),
       });
     }
     revalidatePath("/app", "layout");

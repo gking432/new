@@ -49,6 +49,9 @@ export function extractLiveFields(
   seed?: Record<string, string | null>,
   customerSpeaker: "ai" | "customer" = "customer"
 ): Record<string, string> {
+  // We extract ONLY from what was actually said (never fabricate from the
+  // seed). `seed` is accepted for call-site compatibility but unused here.
+  void seed;
   const customerText = turns
     .filter((t) => t.speaker === customerSpeaker)
     .map((t) => t.text)
@@ -57,24 +60,53 @@ export function extractLiveFields(
   const out: Record<string, string> = {};
 
   const claim = (label: string, value: string | null | undefined) => {
-    if (value) out[label] = value;
+    if (value) out[label] = value.trim();
   };
 
-  if (seed && turns.length > 0) {
-    const seenName = turns.length >= 2;
-    if (seenName)
-      claim("Name", [seed.first_name, seed.last_name].filter(Boolean).join(" ") || null);
+  // Name — "I'm Jordan Avery" / "this is Jordan" / "my name is Jordan Avery"
+  const nameMatch = customerText.match(
+    /\b(?:i'?m|i am|this is|my name'?s|my name is|it'?s)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\b/
+  );
+  // Avoid false positives like "this is getting worse".
+  if (nameMatch && !/\b(getting|going|happening|really|so|just|the|a|an)\b/i.test(nameMatch[1])) {
+    claim("Name", nameMatch[1]);
   }
+
   const phoneMatch = customerText.match(/\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4}/);
   claim("Phone", phoneMatch?.[0]);
-  const emailMatch = customerText.match(/[\w.+-]+@[\w-]+\.[\w.]+/);
-  claim("Email", emailMatch?.[0]);
+
+  // Email — direct form, or the way it gets transcribed when spoken aloud
+  // ("jordan dot avery at example dot com").
+  let email = customerText.match(/[\w.+-]+@[\w-]+\.[\w.]+/)?.[0];
+  if (!email) {
+    const spoken = customerText.match(
+      /([a-z0-9.\s-]+?)\s+at\s+([a-z0-9\s-]+?)\s+dot\s+(com|net|org|co|edu|io|us)\b/i
+    );
+    if (spoken) {
+      const user = spoken[1].replace(/\s+dot\s+/gi, ".").replace(/\s+/g, "").toLowerCase();
+      const domain = spoken[2].replace(/\s+/g, "").toLowerCase();
+      email = `${user}@${domain}.${spoken[3].toLowerCase()}`;
+    }
+  }
+  claim("Email", email);
+
   const addressMatch = customerText.match(
-    /\d+\s+[A-Z][\w]*\s+(?:Lane|Ln|Street|St|Avenue|Ave|Drive|Dr|Court|Ct|Road|Rd)\b[^.,]*/i
+    /\d+\s+[A-Z][\w]*(?:\s+[A-Z][\w]*)*\s+(?:Lane|Ln|Street|St|Avenue|Ave|Drive|Dr|Court|Ct|Road|Rd|Way|Place|Pl|Boulevard|Blvd|Circle|Cir)\b[^.,?!]*/i
   );
   claim("Address", addressMatch?.[0]);
+
+  // City — "in Pewaukee" / "Pewaukee, Wisconsin"
+  const cityMatch =
+    customerText.match(/\bin\s+([A-Z][a-z]+(?:\s[A-Z][a-z]+)?)\s*,?\s*(?:wisconsin|wi|minnesota|mn)\b/i) ||
+    customerText.match(/\b([A-Z][a-z]+(?:\s[A-Z][a-z]+)?)\s*,\s*(?:wisconsin|wi|minnesota|mn)\b/);
+  claim("City", cityMatch?.[1]);
+
   if (/hail|storm|wind/i.test(all)) out["Service"] = "Storm damage / roofing";
   else if (/window/i.test(customerText)) out["Service"] = "Windows";
+  else if (/siding/i.test(customerText)) out["Service"] = "Siding";
+  else if (/gutter/i.test(customerText)) out["Service"] = "Gutters";
+  else if (/roof/i.test(customerText)) out["Service"] = "Roofing";
+
   if (/water (spot|stain)|leak|dripping/i.test(customerText))
     out["Active leak"] = "Likely — flagged urgent";
   if (/insurance/i.test(all)) {
@@ -82,7 +114,9 @@ export function extractLiveFields(
       ? "Not started"
       : "Discussed";
   }
-  const apptMatch = all.match(/tomorrow[^.?!]*\b(?:at\s+)?\d{1,2}(?::\d{2})?\s*(?:am|pm)?/i);
+  const apptMatch = all.match(
+    /\b(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday|tomorrow)[^.?!]*?\b\d{1,2}(?::\d{2})?\s*(?:am|pm)?/i
+  );
   claim("Requested appointment", apptMatch?.[0]);
   return out;
 }

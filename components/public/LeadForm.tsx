@@ -142,9 +142,9 @@ const DEMO_CUSTOMERS: LeadFormValues[] = [
     source: "google",
   },
   {
-    first_name: "Priya",
-    last_name: "Raman",
-    email: "priya.raman@example.com",
+    first_name: "Emily",
+    last_name: "Hart",
+    email: "emily.hart@example.com",
     phone: "(262) 555-0171",
     preferred_contact_method: "text",
     best_time_to_contact: "evening",
@@ -240,8 +240,22 @@ export function LeadForm() {
     }
   }
 
+  const fromDashboardTour = searchParams.get("demo") === "dashboard";
+
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
+      {fromDashboardTour && (
+        <div className="rounded-lg border-2 border-brand-gold bg-brand-gold/15 p-4">
+          <p className="text-sm font-bold uppercase tracking-wide text-brand-dark">
+            You are the customer in this scenario
+          </p>
+          <p className="mt-1 text-sm text-brand-dark/80">
+            Fill this out (or hit “Generate demo customer”) and submit it. Then this tab closes and
+            you answer the call popup back on the dashboard — go through the AI scheduling
+            assistant like a normal customer would and book your inspection.
+          </p>
+        </div>
+      )}
       <div className="flex flex-wrap items-center gap-3 rounded-lg border border-brand-gold/40 bg-brand-gold/10 p-3">
         <Button
           type="button"
