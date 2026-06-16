@@ -7,21 +7,36 @@ import type { TaskWithLead } from "@/types/app";
 
 export const dynamic = "force-dynamic";
 
-export default async function TasksPage() {
+export default async function TasksPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ task?: string }>;
+}) {
+  const { task: highlightTaskId } = await searchParams;
   const supabase = await createClient();
   const tasks = await getTasks(supabase);
 
-  const now = new Date();
+  const startOfToday = new Date();
+  startOfToday.setHours(0, 0, 0, 0);
   const endOfToday = new Date();
   endOfToday.setHours(23, 59, 59, 999);
 
   const active = tasks.filter((t) => t.status === "open" || t.status === "in_progress");
-  const overdue = active.filter((t) => t.due_at && new Date(t.due_at) < now);
+  const overdue = active.filter((t) => t.due_at && new Date(t.due_at) < startOfToday);
   const dueToday = active.filter(
-    (t) => t.due_at && new Date(t.due_at) >= now && new Date(t.due_at) <= endOfToday
+    (t) => t.due_at && new Date(t.due_at) >= startOfToday && new Date(t.due_at) <= endOfToday
   );
   const upcoming = active.filter((t) => !t.due_at || new Date(t.due_at) > endOfToday);
   const completed = tasks.filter((t) => t.status === "complete");
+  const highlightedTab = dueToday.some((t) => t.id === highlightTaskId)
+    ? "today"
+    : overdue.some((t) => t.id === highlightTaskId)
+      ? "overdue"
+      : upcoming.some((t) => t.id === highlightTaskId)
+        ? "upcoming"
+        : completed.some((t) => t.id === highlightTaskId)
+          ? "completed"
+          : "today";
 
   const byRep = new Map<string, TaskWithLead[]>();
   for (const task of active) {
@@ -30,7 +45,7 @@ export default async function TasksPage() {
   }
 
   return (
-    <Tabs defaultValue="today">
+    <Tabs defaultValue={highlightedTab}>
       <TabsList>
         <TabsTrigger value="today">Due Today ({dueToday.length})</TabsTrigger>
         <TabsTrigger value="overdue">Overdue ({overdue.length})</TabsTrigger>
@@ -50,7 +65,7 @@ export default async function TasksPage() {
         <TabsContent key={value} value={value}>
           <Card>
             <CardContent className="pt-5">
-              <TaskList tasks={list} emptyMessage={empty} />
+              <TaskList tasks={list} emptyMessage={empty} highlightTaskId={highlightTaskId} />
             </CardContent>
           </Card>
         </TabsContent>
@@ -64,7 +79,7 @@ export default async function TasksPage() {
                 <h3 className="mb-2 font-semibold">
                   {name} <span className="text-sm font-normal text-muted-foreground">({repTasks.length})</span>
                 </h3>
-                <TaskList tasks={repTasks} compact />
+                <TaskList tasks={repTasks} compact highlightTaskId={highlightTaskId} />
               </CardContent>
             </Card>
           ))}

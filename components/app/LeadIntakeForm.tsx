@@ -34,6 +34,10 @@ type Fields = {
   active_leak: string;
   insurance_started: string;
   description: string;
+  secondary_contact_name: string;
+  secondary_contact_relationship: string;
+  secondary_contact_phone: string;
+  secondary_contact_email: string;
 };
 
 const EMPTY: Fields = {
@@ -43,12 +47,16 @@ const EMPTY: Fields = {
   email: "",
   street_address: "",
   city: "",
-  state: "",
+  state: "WI",
   zip_code: "",
   service_type: "",
   active_leak: "",
   insurance_started: "",
   description: "",
+  secondary_contact_name: "",
+  secondary_contact_relationship: "",
+  secondary_contact_phone: "",
+  secondary_contact_email: "",
 };
 
 const SERVICES: [LeadInput["service_type"], string][] = [
@@ -77,6 +85,61 @@ function mapService(s?: string): Fields["service_type"] {
   return "";
 }
 
+function draftNotesFromCall(
+  live: ReturnType<typeof useLiveCall>,
+  extractedFields: Record<string, string>
+) {
+  if (!live) return "";
+  const customerSpeaker = live.persona === "customer" ? "ai" : "customer";
+  const customerLines = live.turns
+    .filter((turn) => turn.speaker === customerSpeaker && turn.text.trim().length > 8)
+    .map((turn) => turn.text.trim());
+  const repLines = live.turns
+    .filter((turn) => turn.speaker !== customerSpeaker && turn.speaker !== "system")
+    .map((turn) => turn.text.trim())
+    .filter(Boolean);
+  if (customerLines.length === 0) return "";
+
+  const notes: string[] = [];
+  const combined = [...customerLines, ...repLines].join(" ");
+  const customerCombined = customerLines.join(" ");
+  const customerName = extractedFields["Name"] || live.callerName || "Customer";
+
+  notes.push(`Live CRM note draft for ${customerName}:`);
+  if (/leak|water|drip|ceiling|stain/i.test(combined)) {
+    notes.push("- Reported possible active water intrusion or ceiling staining.");
+  }
+  if (/storm|hail|wind|two nights|last night|yesterday/i.test(combined)) {
+    notes.push("- Connected the issue to recent storm or wind activity.");
+  }
+  if (/missing|shingle|roof|glass|window|broken/i.test(combined)) {
+    notes.push("- Described visible exterior damage that should be inspected.");
+  }
+  if (extractedFields["Address"] || extractedFields["City"]) {
+    notes.push(
+      `- Property location captured: ${[extractedFields["Address"], extractedFields["City"]]
+        .filter(Boolean)
+        .join(", ")}.`
+    );
+  }
+  const confirmedAppointment =
+    live.result?.pendingAppointmentLabel ?? live.result?.appointment?.label ?? null;
+  if (confirmedAppointment) {
+    notes.push(`- Appointment confirmed for ${confirmedAppointment}.`);
+  }
+  if (repLines.some((line) => /phone|email|address|name|spell|number/i.test(line))) {
+    notes.push("- Rep gathered contact details during the call.");
+  }
+  if (/insurance/i.test(combined)) {
+    notes.push(
+      /not yet|haven'?t|no insurance/i.test(customerCombined)
+        ? "- Customer has not started an insurance claim yet."
+        : "- Insurance was discussed during the call."
+    );
+  }
+  return notes.join("\n");
+}
+
 /**
  * The CRM lead form — a blank lead detail that can be filled MANUALLY (walk-ins,
  * phone notes, or if the AI is ever down) AND fills itself in real time when an
@@ -88,53 +151,107 @@ export function LeadIntakeForm() {
   const [fields, setFields] = useState<Fields>(EMPTY);
   const [saving, setSaving] = useState(false);
   const touched = useRef<Set<keyof Fields>>(new Set());
+  const liveFillTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [aiFilled, setAiFilled] = useState<Set<keyof Fields>>(new Set());
 
   const callActive =
     live && ["incoming", "dialing", "connecting", "connected", "processing"].includes(live.phase);
 
-  // Merge live-extracted info into any field the human hasn't manually edited —
-  // this is the "watch the AI fill the form" moment.
-  const extracted = live?.extracted;
+  // Caller ID is known as soon as the phone rings. Everything else waits for
+  // the conversation and merges with a short delay so it reads like live notes.
   useEffect(() => {
-    if (!extracted) return;
-    setFields((prev) => {
-      const next = { ...prev };
-      const filled = new Set(aiFilled);
-      const set = (key: keyof Fields, value: string) => {
-        if (!value || touched.current.has(key) || next[key]) return;
-        (next as Record<string, string>)[key] = value;
-        filled.add(key);
-      };
-      if (extracted["Name"]) {
-        const [f, ...r] = extracted["Name"].split(/\s+/);
-        set("first_name", f);
-        if (r.length) set("last_name", r.join(" "));
-      }
-      set("phone", extracted["Phone"] ?? "");
-      set("email", extracted["Email"] ?? "");
-      set("street_address", extracted["Address"] ?? "");
-      set("city", extracted["City"] ?? "");
-      const svc = mapService(extracted["Service"]);
-      if (svc && !touched.current.has("service_type") && !next.service_type) {
-        next.service_type = svc;
-        filled.add("service_type");
-      }
-      if (extracted["Active leak"]) set("active_leak", "yes");
-      if (extracted["Insurance"]) set("insurance_started", extracted["Insurance"].includes("Not") ? "no" : "yes");
-      setAiFilled(filled);
-      return next;
-    });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [JSON.stringify(extracted)]);
+    if (!live?.callerPhone || touched.current.has("phone")) return;
+    setFields((prev) => (prev.phone ? prev : { ...prev, phone: live.callerPhone ?? "" }));
+  }, [live?.callerPhone]);
 
-  // When the call completes and creates the lead, jump to the saved record.
+  // Merge live-extracted info into any field the human hasn't manually edited.
+  // This is the "watch the AI fill the form and draft the notes" moment.
+  const extracted = live?.extracted;
+  const extractedKey = JSON.stringify(extracted ?? {});
   useEffect(() => {
-    if (live?.phase === "done" && live.result?.leadId) {
-      router.push(`/app/leads/${live.result.leadId}`);
-    }
+    if (!extracted && !live) return;
+    const summaryFields = live?.result?.summary?.extracted_fields;
+    const summaryName = [summaryFields?.first_name, summaryFields?.last_name]
+      .filter(Boolean)
+      .join(" ");
+    const safeSummaryName = /^(name'?s|names|name|new|unknown|caller)\b/i.test(summaryName)
+      ? ""
+      : summaryName;
+    const extractedFields: Record<string, string> = {
+      ...(safeSummaryName ? { Name: safeSummaryName } : {}),
+      ...(summaryFields?.phone ? { Phone: summaryFields.phone } : {}),
+      ...(summaryFields?.email ? { Email: summaryFields.email } : {}),
+      ...(summaryFields?.address ? { Address: summaryFields.address } : {}),
+      ...(summaryFields?.city ? { City: summaryFields.city } : {}),
+      ...(summaryFields?.state ? { State: summaryFields.state } : {}),
+      ...(summaryFields?.zip_code ? { ZIP: summaryFields.zip_code } : {}),
+      ...(summaryFields?.active_leak ? { "Active leak": summaryFields.active_leak } : {}),
+      ...(live?.result?.summary?.service_type ? { Service: live.result.summary.service_type } : {}),
+      ...((live?.result?.appointment?.label ?? live?.result?.pendingAppointmentLabel)
+        ? {
+            "Requested appointment":
+              live?.result?.appointment?.label ?? live?.result?.pendingAppointmentLabel ?? "",
+          }
+        : {}),
+      ...(extracted ?? {}),
+    };
+    if (liveFillTimer.current) clearTimeout(liveFillTimer.current);
+    liveFillTimer.current = setTimeout(() => {
+      setFields((prev) => {
+        const next = { ...prev };
+        const filled = new Set(aiFilled);
+        const set = (key: keyof Fields, value: string) => {
+          if (!value || touched.current.has(key) || next[key]) return;
+          (next as Record<string, string>)[key] = value;
+          filled.add(key);
+        };
+        if (extractedFields["Name"]) {
+          const [f, ...r] = extractedFields["Name"].split(/\s+/);
+          set("first_name", f);
+          if (r.length) set("last_name", r.join(" "));
+        }
+        set("phone", extractedFields["Phone"] ?? "");
+        set("email", extractedFields["Email"] ?? "");
+        set("street_address", extractedFields["Address"] ?? "");
+        set("city", extractedFields["City"] ?? "");
+        set("state", extractedFields["State"] ?? "");
+        set("zip_code", extractedFields["ZIP"] ?? "");
+        const svc = mapService(extractedFields["Service"]);
+        if (svc && !touched.current.has("service_type") && !next.service_type) {
+          next.service_type = svc;
+          filled.add("service_type");
+        }
+        if (extractedFields["Active leak"]) set("active_leak", "yes");
+        if (extractedFields["Insurance"]) {
+          set(
+            "insurance_started",
+            extractedFields["Insurance"].includes("Not") ? "no" : "yes"
+          );
+        }
+        const draftedNotes = draftNotesFromCall(live, extractedFields);
+        if (
+          draftedNotes &&
+          !touched.current.has("description") &&
+          draftedNotes !== next.description
+        ) {
+          next.description = draftedNotes;
+          filled.add("description");
+        }
+        setAiFilled(filled);
+        return next;
+      });
+    }, 4700);
+    return () => {
+      if (liveFillTimer.current) clearTimeout(liveFillTimer.current);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [live?.phase]);
+  }, [
+    extractedKey,
+    live?.turns.length,
+    live?.phase,
+    live?.result?.leadId,
+    live?.result?.pendingAppointmentLabel,
+  ]);
 
   function update(key: keyof Fields, value: string) {
     touched.current.add(key);
@@ -147,6 +264,10 @@ export function LeadIntakeForm() {
   }, [fields]);
 
   function save() {
+    if (live?.phase === "done" && live.result?.leadId) {
+      router.push(`/app/leads/${live.result.leadId}`);
+      return;
+    }
     if (!fields.first_name || !fields.service_type) {
       toast.error("At least a name and service are required");
       return;
@@ -165,11 +286,26 @@ export function LeadIntakeForm() {
       description: fields.description,
       active_leak: fields.active_leak || null,
       insurance_started: fields.insurance_started || null,
-      source: "manual",
+      secondary_contact_name: fields.secondary_contact_name || null,
+      secondary_contact_relationship: fields.secondary_contact_relationship || null,
+      secondary_contact_phone: fields.secondary_contact_phone || null,
+      secondary_contact_email: fields.secondary_contact_email || null,
+      source: live?.phase === "done" && live.result?.deferredLeadCreation ? "phone_call" : "manual",
+      source_call_id:
+        live?.phase === "done" && !live.result?.simulatedOnly
+          ? (live.result?.callId ?? null)
+          : null,
+      appointment_start_time:
+        live?.phase === "done"
+          ? (live.result?.pendingAppointmentStartTime ??
+            live.result?.appointment?.start_time ??
+            live.result?.summary?.appointment_time ??
+            null)
+          : null,
     }).then((res) => {
       setSaving(false);
       if (res.success) {
-        toast.success("Lead created");
+        window.dispatchEvent(new CustomEvent("northstar-lead-saved"));
         router.push(`/app/leads/${res.data.leadId}`);
       } else {
         toast.error(res.error);
@@ -203,11 +339,19 @@ export function LeadIntakeForm() {
         </CardTitle>
         <CardDescription>
           {callActive
-            ? "Watch the fields fill as the AI talks. Anything red is still needed — ask for it. You can also type over anything."
-            : "Enter a lead by hand (walk-in, phone note, or if the AI is offline). It saves to the CRM and gets AI-analyzed like any other lead."}
+            ? "Watch the fields and notes fill as the AI talks. Anything red is still needed — ask for it. You can also type over anything."
+            : live?.phase === "done"
+              ? "The call is complete. Review what the AI captured, then click Save lead to open the CRM record."
+              : "Enter a lead by hand (walk-in, phone note, or if the AI is offline). It saves to the CRM and gets AI-analyzed like any other lead."}
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
+        {(callActive || live?.phase === "done") && (
+          <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950">
+            AI can miss a detail in live conversation. Review the fields before saving, and type in
+            anything still blank.
+          </div>
+        )}
         <div className="grid gap-3 sm:grid-cols-2">
           <Field label="First name" required filled={aiFilled.has("first_name")}>
             <Input value={fields.first_name} onChange={(e) => update("first_name", e.target.value)} className={fieldCls("first_name")} />
@@ -263,6 +407,44 @@ export function LeadIntakeForm() {
           </Field>
         </div>
 
+        <div className="rounded-lg border bg-secondary/30 p-3">
+          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            Spouse or secondary contact
+          </p>
+          <div className="mt-3 grid gap-3 sm:grid-cols-2">
+            <Field label="Name">
+              <Input
+                value={fields.secondary_contact_name}
+                onChange={(e) => update("secondary_contact_name", e.target.value)}
+                className={fieldCls("secondary_contact_name")}
+                placeholder="Optional"
+              />
+            </Field>
+            <Field label="Relationship">
+              <Input
+                value={fields.secondary_contact_relationship}
+                onChange={(e) => update("secondary_contact_relationship", e.target.value)}
+                className={fieldCls("secondary_contact_relationship")}
+                placeholder="Spouse, partner, property manager…"
+              />
+            </Field>
+            <Field label="Phone">
+              <Input
+                value={fields.secondary_contact_phone}
+                onChange={(e) => update("secondary_contact_phone", e.target.value)}
+                className={fieldCls("secondary_contact_phone")}
+              />
+            </Field>
+            <Field label="Email">
+              <Input
+                value={fields.secondary_contact_email}
+                onChange={(e) => update("secondary_contact_email", e.target.value)}
+                className={fieldCls("secondary_contact_email")}
+              />
+            </Field>
+          </div>
+        </div>
+
         <Field label="Notes / what's going on" filled={aiFilled.has("description")}>
           <Textarea
             rows={3}
@@ -275,10 +457,10 @@ export function LeadIntakeForm() {
         {callActive ? (
           <div className="flex items-center gap-2 rounded-lg border border-primary/20 bg-primary/5 p-3 text-sm">
             <PhoneCall className="h-4 w-4 text-primary" />
-            Call in progress — the record saves automatically when it ends.
+            Call in progress — the AI is drafting this record live.
           </div>
         ) : (
-          <Button onClick={save} disabled={saving}>
+          <Button onClick={save} disabled={saving} data-tour="lead-intake-save">
             {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
             Save lead
           </Button>

@@ -12,7 +12,17 @@ export interface AppointmentSlot {
  * including evenings, since most homeowners work 9-to-5 and real home-service
  * companies run after-hours and weekend inspections.
  */
-const CANONICAL_STARTS = ["09:00", "10:30", "13:00", "14:30", "16:00", "17:30", "18:30"];
+const CANONICAL_STARTS = [
+  "09:00",
+  "10:30",
+  "12:00",
+  "13:00",
+  "14:30",
+  "16:00",
+  "17:30",
+  "18:00",
+  "18:30",
+];
 
 function timeToMinutes(t: string) {
   const [h, m] = t.split(":").map(Number);
@@ -118,7 +128,7 @@ export function resolveAppointmentTime(
   requested: string | null,
   slots: AppointmentSlot[]
 ): AppointmentSlot | null {
-  if (!requested || slots.length === 0) return slots[0] ?? null;
+  if (!requested || slots.length === 0) return null;
 
   const parsed = new Date(requested);
   if (!Number.isNaN(parsed.getTime())) {
@@ -135,19 +145,62 @@ export function resolveAppointmentTime(
   }
 
   const text = requested.toLowerCase();
-  const tomorrow = new Date();
+  const today = new Date();
+  const tomorrow = new Date(today);
   tomorrow.setDate(tomorrow.getDate() + 1);
-  const candidates = text.includes("tomorrow")
-    ? slots.filter((s) => s.start.toDateString() === tomorrow.toDateString())
+  const weekdays: Record<string, number> = {
+    sunday: 0,
+    monday: 1,
+    tuesday: 2,
+    wednesday: 3,
+    thursday: 4,
+    friday: 5,
+    saturday: 6,
+  };
+  const weekdayMatch = text.match(/\b(sunday|monday|tuesday|wednesday|thursday|friday|saturday)\b/);
+  let targetDate: Date | null = null;
+  if (/\btoday\b/.test(text)) {
+    targetDate = today;
+  } else if (/\btomorrow\b/.test(text)) {
+    targetDate = tomorrow;
+  } else if (weekdayMatch) {
+    const targetDow = weekdays[weekdayMatch[1]];
+    const baseDays = (targetDow - today.getDay() + 7) % 7;
+    const explicitlyNext = /\bnext\s+(?:week\s+)?(?:sunday|monday|tuesday|wednesday|thursday|friday|saturday)\b/.test(
+      text
+    );
+    const addDays = text.includes("next week")
+      ? baseDays + (baseDays === 0 ? 7 : 7)
+      : explicitlyNext && baseDays === 0
+        ? 7
+        : baseDays;
+    targetDate = new Date(today);
+    targetDate.setDate(targetDate.getDate() + addDays);
+  }
+
+  const candidates = targetDate
+    ? slots.filter((s) => s.start.toDateString() === targetDate.toDateString())
     : slots;
   const pool = candidates.length > 0 ? candidates : slots;
 
-  const timeMatch = text.match(/(\d{1,2})(?::(\d{2}))?\s*(am|pm)?/);
+  const timeMatch =
+    text.match(/\b(?:at|around|about|by|for)\s+(\d{1,4})(?::(\d{2}))?\s*(am|pm)?\b/) ||
+    text.match(/\b(\d{1,2})(?::(\d{2}))\s*(am|pm)?\b/) ||
+    text.match(/\b(\d{1,2})\s*(am|pm)\b/);
   if (timeMatch) {
-    let hour = Number(timeMatch[1]);
-    const minute = Number(timeMatch[2] ?? 0);
-    if (timeMatch[3] === "pm" && hour < 12) hour += 12;
-    if (!timeMatch[3] && hour <= 7) hour += 12; // "after 2" almost always means PM
+    const rawHour = timeMatch[1];
+    const ampm = /^(am|pm)$/i.test(timeMatch[2] ?? "")
+      ? timeMatch[2]
+      : timeMatch[3];
+    let hour = Number(rawHour);
+    let minute = ampm === timeMatch[2] ? 0 : Number(timeMatch[2] ?? 0);
+    if (!timeMatch[2] && rawHour.length >= 3) {
+      hour = Number(rawHour.slice(0, -2));
+      minute = Number(rawHour.slice(-2));
+    }
+    if (hour > 23 || minute > 59) return pool[0] ?? null;
+    if (ampm === "pm" && hour < 12) hour += 12;
+    if (!ampm && hour <= 7) hour += 12; // "after 2" almost always means PM
     const targetMin = hour * 60 + minute;
     const afternoon = /after|afternoon|later/.test(text);
     const eligible = afternoon

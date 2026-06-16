@@ -38,6 +38,7 @@ export function heuristicLeadAnalysis(lead: Lead): LeadAnalysisOutput {
   const hasLeak = lead.active_leak === "yes";
   const isStorm = lead.service_type === "storm_damage";
   const isUrgentReason = lead.project_reason === "leak_urgent";
+  const appointmentScheduled = lead.stage === "appointment_scheduled";
 
   let urgency: LeadAnalysisOutput["urgency"] = "medium";
   if (hasLeak || lead.timeframe === "emergency") urgency = "emergency";
@@ -61,32 +62,42 @@ export function heuristicLeadAnalysis(lead: Lead): LeadAnalysisOutput {
 
   const serviceLabel = SERVICE_LABELS[lead.service_type] ?? lead.service_type;
   const contactWindow =
-    urgency === "emergency"
+    appointmentScheduled
+      ? "Before the scheduled inspection"
+      : urgency === "emergency"
       ? "Within 15 minutes"
       : urgency === "high"
-        ? "Within 1 hour"
+          ? "Within 1 hour"
         : urgency === "medium"
           ? "Same business day"
-          : "Within 1–2 business days";
+          : "Within a week";
 
   const tasks: LeadAnalysisOutput["task_recommendations"] = [
-    urgency === "emergency" || urgency === "high"
+    appointmentScheduled
       ? {
-          title: `Call ${lead.first_name} ${lead.last_name} about ${serviceLabel.toLowerCase()} request`,
-          description: `Urgent inbound request. Confirm whether the issue is active, gather details, and offer an inspection within 24–48 hours.`,
+          title: `Prepare for ${lead.first_name} ${lead.last_name}'s inspection`,
+          description:
+            "Review the call notes, confirm the inspection details, and make sure the inspector has the property context before arrival.",
+          priority: hasLeak ? ("high" as const) : ("medium" as const),
+          due_in_minutes: 240,
+        }
+      : urgency === "emergency" || urgency === "high"
+      ? {
+          title: `Prioritize ${lead.first_name} ${lead.last_name}'s ${serviceLabel.toLowerCase()} request`,
+          description: `Urgent inbound request. Verify the current situation, gather any missing details, and book the soonest available inspection if one is not already scheduled.`,
           priority: "urgent" as const,
-          due_in_minutes: 15,
+          due_in_minutes: 30,
         }
       : {
-          title: `Call ${lead.first_name} ${lead.last_name} about ${serviceLabel.toLowerCase()} request`,
+          title: `Follow up with ${lead.first_name} ${lead.last_name} about ${serviceLabel.toLowerCase()} request`,
           description: `New inbound request. Confirm project details and offer an inspection appointment.`,
           priority: quality === "hot" ? ("high" as const) : ("medium" as const),
-          due_in_minutes: urgency === "medium" ? 240 : 1440,
+          due_in_minutes: urgency === "medium" ? 240 : 7 * 1440,
         },
   ];
 
   return {
-    summary: `Homeowner submitted a ${serviceLabel.toLowerCase()} request. ${
+    summary: `Homeowner ${appointmentScheduled ? "has an inspection scheduled" : "submitted a request"} for ${serviceLabel.toLowerCase()}. ${
       hasLeak ? "Reports active leaking, which makes this time-sensitive. " : ""
     }${lead.description.slice(0, 200)}${lead.description.length > 200 ? "…" : ""}`,
     urgency,
@@ -102,9 +113,11 @@ export function heuristicLeadAnalysis(lead: Lead): LeadAnalysisOutput {
     estimated_value_min: valueRange ? valueRange[0] : null,
     estimated_value_max: valueRange ? valueRange[1] : null,
     recommended_next_action:
-      urgency === "emergency"
-        ? "Call within 15 minutes. Confirm whether water intrusion is active and offer an inspection within 24–48 hours."
-        : `Call ${contactWindow.toLowerCase()} to confirm project details and book an inspection.`,
+      appointmentScheduled
+        ? "Inspection is scheduled. Send or approve the confirmation, prep the inspector with the call notes, and monitor any worsening leak updates."
+        : urgency === "emergency"
+        ? "Prioritize this active leak, confirm the homeowner is safe, and book the soonest available inspection."
+        : `Follow up ${contactWindow.toLowerCase()} to confirm project details and book an inspection.`,
     recommended_contact_window: contactWindow,
     sales_questions: [
       "When did the issue start, and has it gotten worse?",
@@ -114,7 +127,9 @@ export function heuristicLeadAnalysis(lead: Lead): LeadAnalysisOutput {
       lead.insurance_started && lead.insurance_started !== "not_applicable"
         ? "Have you contacted your insurance company yet?"
         : "Is there a budget range you are working within?",
-      "Are you available for an inspection within the next 24–48 hours?",
+      appointmentScheduled
+        ? "Are there access notes, pets, gates, or attic areas the inspector should know about?"
+        : "Are you available for an inspection within the next 24–48 hours?",
     ],
     potential_objections: [
       "Wants to gather multiple quotes before deciding",

@@ -16,9 +16,9 @@ export interface DemoLatestLead {
 }
 
 /**
- * Context the demo guide needs. With the blank-slate demo there is no seeded
- * "Sarah" — the existing-customer / inbound-text scenarios reference the most
- * recent lead the demoer actually created.
+ * Context the demo guide needs. With the blank-slate demo, existing-customer
+ * and inbound-text scenarios reference the most recent lead the demoer
+ * actually created.
  */
 export async function getDemoGuideContext(): Promise<{ latestLead: DemoLatestLead | null }> {
   const supabase = await createClient();

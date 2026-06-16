@@ -84,6 +84,16 @@ export const SERVICE_LABELS: Record<ServiceType, string> = {
   not_sure: "Not Sure",
 };
 
+export const CUSTOMER_SERVICE_LABELS: Record<ServiceType, string> = {
+  ...SERVICE_LABELS,
+  not_sure: "home project",
+};
+
+export function customerServiceLabel(serviceType: ServiceType | string | null | undefined) {
+  if (!serviceType) return "home project";
+  return CUSTOMER_SERVICE_LABELS[serviceType as ServiceType] ?? serviceType.replace(/_/g, " ");
+}
+
 export const SOURCE_LABELS: Record<string, string> = {
   google: "Google",
   facebook: "Facebook",

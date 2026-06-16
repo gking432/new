@@ -25,6 +25,7 @@ const finishCallSchema = z.object({
   // "customer" = the AI's lines are the homeowner's (you-answer mode).
   aiRole: z.enum(["agent", "customer"]).optional(),
   seedFields: z.record(z.string(), z.string().nullable()).optional(),
+  deferLeadCreation: z.boolean().optional(),
 });
 
 // The call pipeline is reachable from the public speed-to-lead demo, so it

@@ -131,25 +131,27 @@ export function LeadActionPanel({ leadId, stage }: { leadId: string; stage: stri
   ];
 
   return (
-    <div className="space-y-2">
-      {actions
-        .filter((action) => !action.hidden)
-        .map((action) => (
-          <Button
-            key={action.key}
-            variant="outline"
-            className="w-full justify-start"
-            disabled={pendingAction !== null || action.disabled}
-            onClick={action.onClick}
-          >
-            {pendingAction === action.key ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <action.icon className="h-4 w-4" />
-            )}
-            {action.label}
-          </Button>
-        ))}
+    <div className="space-y-3">
+      <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
+        {actions
+          .filter((action) => !action.hidden)
+          .map((action) => (
+            <Button
+              key={action.key}
+              variant="outline"
+              className="w-full justify-start"
+              disabled={pendingAction !== null || action.disabled}
+              onClick={action.onClick}
+            >
+              {pendingAction === action.key ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <action.icon className="h-4 w-4" />
+              )}
+              {action.label}
+            </Button>
+          ))}
+      </div>
 
       {draft && (
         <div className="space-y-2 rounded-lg border bg-secondary/30 p-3">

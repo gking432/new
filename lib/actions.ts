@@ -10,7 +10,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import { feedbackFormSchema, type FeedbackFormValues } from "@/lib/validations/feedback";
 import { followupRequestSchema, type FollowupRequest } from "@/lib/validations/followup";
-import { leadFormSchema, leadStageSchema, type LeadFormValues } from "@/lib/validations/lead";
+import { leadFormSchema, leadStageSchema, type LeadFormInput } from "@/lib/validations/lead";
 import type { Lead, TaskPriority, TaskType } from "@/types/app";
 
 type ActionResult<T = undefined> =
@@ -44,7 +44,7 @@ async function requireUser(supabase: SupabaseClient) {
  * AI or automation failure never blocks lead creation.
  */
 export async function submitLead(
-  values: LeadFormValues
+  values: LeadFormInput
 ): Promise<ActionResult<{ leadId: string }>> {
   const parsed = leadFormSchema.safeParse(values);
   if (!parsed.success) {

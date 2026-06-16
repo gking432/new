@@ -17,6 +17,50 @@ import type { CompleteCallResult } from "@/lib/calls/completeCall";
 import { cn } from "@/lib/utils";
 import type { TranscriptTurn } from "@/types/app";
 
+const SPOKEN_DIGITS: Record<string, string> = {
+  zero: "0",
+  oh: "0",
+  o: "0",
+  one: "1",
+  two: "2",
+  three: "3",
+  four: "4",
+  five: "5",
+  six: "6",
+  seven: "7",
+  eight: "8",
+  nine: "9",
+};
+
+function extractSpokenPhone(text: string) {
+  const words = text.toLowerCase().match(/\b(zero|oh|o|one|two|three|four|five|six|seven|eight|nine)\b/g);
+  const digits = words?.map((word) => SPOKEN_DIGITS[word]).join("") ?? "";
+  return digits.length >= 10 ? digits.slice(-10).replace(/(\d{3})(\d{3})(\d{4})/, "($1) $2-$3") : null;
+}
+
+function formatNameCandidate(value: string | null | undefined) {
+  if (!value) return null;
+  const cleaned = value
+    .replace(/^(?:sure|yeah|yes|yep|okay|ok|hi|hello|hey)[,.\s]+/i, "")
+    .replace(/^(?:my name(?:\s+is|'?s|s)?|name(?:\s+is|'?s)?|it'?s|this is|i'?m|i am)\s+/i, "")
+    .split(/[,.]/)[0]
+    .replace(/\b(?:speaking|here|calling)\b.*$/i, "")
+    .replace(/\b(?:my|the)?\s*(?:phone|number|cell|email|address)\b.*$/i, "")
+    .trim();
+  const words = cleaned.match(/[a-z]+(?:['-][a-z]+)?/gi) ?? [];
+  const filtered = words.filter(
+    (word) =>
+      !/^(the|a|an|and|my|name|names|phone|number|cell|email|address|storm|damage|roof|leak|water|lakeview|court|street|avenue|drive|road|wisconsin|pewaukee)$/i.test(
+        word
+      )
+  );
+  if (filtered.length < 1 || filtered.length > 3) return null;
+  return filtered
+    .slice(0, 2)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
+    .join(" ");
+}
+
 export function TranscriptBubble({ turn, live = false }: { turn: TranscriptTurn; live?: boolean }) {
   const isAi = turn.speaker === "ai";
   return (
@@ -46,16 +90,17 @@ export function TranscriptBubble({ turn, live = false }: { turn: TranscriptTurn;
  */
 export function extractLiveFields(
   turns: TranscriptTurn[],
-  seed?: Record<string, string | null>,
+  _seed?: Record<string, string | null>,
   customerSpeaker: "ai" | "customer" = "customer"
 ): Record<string, string> {
-  // We extract ONLY from what was actually said (never fabricate from the
-  // seed). `seed` is accepted for call-site compatibility but unused here.
-  void seed;
   const customerText = turns
     .filter((t) => t.speaker === customerSpeaker)
     .map((t) => t.text)
     .join(" ");
+  const customerLines = turns
+    .filter((t) => t.speaker === customerSpeaker)
+    .map((t) => t.text.trim())
+    .filter(Boolean);
   const all = turns.map((t) => t.text).join(" ");
   const out: Record<string, string> = {};
 
@@ -65,19 +110,66 @@ export function extractLiveFields(
 
   // Name — "I'm Jordan Avery" / "this is Jordan" / "my name is Jordan Avery"
   const nameMatch = customerText.match(
-    /\b(?:i'?m|i am|this is|my name'?s|my name is|it'?s)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\b/
+    /\b(?:i'?m|i am|this is|my name(?:\s+is|'?s|s)?|name(?:\s+is|'?s|s)?|it'?s)\s+([a-z]+(?:\s+[a-z]+){0,2})\b/i
   );
   // Avoid false positives like "this is getting worse".
-  if (nameMatch && !/\b(getting|going|happening|really|so|just|the|a|an)\b/i.test(nameMatch[1])) {
-    claim("Name", nameMatch[1]);
+  if (nameMatch) {
+    const candidate = formatNameCandidate(nameMatch[1]);
+    if (
+      candidate &&
+      !/\b(getting|going|happening|really|so|just|the|a|an|hoping|calling|checking|looking)\b/i.test(candidate)
+    ) {
+      claim("Name", candidate);
+    }
+  }
+  if (!out["Name"]) {
+    const splitName = customerText.match(
+      /\bfirst name(?: is|'s)?\s+([a-z]+)\b[\s\S]{0,80}?\blast name(?: is|'s)?\s+([a-z]+)\b/i
+    );
+    if (splitName) {
+      claim(
+        "Name",
+        [splitName[1], splitName[2]]
+          .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
+          .join(" ")
+      );
+    }
+  }
+  if (!out["Name"]) {
+    const nameAfterQuestion = turns
+      .map((turn, index) => {
+        if (turn.speaker !== customerSpeaker) return null;
+        const previous = [...turns.slice(0, index)].reverse().find((t) => t.speaker !== "system");
+        if (
+          previous?.speaker !== customerSpeaker &&
+          /\b(name|who am i speaking|who is this|who'?s calling)\b/i.test(previous?.text ?? "")
+        ) {
+          return formatNameCandidate(turn.text);
+        }
+        return null;
+      })
+      .find(Boolean);
+    claim("Name", nameAfterQuestion);
+  }
+  if (!out["Name"]) {
+    const standaloneName = customerLines
+      .map((line) =>
+        formatNameCandidate(
+          line.match(
+            /^(?:sure,?\s*|yeah,?\s*|yes,?\s*)?([a-z]+(?:\s+[a-z]+){1,2})(?:\s+(?:speaking|here))?[,.!?\s]*$/i
+          )?.[1]
+        )
+      )
+      .find(Boolean);
+    claim("Name", standaloneName);
   }
 
   const phoneMatch = customerText.match(/\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4}/);
-  claim("Phone", phoneMatch?.[0]);
+  claim("Phone", phoneMatch?.[0] ?? extractSpokenPhone(customerText));
 
   // Email — direct form, or the way it gets transcribed when spoken aloud
   // ("jordan dot avery at example dot com").
-  let email = customerText.match(/[\w.+-]+@[\w-]+\.[\w.]+/)?.[0];
+  let email = customerText.match(/[\w.+-]+@[\w-]+\.[\w.]+/)?.[0]?.replace(/[.,;:]+$/, "");
   if (!email) {
     const spoken = customerText.match(
       /([a-z0-9.\s-]+?)\s+at\s+([a-z0-9\s-]+?)\s+dot\s+(com|net|org|co|edu|io|us)\b/i
@@ -93,13 +185,45 @@ export function extractLiveFields(
   const addressMatch = customerText.match(
     /\d+\s+[A-Z][\w]*(?:\s+[A-Z][\w]*)*\s+(?:Lane|Ln|Street|St|Avenue|Ave|Drive|Dr|Court|Ct|Road|Rd|Way|Place|Pl|Boulevard|Blvd|Circle|Cir)\b[^.,?!]*/i
   );
-  claim("Address", addressMatch?.[0]);
+  const rawAddress = addressMatch?.[0];
+  const suffixPattern =
+    "(?:Lane|Ln|Street|St|Avenue|Ave|Drive|Dr|Court|Ct|Road|Rd|Way|Place|Pl|Boulevard|Blvd|Circle|Cir)";
+  const addressWithoutStateZip = rawAddress
+    ?.replace(/\b\d{5}(?:-\d{4})?\b/g, "")
+    .replace(/\b(WI|Wisconsin|MN|Minnesota)\b/gi, "")
+    .trim();
+  const cityFromAddressTail = addressWithoutStateZip?.match(
+    new RegExp(`\\b${suffixPattern}\\s+([a-z]+(?:\\s+[a-z]+)?)$`, "i")
+  )?.[1];
+  const streetOnly = addressWithoutStateZip
+    ?.replace(/\s+\bin\s+[A-Z][a-z]+(?:\s[A-Z][a-z]+)?(?:\s*,?\s*(?:wisconsin|wi))?.*$/i, "")
+    .replace(/\s*,\s*[A-Z][a-z]+(?:\s[A-Z][a-z]+)?\s*$/i, "")
+    .replace(new RegExp(`\\b(${suffixPattern})\\s+[a-z]+(?:\\s+[a-z]+)?$`, "i"), "$1")
+    .trim();
+  claim("Address", streetOnly);
 
   // City — "in Pewaukee" / "Pewaukee, Wisconsin"
+  const cityFromStreet =
+    customerText.match(
+      new RegExp(`\\b${suffixPattern}\\s*,?\\s+([A-Z][a-z]+(?:\\s[A-Z][a-z]+)?)\\s*,?\\s*(?:wisconsin|wi|minnesota|mn)\\b`, "i")
+    ) ??
+    customerText.match(
+      /\d+\s+[A-Z][\w\s]+,\s*([A-Z][a-z]+(?:\s[A-Z][a-z]+)?)\s*,?\s*(?:wisconsin|wi|minnesota|mn)\b/i
+    );
   const cityMatch =
     customerText.match(/\bin\s+([A-Z][a-z]+(?:\s[A-Z][a-z]+)?)\s*,?\s*(?:wisconsin|wi|minnesota|mn)\b/i) ||
     customerText.match(/\b([A-Z][a-z]+(?:\s[A-Z][a-z]+)?)\s*,\s*(?:wisconsin|wi|minnesota|mn)\b/);
-  claim("City", cityMatch?.[1]);
+  const explicitCity =
+    customerText.match(/\b(?:city(?:\s+is|'s)?|located in|over in|out in)\s+([a-z]+(?:\s+[a-z]+)?)/i) ||
+    customerText.match(/\b(?:i'?m|i am|we'?re|we are)\s+in\s+([a-z]+(?:\s+[a-z]+)?)/i);
+  const cleanedCity = explicitCity?.[1]
+    ?.replace(/\b(?:and|but|with|near|by|for|about|because|the|a|an)\b.*$/i, "")
+    .trim();
+  claim("City", cityFromStreet?.[1] ?? cityMatch?.[1] ?? cityFromAddressTail ?? cleanedCity);
+  const stateMatch = customerText.match(/\b(WI|Wisconsin|MN|Minnesota)\b/i);
+  claim("State", stateMatch?.[1]?.replace(/^wisconsin$/i, "WI").replace(/^minnesota$/i, "MN"));
+  const zipMatch = customerText.match(/\b\d{5}(?:-\d{4})?\b/);
+  claim("ZIP", zipMatch?.[0]);
 
   if (/hail|storm|wind/i.test(all)) out["Service"] = "Storm damage / roofing";
   else if (/window/i.test(customerText)) out["Service"] = "Windows";
@@ -107,7 +231,7 @@ export function extractLiveFields(
   else if (/gutter/i.test(customerText)) out["Service"] = "Gutters";
   else if (/roof/i.test(customerText)) out["Service"] = "Roofing";
 
-  if (/water (spot|stain)|leak|dripping/i.test(customerText))
+  if (/water (spot|stain|is dripping)|leak|dripping/i.test(customerText))
     out["Active leak"] = "Likely — flagged urgent";
   if (/insurance/i.test(all)) {
     out["Insurance"] = /haven'?t|not yet|no[,.]?\s/i.test(customerText)

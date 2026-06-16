@@ -12,37 +12,36 @@ export default async function AppLayout({
 }: Readonly<{ children: React.ReactNode }>) {
   const supabase = await createClient();
   const profile = await getCurrentProfile(supabase);
+  const endOfTomorrow = new Date();
+  endOfTomorrow.setDate(endOfTomorrow.getDate() + 1);
+  endOfTomorrow.setHours(23, 59, 59, 999);
 
   // Notification badge counts (sidebar). Each refreshes via revalidatePath.
-  const now = new Date().toISOString();
-  const [draftsRes, overdueRes, followupRes] = await Promise.all([
-    supabase
-      .from("communications")
-      .select("id", { count: "exact", head: true })
-      .eq("status", "draft")
-      .eq("direction", "outbound"),
+  const [openTasksRes, inboxAttentionRes] = await Promise.all([
     supabase
       .from("tasks")
       .select("id", { count: "exact", head: true })
       .in("status", ["open", "in_progress"])
-      .lt("due_at", now),
+      .not("due_at", "is", null)
+      .lte("due_at", endOfTomorrow.toISOString()),
     supabase
-      .from("leads")
+      .from("communications")
       .select("id", { count: "exact", head: true })
-      .eq("stage", "follow_up_needed"),
+      .eq("direction", "inbound")
+      .eq("status", "received")
+      .contains("metadata", { needs_attention: true }),
   ]);
 
   const badges: Record<string, number> = {
-    "/app/inbox": draftsRes.count ?? 0,
-    "/app/tasks": overdueRes.count ?? 0,
-    "/app/follow-up": followupRes.count ?? 0,
+    "/app/inbox": inboxAttentionRes.count ?? 0,
+    "/app/tasks": openTasksRes.count ?? 0,
   };
 
   return (
     <CallProvider>
       <div className="flex min-h-screen" data-app-main>
         <AppSidebar profile={profile} badges={badges} />
-        <div className="flex min-w-0 flex-1 flex-col">
+        <div className="flex min-w-0 flex-1 flex-col" data-app-content>
           <AppHeader profile={profile} />
           <main className="flex-1 p-4 sm:p-6">{children}</main>
         </div>

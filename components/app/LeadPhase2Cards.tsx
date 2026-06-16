@@ -23,6 +23,7 @@ export function LeadPhase2Cards({
   appointments,
   quote,
   syncEvents,
+  section = "all",
 }: {
   lead: Lead;
   calls: CallWithRelations[];
@@ -30,16 +31,20 @@ export function LeadPhase2Cards({
   appointments: Appointment[];
   quote: QuoteEstimate | null;
   syncEvents: CrmSyncEvent[];
+  section?: "all" | "operations" | "intelligence";
 }) {
   const lastCall = calls.find((c) => c.summary) ?? calls[0] ?? null;
   const upcomingAppointment = appointments.find(
     (a) => a.status !== "cancelled" && new Date(a.start_time) >= new Date()
   );
+  const showOperations = section === "all" || section === "operations";
+  const showIntelligence = section === "all" || section === "intelligence";
 
   return (
     <>
       {/* Calls */}
-      <Card>
+      {showOperations && (
+      <Card data-tour="lead-calls-card">
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-base">
             <Phone className="h-4 w-4 text-primary" />
@@ -88,10 +93,11 @@ export function LeadPhase2Cards({
           </div>
         </CardContent>
       </Card>
+      )}
 
       {/* Appointments */}
-      {appointments.length > 0 && (
-        <Card>
+      {showOperations && appointments.length > 0 && (
+        <Card data-tour="lead-appointments-card">
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-base">
               <CalendarDays className="h-4 w-4 text-primary" />
@@ -118,8 +124,8 @@ export function LeadPhase2Cards({
       )}
 
       {/* Communications */}
-      {communications.length > 0 && (
-        <Card>
+      {showOperations && communications.length > 0 && (
+        <Card data-tour="lead-communications-card">
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-base">
               <MessageSquareText className="h-4 w-4 text-primary" />
@@ -134,11 +140,18 @@ export function LeadPhase2Cards({
                     {comm.channel} · {comm.direction}
                   </span>
                   <Badge variant="secondary" className="text-[10px]">
-                    {comm.status.replace(/_/g, " ")}
+                    {comm.status === "approved" && comm.scheduled_send_at
+                      ? "scheduled"
+                      : comm.status.replace(/_/g, " ")}
                   </Badge>
                   {comm.ai_generated && !comm.human_approved && (
                     <Badge variant="outline" className="text-[10px]">
                       needs approval
+                    </Badge>
+                  )}
+                  {comm.scheduled_send_at && (
+                    <Badge variant="outline" className="text-[10px]">
+                      {formatRelative(comm.scheduled_send_at)}
                     </Badge>
                   )}
                 </div>
@@ -153,7 +166,8 @@ export function LeadPhase2Cards({
       )}
 
       {/* Quote intelligence */}
-      <Card>
+      {showIntelligence && (
+      <Card data-tour="lead-quote-card">
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-base">
             <Calculator className="h-4 w-4 text-primary" />
@@ -187,9 +201,11 @@ export function LeadPhase2Cards({
           </Button>
         </CardContent>
       </Card>
+      )}
 
       {/* CRM sync */}
-      <Card>
+      {showIntelligence && (
+      <Card data-tour="lead-crm-sync-card">
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-base">
             <Cable className="h-4 w-4 text-primary" />
@@ -217,6 +233,7 @@ export function LeadPhase2Cards({
           <SyncLeadButton leadId={lead.id} />
         </CardContent>
       </Card>
+      )}
     </>
   );
 }

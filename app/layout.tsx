@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { DemoAutoReset } from "@/components/demo/DemoAutoReset";
 import { Toaster } from "@/components/ui/sonner";
 import "./globals.css";
 
@@ -17,6 +18,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className="min-h-screen font-sans">
+        <DemoAutoReset />
         {children}
         <Toaster position="top-right" richColors />
       </body>

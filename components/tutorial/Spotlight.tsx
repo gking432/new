@@ -15,7 +15,17 @@ interface Rect {
  * the dashboard stays fully usable — the user clicks the real element to move
  * on. Re-measures on an interval so it tracks layout/route changes.
  */
-export function Spotlight({ target, padding = 8 }: { target: string; padding?: number }) {
+export function Spotlight({
+  target,
+  padding = 8,
+  dim = true,
+  wiggle = false,
+}: {
+  target: string;
+  padding?: number;
+  dim?: boolean;
+  wiggle?: boolean;
+}) {
   const [rect, setRect] = useState<Rect | null>(null);
 
   useEffect(() => {
@@ -23,6 +33,7 @@ export function Spotlight({ target, padding = 8 }: { target: string; padding?: n
     function measure() {
       const el = document.querySelector<HTMLElement>(`[data-tour="${target}"]`);
       if (el) {
+        el.classList.toggle("tour-target-wiggle", wiggle);
         const r = el.getBoundingClientRect();
         if (r.width > 0 && r.height > 0) {
           setRect({ top: r.top, left: r.left, width: r.width, height: r.height });
@@ -40,12 +51,15 @@ export function Spotlight({ target, padding = 8 }: { target: string; padding?: n
     window.addEventListener("scroll", onScroll, true);
     window.addEventListener("resize", onScroll);
     return () => {
+      document
+        .querySelector<HTMLElement>(`[data-tour="${target}"]`)
+        ?.classList.remove("tour-target-wiggle");
       clearInterval(interval);
       cancelAnimationFrame(raf);
       window.removeEventListener("scroll", onScroll, true);
       window.removeEventListener("resize", onScroll);
     };
-  }, [target]);
+  }, [target, wiggle]);
 
   if (!rect) return null;
   const t = Math.max(0, rect.top - padding);
@@ -65,7 +79,9 @@ export function Spotlight({ target, padding = 8 }: { target: string; padding?: n
           width: w,
           height: h,
           boxShadow:
-            "0 0 0 3px rgba(255,255,255,0.9), 0 0 0 6px rgba(199,154,59,1), 0 0 28px 10px rgba(199,154,59,0.85), 0 0 0 9999px rgba(10,15,13,0.68)",
+            `0 0 0 3px rgba(255,255,255,0.9), 0 0 0 6px rgba(199,154,59,1), 0 0 28px 10px rgba(199,154,59,0.85)${
+              dim ? ", 0 0 0 9999px rgba(10,15,13,0.68)" : ""
+            }`,
         }}
       />
       {/* Pulsing outline for extra motion. */}

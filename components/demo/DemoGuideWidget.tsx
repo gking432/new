@@ -103,7 +103,7 @@ function Step({
 
 // ── Internal (dashboard) guide ───────────────────────────────────────────────
 
-interface SarahLead {
+interface LatestLead {
   id: string;
   first_name: string;
   last_name: string;
@@ -117,10 +117,10 @@ function InternalGuide({ close }: { close: () => void }) {
   const router = useRouter();
   const { startCall, callActive } = useCall();
   const [busy, setBusy] = useState<string | null>(null);
-  const [sarah, setSarah] = useState<SarahLead | null>(null);
+  const [latestLead, setLatestLead] = useState<LatestLead | null>(null);
 
   useEffect(() => {
-    void getDemoGuideContext().then((ctx) => setSarah(ctx.latestLead));
+    void getDemoGuideContext().then((ctx) => setLatestLead(ctx.latestLead));
   }, []);
 
   async function runSpeedToLead() {
@@ -150,21 +150,21 @@ function InternalGuide({ close }: { close: () => void }) {
   }
 
   function runExistingCustomerCall() {
-    if (!sarah) return;
+    if (!latestLead) return;
     close();
     startCall({
       scenario: "existing_customer_call",
-      leadId: sarah.id,
-      callerName: `${sarah.first_name} ${sarah.last_name}`,
-      callerPhone: sarah.phone,
-      subtitle: `${sarah.service_type.replace(/_/g, " ")} lead`,
+      leadId: latestLead.id,
+      callerName: `${latestLead.first_name} ${latestLead.last_name}`,
+      callerPhone: latestLead.phone,
+      subtitle: `${latestLead.service_type.replace(/_/g, " ")} lead`,
       direction: "inbound",
       navigateTo: "/app",
       crmContext: [
-        { label: "Name", value: `${sarah.first_name} ${sarah.last_name}` },
-        { label: "Stage", value: sarah.stage.replace(/_/g, " ") },
-        { label: "Urgency", value: sarah.urgency },
-        { label: "Service", value: sarah.service_type.replace(/_/g, " ") },
+        { label: "Name", value: `${latestLead.first_name} ${latestLead.last_name}` },
+        { label: "Stage", value: latestLead.stage.replace(/_/g, " ") },
+        { label: "Urgency", value: latestLead.urgency },
+        { label: "Service", value: latestLead.service_type.replace(/_/g, " ") },
       ],
     });
   }
@@ -189,7 +189,7 @@ function InternalGuide({ close }: { close: () => void }) {
       return;
     }
     result.data.events.forEach(appendDemoEvent);
-    toast.success("Sarah's text arrived — reply to it in the Inbox");
+    toast.success(`${result.data.leadName}'s text arrived — reply to it in the Inbox`);
     close();
     router.push("/app/inbox");
   }
@@ -253,14 +253,14 @@ function InternalGuide({ close }: { close: () => void }) {
         number={3}
         title="An existing customer calls back"
         body={
-          sarah
-            ? `${sarah.first_name} ${sarah.last_name} calls the office. The AI matches her number, shows her CRM record before you answer, and references her storm-damage request — no re-asking what we already know.`
-            : "Requires the seeded Sarah Mitchell lead — run `npm run seed` first."
+          latestLead
+            ? `${latestLead.first_name} ${latestLead.last_name} calls the office. The AI matches their number, shows the CRM record before you answer, and references the request — no re-asking what we already know.`
+            : "Create a lead first by running the speed-to-lead demo."
         }
       >
-        <Button size="sm" onClick={runExistingCustomerCall} disabled={callsBlocked || !sarah}>
+        <Button size="sm" onClick={runExistingCustomerCall} disabled={callsBlocked || !latestLead}>
           <PhoneIncoming className="h-3.5 w-3.5" />
-          Sarah calls the office
+          Customer calls the office
         </Button>
       </Step>
 
@@ -277,8 +277,8 @@ function InternalGuide({ close }: { close: () => void }) {
 
       <Step
         number={5}
-        title="The customer texts an update"
-        body="Sarah texts that the ceiling stain grew overnight. The AI matches her number, flags it urgent, creates a task, and drafts a reply — you'll review it in a chat-style thread."
+        title="Jordan texts an urgent update"
+        body="Jordan Avery texts that the leak is getting worse and asks if someone can come today. The AI matches the phone number, flags the message as urgent, creates a task, and suggests an open slot with Jess Romero."
       >
         <Button size="sm" onClick={runInboundText} disabled={busy !== null}>
           {busy === "text" ? (
@@ -286,14 +286,14 @@ function InternalGuide({ close }: { close: () => void }) {
           ) : (
             <MessageSquareText className="h-3.5 w-3.5" />
           )}
-          Sarah sends the text
+          Customer sends the text
         </Button>
       </Step>
 
       <Step
         number={6}
         title="A new prospect emails"
-        body="An email about replacing 12 windows comes in. The AI creates the lead, classifies the service, drafts the reply, and sets a follow-up task."
+        body="An email about replacing 12 windows comes in. The AI creates the lead, classifies the service, and flags the Inbox conversation so a team member can reply like a normal email."
       >
         <Button size="sm" onClick={runInboundEmail} disabled={busy !== null}>
           {busy === "email" ? (
@@ -301,14 +301,14 @@ function InternalGuide({ close }: { close: () => void }) {
           ) : (
             <Mail className="h-3.5 w-3.5" />
           )}
-          Send the email
+          Receive email lead
         </Button>
       </Step>
 
       <Step
         number={7}
         title="Explore the dashboard side"
-        body="The rest is what the team does in the dashboard: dry-run a HubSpot sync from CRM Sync, generate an internal ballpark in the Quote Tool, set estimator availability in Appointments, and watch the live event log in the Demo Center."
+        body="The rest is what the team does in the dashboard: dry-run a HubSpot sync from CRM Sync, generate an internal ballpark in the Quote Tool, set estimator availability in Appointments, review reports, and browse the automation library."
       >
         <Button size="sm" variant="outline" asChild>
           <Link href="/app/crm-sync" onClick={close}>
@@ -326,8 +326,8 @@ function InternalGuide({ close }: { close: () => void }) {
           </Link>
         </Button>
         <Button size="sm" variant="outline" asChild>
-          <Link href="/app/demo-center" onClick={close}>
-            Demo Center
+          <Link href="/app/automations" onClick={close}>
+            Automations
           </Link>
         </Button>
       </Step>

@@ -15,8 +15,6 @@ import {
   LogOut,
   MessageSquareText,
   Phone,
-  PlayCircle,
-  Send,
   Settings,
   Users,
   Workflow,
@@ -38,14 +36,12 @@ const NAV_ITEMS = [
   { href: "/app/pipeline", label: "Pipeline", icon: Kanban },
   { href: "/app/tasks", label: "Tasks", icon: ListChecks },
   { href: "/app/appointments", label: "Appointments", icon: CalendarDays },
-  { href: "/app/follow-up", label: "Follow-Up", icon: Send },
   { href: "/app/quote-tool", label: "Quote Tool", icon: Calculator },
   { href: "/app/feedback", label: "Feedback", icon: MessageSquareText },
   { href: "/app/automations", label: "Automations", icon: Workflow },
   { href: "/app/reports", label: "Reports", icon: BarChart3 },
   { href: "/app/crm-sync", label: "CRM Sync", icon: Cable },
   { href: "/app/settings", label: "Settings", icon: Settings },
-  { href: "/app/demo-center", label: "Demo Center", icon: PlayCircle },
 ];
 
 export function AppSidebar({
@@ -58,7 +54,7 @@ export function AppSidebar({
   const pathname = usePathname();
 
   return (
-    <aside className="hidden w-60 shrink-0 flex-col bg-sidebar text-sidebar-foreground lg:flex">
+    <aside className="sticky top-0 hidden h-screen w-60 shrink-0 flex-col bg-sidebar text-sidebar-foreground lg:flex">
       <div className="flex h-16 items-center gap-2 border-b border-white/10 px-5">
         <span className="flex h-8 w-8 items-center justify-center rounded-md bg-brand-gold/90 text-brand-dark">
           <Compass className="h-4 w-4" />

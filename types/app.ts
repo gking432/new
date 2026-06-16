@@ -373,6 +373,9 @@ export interface Communication {
   suggested_next_action: string | null;
   ai_generated: boolean;
   human_approved: boolean;
+  scheduled_send_at: string | null;
+  automation_key: string | null;
+  metadata: Record<string, unknown>;
   created_at: string;
   updated_at: string;
 }
@@ -508,6 +511,7 @@ export interface QuoteEstimate {
 
 export interface LeadWithRelations extends Lead {
   assigned_profile?: Profile | null;
+  secondary_contact?: Contact | null;
   analysis?: LeadAnalysis | null;
   tasks?: Task[];
   activities?: Activity[];

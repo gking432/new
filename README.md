@@ -82,6 +82,8 @@ cp .env.example .env.local
    - `supabase/migrations/002_rls_policies.sql`
    - `supabase/migrations/003_seed_data.sql`
    - `supabase/migrations/004_phase2_schema.sql` (calls, inbox, appointments, CRM sync, quotes)
+   - `supabase/migrations/005_evening_weekend_availability.sql`
+   - `supabase/migrations/006_communication_lifecycle.sql` (scheduled reminder lifecycle)
 
 ### 3. Set up demo users
 
@@ -106,6 +108,13 @@ and inbound-text scenarios reference the most recent lead you've created.
 Re-running `npm run seed` clears all customer/operational data back to a blank
 slate (config — users, settings, automations, availability — is preserved). For
 the old sample dataset during development, run `SEED_SAMPLE=1 npm run seed`.
+
+For the hosted portfolio demo, the app also resets itself automatically once
+per new browser tab/session on first load when `DEMO_AUTO_RESET_ON_LOAD` is not
+set to `false`. This clears leads, calls, messages, appointments, tasks,
+activities, quotes, CRM sync events, feedback, and contacts so every visitor
+starts from a blank slate. It intentionally preserves demo users, settings,
+automation rules, and availability windows.
 
 ### 4. AI (optional, recommended)
 
@@ -159,10 +168,10 @@ npm run dev
 
 ### Existing customer callback
 
-1. Demo Center → **Simulate Existing Customer Call** (Sarah Mitchell).
-2. The matched CRM record shows before you answer; the AI opens with her
-   prior storm-damage context, handles rescheduling/insurance questions, and
-   logs the second touchpoint to her timeline.
+1. Demo Center → **Simulate Existing Customer Call** (your latest created lead).
+2. The matched CRM record shows before you answer; the AI opens with the
+   prior request context, handles rescheduling/insurance questions, moves the
+   appointment if needed, and logs the second touchpoint to the timeline.
 
 ### Everything else
 
@@ -172,7 +181,8 @@ npm run dev
 - **Quote Tool** — pick a lead, generate the demo property profile, set storm
   context, and get a ballpark with line items, assumptions, and confidence.
 - **Appointments** — type availability in plain English and watch it become
-  bookable slots.
+  bookable slots; booked appointments schedule 24-hour and 1-hour reminder
+  texts that auto-send in demo mode when due.
 
 ## Safety / demo guardrails
 
@@ -189,7 +199,8 @@ npm run dev
 See `.env.example` for the full list with comments: Supabase keys, OpenAI
 (`AI_MODEL`, `REALTIME_MODEL`, `REALTIME_MAX_CALL_SECONDS`,
 `ENABLE_REALTIME_CALLS`), HubSpot (`HUBSPOT_PRIVATE_APP_TOKEN`,
-`ENABLE_HUBSPOT_LIVE_SYNC`), Google Calendar placeholders, and demo flags.
+`ENABLE_HUBSPOT_LIVE_SYNC`), webhook placeholders, and demo flags including
+`DEMO_AUTO_RESET_ON_LOAD`.
 
 ## Deployment
 

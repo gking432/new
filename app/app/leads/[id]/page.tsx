@@ -13,7 +13,6 @@ import {
 } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { ActivityTimeline } from "@/components/app/ActivityTimeline";
-import { LeadActionPanel } from "@/components/app/LeadActionPanel";
 import { LeadLiveCallPanel } from "@/components/app/LeadLiveCallPanel";
 import { LeadPhase2Cards } from "@/components/app/LeadPhase2Cards";
 import { LeadAssignSelect } from "@/components/app/LeadAssignSelect";
@@ -94,16 +93,18 @@ export default async function LeadDetailPage({
           <AlertTriangle className="h-4 w-4" />
           <AlertTitle>Rule-based analysis</AlertTitle>
           <AlertDescription>
-            The AI provider was unavailable when this lead arrived, so the saved analysis is a
-            deterministic fallback. Use &quot;Re-run AI Analysis&quot; once AI is configured.
+            This lead is using a deterministic demo analysis. Re-run AI Analysis when you want to
+            replace it with a live model-generated review.
           </AlertDescription>
         </Alert>
       )}
 
-      <div className="grid gap-6 xl:grid-cols-4">
+      <div className="grid gap-6 xl:grid-cols-[minmax(0,2fr)_minmax(320px,1fr)]">
+        <div className="space-y-6">
+          <div className="grid gap-6 lg:grid-cols-2">
         {/* Left: customer details */}
         <div className="space-y-6">
-          <Card>
+          <Card data-tour="lead-customer-card">
             <CardHeader>
               <CardTitle>Customer</CardTitle>
             </CardHeader>
@@ -126,11 +127,29 @@ export default async function LeadDetailPage({
                   }
                 />
                 <DetailRow label="Homeowner" value={lead.homeowner_status?.replace(/_/g, " ") ?? "—"} />
+                {lead.secondary_contact ? (
+                  <DetailRow
+                    label="Secondary contact"
+                    value={
+                      <span>
+                        {fullName(
+                          lead.secondary_contact.first_name ?? "",
+                          lead.secondary_contact.last_name ?? ""
+                        )}
+                        <span className="block text-xs font-normal text-muted-foreground">
+                          {[lead.secondary_contact.phone, lead.secondary_contact.email]
+                            .filter(Boolean)
+                            .join(" · ")}
+                        </span>
+                      </span>
+                    }
+                  />
+                ) : null}
               </dl>
             </CardContent>
           </Card>
 
-          <Card>
+          <Card data-tour="lead-request-card">
             <CardHeader>
               <CardTitle>Request</CardTitle>
             </CardHeader>
@@ -160,13 +179,14 @@ export default async function LeadDetailPage({
               <p className="mt-2 whitespace-pre-wrap text-sm">{lead.description}</p>
             </CardContent>
           </Card>
+
         </div>
 
-        {/* Center: live call → timeline (prominent) → collapsed AI analysis */}
-        <div className="space-y-6 xl:col-span-2">
+        {/* Center: live call → timeline (prominent) → AI analysis */}
+        <div className="space-y-6">
           <LeadLiveCallPanel leadId={lead.id} />
 
-          <Card>
+          <Card data-tour="lead-timeline">
             <CardHeader>
               <CardTitle>Activity Timeline</CardTitle>
               <CardDescription>
@@ -178,132 +198,135 @@ export default async function LeadDetailPage({
             </CardContent>
           </Card>
 
-          <details className="group rounded-xl border bg-card">
-            <summary className="flex cursor-pointer list-none items-center gap-2 p-5 text-sm font-semibold">
+        </div>
+          </div>
+
+        <Card data-tour="lead-analysis">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-base">
               <Bot className="h-4 w-4 text-primary" />
               AI Lead Analysis
-              {analysis ? (
-                <span className="text-xs font-normal text-muted-foreground">
-                  · {lead.ai_status === "completed" ? "AI" : "rule-based"} ·{" "}
-                  {formatDate(analysis.created_at)}
-                </span>
-              ) : null}
-              <span className="ml-auto text-xs font-normal text-muted-foreground group-open:hidden">
-                Show analysis ▾
-              </span>
-              <span className="ml-auto hidden text-xs font-normal text-muted-foreground group-open:inline">
-                Hide ▴
-              </span>
-            </summary>
-            <div className="space-y-4 px-5 pb-5">
-              {!analysis ? (
-                <p className="text-sm text-muted-foreground">
-                  No analysis yet. Use &quot;Re-run AI Analysis&quot; in the action panel.
-                </p>
-              ) : (
-                <>
-                  <div>
-                    <p className="text-sm">{analysis.summary}</p>
-                  </div>
-                  <div className="grid gap-4 sm:grid-cols-2">
-                    <div className="rounded-lg border bg-secondary/30 p-3">
-                      <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                        Urgency reasoning
-                      </p>
-                      <p className="mt-1 text-sm">{analysis.urgency_reasoning}</p>
-                    </div>
-                    <div className="rounded-lg border bg-secondary/30 p-3">
-                      <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                        Quality reasoning
-                      </p>
-                      <p className="mt-1 text-sm">{analysis.lead_quality_reasoning}</p>
-                    </div>
-                  </div>
-                  <div className="rounded-lg border border-primary/20 bg-primary/5 p-3">
-                    <p className="text-xs font-medium uppercase tracking-wide text-primary">
-                      Recommended next action
+            </CardTitle>
+            {analysis ? (
+              <CardDescription>
+                {lead.ai_status === "completed" ? "AI review" : "Automated review"} ·{" "}
+                {formatDate(analysis.created_at)}
+              </CardDescription>
+            ) : null}
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {!analysis ? (
+              <p className="text-sm text-muted-foreground">
+                No analysis yet. The next completed call or request will create one automatically.
+              </p>
+            ) : (
+              <>
+                <div>
+                  <p className="text-sm">{analysis.summary}</p>
+                </div>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="rounded-lg border bg-secondary/30 p-3">
+                    <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                      Urgency reasoning
                     </p>
-                    <p className="mt-1 text-sm font-medium">{analysis.recommended_next_action}</p>
-                    {analysis.recommended_contact_window ? (
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        Contact window: {analysis.recommended_contact_window}
-                      </p>
-                    ) : null}
+                    <p className="mt-1 text-sm">{analysis.urgency_reasoning}</p>
                   </div>
-                  {analysis.sales_questions.length > 0 && (
-                    <div>
-                      <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                        Key sales questions
-                      </p>
-                      <ul className="mt-2 list-disc space-y-1 pl-5 text-sm">
-                        {analysis.sales_questions.map((question) => (
-                          <li key={question}>{question}</li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-                  {analysis.potential_objections.length > 0 && (
-                    <div>
-                      <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                        Potential objections
-                      </p>
-                      <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-muted-foreground">
-                        {analysis.potential_objections.map((objection) => (
-                          <li key={objection}>{objection}</li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-                  {analysis.recommended_service_angle ? (
-                    <div>
-                      <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                        Recommended service angle
-                      </p>
-                      <p className="mt-1 text-sm">{analysis.recommended_service_angle}</p>
-                    </div>
+                  <div className="rounded-lg border bg-secondary/30 p-3">
+                    <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                      Quality reasoning
+                    </p>
+                    <p className="mt-1 text-sm">{analysis.lead_quality_reasoning}</p>
+                  </div>
+                </div>
+                <div className="rounded-lg border border-primary/20 bg-primary/5 p-3">
+                  <p className="text-xs font-medium uppercase tracking-wide text-primary">
+                    Recommended next action
+                  </p>
+                  <p className="mt-1 text-sm font-medium">{analysis.recommended_next_action}</p>
+                  {analysis.recommended_contact_window ? (
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Contact window: {analysis.recommended_contact_window}
+                    </p>
                   ) : null}
-                  {analysis.tags.length > 0 && (
-                    <div className="flex flex-wrap gap-1.5">
-                      {analysis.tags.map((tag) => (
-                        <Badge key={tag} variant="secondary" className="text-xs">
-                          {tag}
-                        </Badge>
+                </div>
+                {analysis.sales_questions.length > 0 && (
+                  <div>
+                    <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                      Key sales questions
+                    </p>
+                    <ul className="mt-2 list-disc space-y-1 pl-5 text-sm">
+                      {analysis.sales_questions.map((question) => (
+                        <li key={question}>{question}</li>
                       ))}
-                    </div>
-                  )}
-                </>
-              )}
-            </div>
-          </details>
+                    </ul>
+                  </div>
+                )}
+                {analysis.potential_objections.length > 0 && (
+                  <div>
+                    <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                      Potential objections
+                    </p>
+                    <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-muted-foreground">
+                      {analysis.potential_objections.map((objection) => (
+                        <li key={objection}>{objection}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                {analysis.recommended_service_angle ? (
+                  <div>
+                    <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                      Recommended service angle
+                    </p>
+                    <p className="mt-1 text-sm">{analysis.recommended_service_angle}</p>
+                  </div>
+                ) : null}
+                {analysis.tags.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5">
+                    {analysis.tags.map((tag) => (
+                      <Badge key={tag} variant="secondary" className="text-xs">
+                        {tag}
+                      </Badge>
+                    ))}
+                  </div>
+                )}
+              </>
+            )}
+          </CardContent>
+        </Card>
         </div>
 
-        {/* Right: action panel */}
+        {/* Right: action panel and related work */}
         <div className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle>Actions</CardTitle>
-              <CardDescription>AI drafts are editable before use.</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <LeadActionPanel leadId={lead.id} stage={lead.stage} />
-            </CardContent>
-          </Card>
-
           {(lead.tasks?.length ?? 0) > 0 && (
-            <Card>
+            <Card data-tour="lead-open-tasks">
               <CardHeader>
-                <CardTitle>Open tasks</CardTitle>
+                <CardTitle className="flex items-center justify-between gap-3">
+                  <span>Open tasks</span>
+                  <Badge className="bg-red-500 text-white">
+                    {
+                      lead.tasks!.filter(
+                        (task) => task.status === "open" || task.status === "in_progress"
+                      ).length
+                    }
+                  </Badge>
+                </CardTitle>
               </CardHeader>
               <CardContent>
                 <ul className="space-y-2">
                   {lead.tasks!
                     .filter((task) => task.status === "open" || task.status === "in_progress")
                     .map((task) => (
-                      <li key={task.id} className="rounded-md border p-2.5 text-sm">
+                      <li key={task.id}>
+                        <Link
+                          href={`/app/tasks?task=${task.id}`}
+                          className="block rounded-md border p-2.5 text-sm transition-colors hover:bg-secondary/70"
+                        >
                         <p className="font-medium">{task.title}</p>
                         <p className="mt-0.5 text-xs text-muted-foreground">
                           {task.priority} · {task.type?.replace(/_/g, " ")}
                         </p>
+                        </Link>
                       </li>
                     ))}
                 </ul>
@@ -338,8 +361,19 @@ export default async function LeadDetailPage({
             appointments={phase2.appointments}
             quote={phase2.quote}
             syncEvents={phase2.syncEvents}
+            section="operations"
+          />
+          <LeadPhase2Cards
+            lead={lead}
+            calls={phase2.calls}
+            communications={phase2.communications}
+            appointments={phase2.appointments}
+            quote={phase2.quote}
+            syncEvents={phase2.syncEvents}
+            section="intelligence"
           />
         </div>
+
       </div>
     </div>
   );

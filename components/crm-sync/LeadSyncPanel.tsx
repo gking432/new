@@ -89,7 +89,13 @@ export function LeadSyncPanel({ leads }: { leads: SyncableLead[] }) {
             </div>
           ))}
           {leads.length === 0 && (
-            <p className="py-6 text-center text-sm text-muted-foreground">No leads yet.</p>
+            <div className="rounded-lg border border-dashed p-6 text-center">
+              <p className="text-sm font-medium">No leads ready to sync yet.</p>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Run the guided tour or create a lead first. Then this panel will show a HubSpot
+                dry-run button for that lead so the payload has real CRM data.
+              </p>
+            </div>
           )}
         </CardContent>
       </Card>

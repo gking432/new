@@ -111,6 +111,11 @@ export function PipelineBoard({ leads }: { leads: LeadWithRelations[] }) {
                         estimatedValueMidpoint(lead.estimated_value_min, lead.estimated_value_max)
                       )}
                     </p>
+                    {lead.source ? (
+                      <p className="mt-1 text-[11px] font-medium text-muted-foreground">
+                        via {lead.source.replace(/_/g, " ")}
+                      </p>
+                    ) : null}
                     {lead.analysis?.recommended_next_action ? (
                       <p className="mt-1.5 line-clamp-2 text-xs text-muted-foreground">
                         {lead.analysis.recommended_next_action}

@@ -22,6 +22,7 @@ export interface SessionResponse {
   mode: "realtime" | "scripted_fallback";
   max_seconds: number;
   scripted: ScriptedScenario;
+  seedFields?: Record<string, string | null>;
   realtime_error?: string;
   client_secret?: string;
   webrtc_url?: string;
@@ -39,6 +40,9 @@ export interface CallEngineOptions {
   persona?: "agent" | "customer";
   // Ground-truth facts to seed the summary (used by scripted + AI-customer modes).
   seedFields?: Record<string, string | null>;
+  // Rep-assisted intake calls should not create CRM records until the user
+  // reviews the live-filled form and clicks Save Lead.
+  deferLeadCreation?: boolean;
   onEvent?: (label: string) => void;
   onAnswered?: () => void;
   onFinished?: (result: CompleteCallResult) => void;
@@ -144,13 +148,16 @@ export function useCallEngine(options: CallEngineOptions) {
         mode: modeRef.current === "scripted" ? "scripted_fallback" : "realtime",
         // When the AI played the homeowner, its lines ARE the customer's.
         aiRole: optionsRef.current.persona === "customer" ? "customer" : "agent",
-        // Seed facts are ONLY for scripted/AI-to-AI calls (the script is the
-        // conversation). Live calls are summarized purely from the transcript,
-        // so a failed/empty call never fabricates data.
+        // Seed facts are only used for scripted/fallback calls. Realtime calls
+        // must be summarized from what was actually said on the call.
         seedFields:
           modeRef.current === "scripted"
-            ? (scriptedSeed ?? optionsRef.current.seedFields ?? sessionRef.current?.scripted.seedFields)
+            ? (scriptedSeed ??
+              optionsRef.current.seedFields ??
+              sessionRef.current?.seedFields ??
+              sessionRef.current?.scripted.seedFields)
             : undefined,
+        deferLeadCreation: optionsRef.current.deferLeadCreation,
       });
       if (!response.success) {
         setPhase("failed");
@@ -240,7 +247,9 @@ export function useCallEngine(options: CallEngineOptions) {
           setPhase("connected");
           emit("Live AI voice connected");
           optionsRef.current.onAnswered?.();
-          dc.send(JSON.stringify({ type: "response.create" }));
+          if (optionsRef.current.persona !== "customer") {
+            dc.send(JSON.stringify({ type: "response.create" }));
+          }
         };
 
         dc.onmessage = (event) => {
@@ -330,8 +339,9 @@ export function useCallEngine(options: CallEngineOptions) {
           scenario: opts.scenario,
           leadId: opts.leadId,
           callerName: opts.callerName,
-          callerPhone: opts.callerPhone,
+          callerPhone: opts.callerPhone ?? undefined,
           persona: opts.persona ?? "agent",
+          seedFields: opts.seedFields,
         }),
       });
       if (!res.ok) throw new Error("Session request failed");

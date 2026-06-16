@@ -26,7 +26,7 @@ import { STAGE_STYLES, LEAD_STAGES } from "@/lib/utils/statuses";
 export const dynamic = "force-dynamic";
 
 const AI_INSIGHTS = [
-  "Storm damage leads convert faster when contacted within 15 minutes — keep the urgent call queue clear.",
+  "Storm damage leads convert faster when the first response happens immediately — keep urgent follow-up moving.",
   "Three recent feedback items mention appointment communication delays. Worth a process check before it shows up in reviews.",
   "Window leads from Facebook are high volume but book at a lower rate — qualify budget early in the first call.",
   "Bath and window projects carry the highest average estimated value in the current pipeline.",

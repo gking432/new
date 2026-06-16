@@ -257,7 +257,7 @@ export function DemoCenterClient({
         <ScenarioCard
           icon={MessageSquareText}
           title="Simulate Inbound Text"
-          description="Your latest customer texts an urgent update. The AI matches the number, scores it High, creates a task, and drafts a reply — review it in a real message thread."
+          description="Jordan Avery texts that the leak is getting worse. The AI matches the number, flags it urgent, creates a task, and finds Jess Romero's next same-day opening."
         >
           <Button variant="outline" onClick={runInboundText} disabled={busy !== null}>
             {busy === "text" ? <Loader2 className="h-4 w-4 animate-spin" /> : <MessageSquareText className="h-4 w-4" />}
@@ -269,7 +269,7 @@ export function DemoCenterClient({
         <ScenarioCard
           icon={Mail}
           title="Simulate Inbound Email"
-          description="A new prospect emails about replacing 12 windows. The AI creates the lead, classifies the service, and drafts the reply for approval."
+          description="A new prospect emails about replacing 12 windows. The AI creates the lead, classifies the service, and flags the Inbox conversation for a normal reply."
         >
           <Button variant="outline" onClick={runInboundEmail} disabled={busy !== null}>
             {busy === "email" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Mail className="h-4 w-4" />}

@@ -11,7 +11,12 @@ import { createClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
 
-export default async function AppointmentsPage() {
+export default async function AppointmentsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ estimator?: string; slot?: string }>;
+}) {
+  const { estimator, slot } = await searchParams;
   const supabase = await createClient();
   const [appointments, windows, leads, slots, profiles] = await Promise.all([
     getAppointments(supabase),
@@ -20,6 +25,23 @@ export default async function AppointmentsPage() {
     getAvailableSlots(supabase, 7, 10),
     getProfiles(supabase),
   ]);
+
+  const normalizedEstimator = estimator?.toLowerCase();
+  const jessEstimator = profiles.find((profile) => profile.full_name.toLowerCase() === "jess romero");
+  const nextBookedEstimatorId =
+    appointments.find(
+      (appointment) =>
+        appointment.assigned_to &&
+        appointment.status !== "cancelled" &&
+        new Date(appointment.end_time) >= new Date()
+    )?.assigned_to ?? null;
+  const initialEstimator =
+    profiles.find((profile) => profile.id === estimator) ??
+    profiles.find((profile) => profile.full_name.toLowerCase().replace(/\s+/g, "-") === normalizedEstimator) ??
+    profiles.find((profile) => profile.full_name.toLowerCase() === normalizedEstimator) ??
+    profiles.find((profile) => profile.id === nextBookedEstimatorId) ??
+    jessEstimator ??
+    null;
 
   return (
     <div className="space-y-6">
@@ -39,7 +61,13 @@ export default async function AppointmentsPage() {
         }))}
         leads={leads.filter((l) => !["won", "lost"].includes(l.stage))}
       />
-      <AvailabilityEditor windows={windows} profiles={profiles} />
+      <AvailabilityEditor
+        windows={windows}
+        profiles={profiles}
+        appointments={appointments}
+        initialEstimatorId={initialEstimator?.id ?? null}
+        highlightedSlotStart={slot ?? null}
+      />
     </div>
   );
 }

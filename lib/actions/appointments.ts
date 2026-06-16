@@ -4,11 +4,19 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { callStructuredAI, isAIConfigured } from "@/lib/ai/client";
+import { scheduleAppointmentReminders } from "@/lib/communications/reminders";
 import { createClient } from "@/lib/supabase/server";
+import { customerServiceLabel } from "@/lib/utils/statuses";
 
 type ActionResult<T = undefined> =
   | { success: true; data: T }
   | { success: false; error: string };
+
+function safeGreetingName(firstName: string | null | undefined) {
+  const cleaned = firstName?.trim();
+  if (!cleaned || /^(new|unknown|caller|homeowner|customer)$/i.test(cleaned)) return "there";
+  return cleaned;
+}
 
 async function requireUser(supabase: SupabaseClient) {
   const {
@@ -30,10 +38,11 @@ export async function createAppointment(input: {
     const user = await requireUser(supabase);
     const { data: lead } = await supabase
       .from("leads")
-      .select("id, first_name, last_name, service_type, street_address, city, stage")
+      .select("id, first_name, last_name, phone, service_type, street_address, city, stage")
       .eq("id", input.lead_id)
       .single();
     if (!lead) return { success: false, error: "Lead not found" };
+    const serviceLabel = customerServiceLabel(lead.service_type);
 
     const { data: appt, error } = await supabase
       .from("appointments")
@@ -41,7 +50,7 @@ export async function createAppointment(input: {
         lead_id: lead.id,
         title:
           input.title ??
-          `${lead.service_type.replace(/_/g, " ")} inspection — ${lead.first_name} ${lead.last_name}`,
+          `${serviceLabel} inspection — ${lead.first_name} ${lead.last_name}`,
         appointment_type: "inspection",
         start_time: input.start_time,
         end_time: input.end_time,
@@ -83,11 +92,18 @@ export async function createAppointment(input: {
       status: "draft",
       from_value: "Northstar Exterior & Home",
       subject: "Appointment confirmation",
-      body: `Hi ${lead.first_name}, your ${lead.service_type.replace(/_/g, " ")} inspection with Northstar Exterior & Home is set for ${new Date(
+      body: `Hi ${safeGreetingName(lead.first_name)}, your ${serviceLabel.toLowerCase()} inspection with Northstar Exterior & Home is set for ${new Date(
         appt.start_time
       ).toLocaleString("en-US", { weekday: "long", month: "long", day: "numeric", hour: "numeric", minute: "2-digit" })}. Reply here if anything changes.`,
       ai_generated: true,
       human_approved: false,
+    });
+
+    await scheduleAppointmentReminders(supabase, {
+      lead,
+      appointmentId: appt.id,
+      startTime: appt.start_time,
+      source: "manual",
     });
 
     revalidatePath("/app", "layout");

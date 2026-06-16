@@ -70,7 +70,13 @@ export async function getLeadDetail(
 
   if (!lead) return null;
 
-  const [{ data: analysis }, { data: tasks }, { data: activities }, { data: followups }] =
+  const [
+    { data: analysis },
+    { data: tasks },
+    { data: activities },
+    { data: followups },
+    { data: secondaryContact },
+  ] =
     await Promise.all([
       supabase
         .from("lead_ai_analyses")
@@ -92,10 +98,19 @@ export async function getLeadDetail(
         .eq("lead_id", id)
         .order("created_at", { ascending: false })
         .limit(10),
+      supabase
+        .from("contacts")
+        .select("*")
+        .eq("external_crm_provider", "northstar_secondary_contact")
+        .eq("external_crm_id", id)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle(),
     ]);
 
   return {
     ...(lead as unknown as LeadWithRelations),
+    secondary_contact: secondaryContact ?? null,
     analysis: (analysis as LeadAnalysis | null) ?? null,
     tasks: (tasks ?? []) as LeadWithRelations["tasks"],
     activities: (activities ?? []) as Activity[],

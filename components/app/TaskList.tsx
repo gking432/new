@@ -1,8 +1,9 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useTransition } from "react";
-import { AlarmClock, Check, ExternalLink } from "lucide-react";
+import { AlarmClock, Check, ExternalLink, MessageSquareText } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -14,7 +15,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 import { snoozeTask, updateTaskStatus } from "@/lib/actions";
-import { formatRelative, fullName, isPastDue } from "@/lib/utils/format";
+import { formatTaskDueDate, fullName, isPastDue } from "@/lib/utils/format";
 import { PRIORITY_STYLES, SERVICE_LABELS } from "@/lib/utils/statuses";
 import type { TaskWithLead } from "@/types/app";
 
@@ -22,18 +23,25 @@ export function TaskList({
   tasks,
   emptyMessage = "No tasks here. Nice work.",
   compact = false,
+  highlightTaskId,
 }: {
   tasks: TaskWithLead[];
   emptyMessage?: string;
   compact?: boolean;
+  highlightTaskId?: string;
 }) {
+  const router = useRouter();
   const [pending, startTransition] = useTransition();
 
   function complete(taskId: string) {
     startTransition(async () => {
       const result = await updateTaskStatus(taskId, "complete");
-      if (result.success) toast.success("Task completed");
-      else toast.error(result.error);
+      if (result.success) {
+        toast.success("Task completed");
+        window.dispatchEvent(new CustomEvent("northstar-task-completed"));
+      } else {
+        toast.error(result.error);
+      }
     });
   }
 
@@ -45,17 +53,43 @@ export function TaskList({
     });
   }
 
+  function taskHref(task: TaskWithLead) {
+    const opensApprovalQueue =
+      task.status !== "complete" &&
+      (task.type === "sms" ||
+        /confirmation|sms|text|approval queue|secondary contact/i.test(
+          `${task.title} ${task.description ?? ""}`
+        ));
+    if (opensApprovalQueue) {
+      return `/app/inbox${task.lead ? `?lead=${task.lead.id}` : ""}`;
+    }
+    if (task.lead) return `/app/leads/${task.lead.id}`;
+    return null;
+  }
+
   if (tasks.length === 0) {
     return <p className="py-8 text-center text-sm text-muted-foreground">{emptyMessage}</p>;
   }
 
   return (
     <ul className="divide-y">
-      {tasks.map((task) => {
+      {tasks.map((task, index) => {
         const overdue = task.status !== "complete" && isPastDue(task.due_at);
         const priority = PRIORITY_STYLES[task.priority];
+        const href = taskHref(task);
+        const opensApprovalQueue = href?.startsWith("/app/inbox") ?? false;
         return (
-          <li key={task.id} className="flex items-start gap-3 py-3">
+          <li
+            key={task.id}
+            className={cn(
+              "flex items-start gap-3 py-3",
+              href && "cursor-pointer rounded-md px-2 transition-colors hover:bg-secondary/60",
+              task.id === highlightTaskId && "ring-2 ring-brand-gold"
+            )}
+            onClick={() => {
+              if (href) router.push(href);
+            }}
+          >
             <Button
               variant="outline"
               size="icon"
@@ -64,8 +98,12 @@ export function TaskList({
                 task.status === "complete" && "bg-status-success text-white border-status-success"
               )}
               disabled={pending || task.status === "complete"}
-              onClick={() => complete(task.id)}
+              onClick={(event) => {
+                event.stopPropagation();
+                complete(task.id);
+              }}
               title="Mark complete"
+              data-tour={index === 0 && task.status !== "complete" ? "task-complete-button" : undefined}
             >
               <Check className="h-3 w-3" />
             </Button>
@@ -92,9 +130,8 @@ export function TaskList({
                 ) : null}
                 {task.assigned_profile ? <>{task.assigned_profile.full_name} · </> : null}
                 <span className={cn(overdue && "font-medium text-status-urgent")}>
-                  {task.due_at
-                    ? `${overdue ? "Overdue — due" : "Due"} ${formatRelative(task.due_at)}`
-                    : "No due date"}
+                  {overdue ? "Overdue — due " : "Due "}
+                  {formatTaskDueDate(task.due_at)}
                 </span>
               </p>
               {!compact && task.description ? (
@@ -107,7 +144,13 @@ export function TaskList({
               {task.status !== "complete" && (
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
-                    <Button variant="ghost" size="icon" className="h-7 w-7" title="Snooze">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7"
+                      title="Snooze"
+                      onClick={(event) => event.stopPropagation()}
+                    >
                       <AlarmClock className="h-3.5 w-3.5" />
                     </Button>
                   </DropdownMenuTrigger>
@@ -124,9 +167,29 @@ export function TaskList({
                   </DropdownMenuContent>
                 </DropdownMenu>
               )}
+              {opensApprovalQueue ? (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7"
+                  asChild
+                  title="Review draft"
+                  data-tour={index === 0 ? "task-confirmation-link" : undefined}
+                >
+                  <Link
+                    href={href ?? `/app/inbox${task.lead ? `?lead=${task.lead.id}` : ""}`}
+                    onClick={(event) => event.stopPropagation()}
+                  >
+                    <MessageSquareText className="h-3.5 w-3.5" />
+                  </Link>
+                </Button>
+              ) : null}
               {task.lead ? (
                 <Button variant="ghost" size="icon" className="h-7 w-7" asChild title="Open lead">
-                  <Link href={`/app/leads/${task.lead.id}`}>
+                  <Link
+                    href={`/app/leads/${task.lead.id}`}
+                    onClick={(event) => event.stopPropagation()}
+                  >
                     <ExternalLink className="h-3.5 w-3.5" />
                   </Link>
                 </Button>

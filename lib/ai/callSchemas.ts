@@ -28,6 +28,8 @@ export const CallSummarySchema = z.object({
     phone: z.string().nullable(),
     address: z.string().nullable(),
     city: z.string().nullable(),
+    state: z.string().nullable(),
+    zip_code: z.string().nullable(),
     active_leak: z.string().nullable(),
     insurance_started: z.string().nullable(),
     roof_age: z.string().nullable(),
@@ -77,5 +79,5 @@ Full call transcript ("AI" is the company assistant, "Customer" is the caller):
 
 ${args.transcript}
 
-Return JSON with these exact keys: summary, crm_note, customer_intent, service_type, urgency, lead_quality, next_action, appointment_requested, appointment_time, objections (array of strings), extracted_fields (object with first_name, last_name, email, phone, address, city, active_leak, insurance_started, roof_age, siding_age, last_painted, preferred_contact_method — use null for anything not mentioned), recommended_tasks (array of {title, description, priority, due_in_minutes}), confirmation_message_draft (a short SMS-length confirmation the team could send after approval).`;
+Return JSON with these exact keys: summary, crm_note, customer_intent, service_type, urgency, lead_quality, next_action, appointment_requested, appointment_time, objections (array of strings), extracted_fields (object with first_name, last_name, email, phone, address, city, state, zip_code, active_leak, insurance_started, roof_age, siding_age, last_painted, preferred_contact_method — use null for anything not mentioned), recommended_tasks (array of {title, description, priority, due_in_minutes}), confirmation_message_draft (a short SMS-length confirmation the team could send after approval).`;
 }

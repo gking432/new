@@ -27,7 +27,8 @@ const requestSchema = z.object({
   scenario: z.enum(["new_inbound_call", "existing_customer_call", "speed_to_lead_outbound"]),
   leadId: z.string().uuid().optional(),
   callerName: z.string().max(120).optional(),
-  callerPhone: z.string().max(40).optional(),
+  callerPhone: z.string().max(40).nullable().optional(),
+  seedFields: z.record(z.string(), z.string().nullable()).optional(),
   // "agent" = our AI answers/calls the human. "customer" = the AI plays the
   // homeowner and the human is the company rep (you-answer-an-AI-customer mode).
   persona: z.enum(["agent", "customer"]).optional(),
@@ -236,7 +237,15 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Backend is not configured" }, { status: 503 });
   }
 
-  const { scenario, leadId, callerName, callerPhone, persona = "agent", forceScripted } = parsed.data;
+  const {
+    scenario,
+    leadId,
+    callerName,
+    callerPhone,
+    seedFields,
+    persona = "agent",
+    forceScripted,
+  } = parsed.data;
 
   let lead: Lead | null = null;
   if (leadId) {
@@ -271,7 +280,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Could not create call record" }, { status: 500 });
   }
 
-  const slots = await getAvailableSlots(supabase, 7, 8);
+  const slots = await getAvailableSlots(supabase, 14, 12);
   const slotLabels = slots.map((s) => s.label);
   const maxSeconds = Number(process.env.REALTIME_MAX_CALL_SECONDS || 180);
   const scripted = getScriptedScenario(scenario, lead);
@@ -281,6 +290,7 @@ export async function POST(request: Request) {
     scenario,
     max_seconds: maxSeconds,
     scripted,
+    seedFields,
     lead: lead
       ? { id: lead.id, first_name: lead.first_name, last_name: lead.last_name, phone: lead.phone }
       : null,

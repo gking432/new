@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { ChevronDown, Loader2, Plus, Sparkles, Trash2 } from "lucide-react";
+import { CalendarRange, ChevronDown, Loader2, Plus, Sparkles, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -21,7 +21,7 @@ import {
   deleteAvailabilityWindow,
   setAvailabilityFromText,
 } from "@/lib/actions/appointments";
-import type { AvailabilityWindow, Profile } from "@/types/app";
+import type { AppointmentWithLead, AvailabilityWindow, Profile } from "@/types/app";
 
 const DAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 const TIME_OPTIONS = Array.from({ length: 25 }, (_, i) => {
@@ -37,6 +37,69 @@ function formatTime(t: string) {
   return `${hour}:${String(m).padStart(2, "0")} ${period}`;
 }
 
+function nextDateForDay(dayOfWeek: number) {
+  const date = new Date();
+  const daysAhead = (dayOfWeek - date.getDay() + 7) % 7;
+  date.setDate(date.getDate() + daysAhead);
+  return date;
+}
+
+function formatAvailabilityDate(dayOfWeek: number) {
+  const date = nextDateForDay(dayOfWeek);
+  return `${String(date.getMonth() + 1).padStart(2, "0")}/${String(date.getDate()).padStart(2, "0")}`;
+}
+
+function demoDate(daysAhead: number, hour: number, minute = 0) {
+  const date = new Date();
+  date.setDate(date.getDate() + daysAhead);
+  date.setHours(hour, minute, 0, 0);
+  return date;
+}
+
+function fallbackDemoAppointments(estimatorId: string, estimatorName: string): AppointmentWithLead[] {
+  if (!estimatorId) return [];
+  const seed = estimatorName.length % 3;
+  const starts = [
+    demoDate(0, 10 + seed, 30),
+    demoDate(1, 13 + seed, 0),
+    demoDate(3, 9 + seed, 0),
+  ];
+  return starts.map((start, index) => {
+    const end = new Date(start.getTime() + 60 * 60_000);
+    const service = index === 0 ? "roofing" : index === 1 ? "windows" : "siding";
+    const firstName = index === 0 ? "Marta" : index === 1 ? "Eli" : "Nora";
+    const lastName = index === 0 ? "Fields" : index === 1 ? "Bennett" : "Klein";
+    return {
+      id: `demo-${estimatorId}-${index}`,
+      lead_id: null,
+      contact_id: null,
+      title: `${service} inspection — ${firstName} ${lastName}`,
+      appointment_type: "inspection",
+      start_time: start.toISOString(),
+      end_time: end.toISOString(),
+      status: "scheduled",
+      location: null,
+      assigned_to: estimatorId,
+      source: "manual",
+      external_calendar_id: null,
+      created_at: start.toISOString(),
+      updated_at: start.toISOString(),
+      lead: {
+        id: `demo-lead-${index}`,
+        first_name: firstName,
+        last_name: lastName,
+        service_type: service,
+        urgency: index === 0 ? "high" : "medium",
+      },
+      assigned_profile: {
+        id: estimatorId,
+        full_name: estimatorName,
+        role: "sales_rep",
+      },
+    } as AppointmentWithLead;
+  });
+}
+
 /**
  * Estimator availability: the schedule the AI call assistant books against.
  * Windows are set manually per estimator (the people who actually run
@@ -45,9 +108,15 @@ function formatTime(t: string) {
 export function AvailabilityEditor({
   windows,
   profiles,
+  appointments,
+  initialEstimatorId,
+  highlightedSlotStart,
 }: {
   windows: AvailabilityWindow[];
   profiles: Pick<Profile, "id" | "full_name" | "role">[];
+  appointments: AppointmentWithLead[];
+  initialEstimatorId?: string | null;
+  highlightedSlotStart?: string | null;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -56,7 +125,9 @@ export function AvailabilityEditor({
   const estimators = profiles.filter((p) => p.role !== "admin");
   const fallbackEstimators = estimators.length > 0 ? estimators : profiles;
 
-  const [estimatorId, setEstimatorId] = useState<string>(fallbackEstimators[0]?.id ?? "");
+  const [estimatorId, setEstimatorId] = useState<string>(
+    initialEstimatorId ?? fallbackEstimators[0]?.id ?? ""
+  );
   const [day, setDay] = useState("1");
   const [startTime, setStartTime] = useState("09:00");
   const [endTime, setEndTime] = useState("17:00");
@@ -65,6 +136,50 @@ export function AvailabilityEditor({
   const [text, setText] = useState("");
 
   const nameById = new Map(profiles.map((p) => [p.id, p.full_name]));
+  const selectedEstimatorName = nameById.get(estimatorId) ?? "selected estimator";
+  const highlightedSlot = highlightedSlotStart ? new Date(highlightedSlotStart) : null;
+  const estimatorAppointments = appointments
+    .filter(
+      (appointment) =>
+        appointment.assigned_to === estimatorId &&
+        appointment.status !== "cancelled" &&
+        new Date(appointment.end_time) >= new Date()
+    )
+    .sort((a, b) => new Date(a.start_time).getTime() - new Date(b.start_time).getTime());
+
+  const demoCalendarAppointments =
+    estimatorAppointments.length > 0
+      ? estimatorAppointments
+      : fallbackDemoAppointments(estimatorId, selectedEstimatorName);
+
+  function windowStart(win: AvailabilityWindow) {
+    const start = nextDateForDay(win.day_of_week);
+    const [hours, minutes] = win.start_time.split(":").map(Number);
+    start.setHours(hours, minutes ?? 0, 0, 0);
+    return start;
+  }
+
+  function windowEnd(win: AvailabilityWindow) {
+    const end = nextDateForDay(win.day_of_week);
+    const [hours, minutes] = win.end_time.split(":").map(Number);
+    end.setHours(hours, minutes ?? 0, 0, 0);
+    return end;
+  }
+
+  function isBookedWindow(win: AvailabilityWindow) {
+    const start = windowStart(win).getTime();
+    const end = windowEnd(win).getTime();
+    return estimatorAppointments.some((appointment) => {
+      const apptStart = new Date(appointment.start_time).getTime();
+      const apptEnd = new Date(appointment.end_time).getTime();
+      return apptStart < end && apptEnd > start;
+    });
+  }
+
+  function isHighlightedWindow(win: AvailabilityWindow) {
+    if (!highlightedSlot || Number.isNaN(highlightedSlot.getTime())) return false;
+    return Math.abs(windowStart(win).getTime() - highlightedSlot.getTime()) < 15 * 60_000;
+  }
 
   function addWindow() {
     startTransition(async () => {
@@ -107,9 +222,10 @@ export function AvailabilityEditor({
     });
   }
 
-  // Group windows by estimator for display.
+  // Group windows by estimator for display. The selected estimator also acts
+  // as the quick filter the tour uses when checking Jess Romero.
   const grouped = new Map<string, AvailabilityWindow[]>();
-  for (const win of windows) {
+  for (const win of windows.filter((win) => (!estimatorId || win.user_id === estimatorId) && !isBookedWindow(win))) {
     const key = win.user_id ?? "company";
     if (!grouped.has(key)) grouped.set(key, []);
     grouped.get(key)!.push(win);
@@ -130,7 +246,7 @@ export function AvailabilityEditor({
           <div className="space-y-1.5 lg:col-span-2">
             <Label>Estimator</Label>
             <Select value={estimatorId} onValueChange={setEstimatorId}>
-              <SelectTrigger>
+              <SelectTrigger data-tour="appointments-estimator-filter">
                 <SelectValue placeholder="Select…" />
               </SelectTrigger>
               <SelectContent>
@@ -143,7 +259,7 @@ export function AvailabilityEditor({
             </Select>
           </div>
           <div className="space-y-1.5">
-            <Label>Day</Label>
+            <Label>Date</Label>
             <Select value={day} onValueChange={setDay}>
               <SelectTrigger>
                 <SelectValue />
@@ -151,7 +267,7 @@ export function AvailabilityEditor({
               <SelectContent>
                 {DAYS.map((name, idx) => (
                   <SelectItem key={name} value={String(idx)}>
-                    {name}
+                    {formatAvailabilityDate(idx)}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -240,10 +356,18 @@ export function AvailabilityEditor({
         </div>
 
         {/* Current windows, grouped by estimator */}
-        <div className="space-y-3 border-t pt-4">
-          {windows.length === 0 ? (
+        <div className="grid gap-4 border-t pt-4 lg:grid-cols-2">
+          <div className="space-y-3">
+            <div>
+              <p className="text-sm font-medium">Open availability windows</p>
+              <p className="text-xs text-muted-foreground">
+                Recurring windows the AI can book against. Booked appointments are blocked on the
+                calendar view.
+              </p>
+            </div>
+          {grouped.size === 0 ? (
             <p className="text-sm text-muted-foreground">
-              No windows configured — the default Mon–Fri 9–5 schedule applies.
+              No windows configured for this estimator yet.
             </p>
           ) : (
             [...grouped.entries()].map(([key, wins]) => (
@@ -253,34 +377,94 @@ export function AvailabilityEditor({
                 </p>
                 <div className="space-y-1.5">
                   {wins
-                    .sort((a, b) => a.day_of_week - b.day_of_week || a.start_time.localeCompare(b.start_time))
-                    .map((win) => (
-                      <div
-                        key={win.id}
-                        className="flex items-center justify-between gap-2 rounded-md border px-3 py-1.5 text-sm"
-                      >
-                        <span className="w-24 font-medium">{DAYS[win.day_of_week]}</span>
-                        <span className="flex-1 text-muted-foreground">
-                          {formatTime(win.start_time)} – {formatTime(win.end_time)}
-                        </span>
-                        <Badge variant="secondary" className="text-[10px]">
-                          {win.slot_minutes} min
-                        </Badge>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-7 w-7"
-                          disabled={pending}
-                          onClick={() => remove(win.id)}
+                    .sort(
+                      (a, b) =>
+                        nextDateForDay(a.day_of_week).getTime() -
+                          nextDateForDay(b.day_of_week).getTime() ||
+                        a.start_time.localeCompare(b.start_time)
+                    )
+                    .map((win) => {
+                      const highlighted = isHighlightedWindow(win);
+                      return (
+                        <div
+                          key={win.id}
+                          data-tour={highlighted ? "appointments-suggested-slot" : undefined}
+                          className={`flex items-center justify-between gap-2 rounded-md border px-3 py-1.5 text-sm ${
+                            highlighted
+                              ? "border-brand-gold bg-brand-gold/10 shadow-[0_0_0_3px_rgba(217,167,65,0.25)]"
+                              : ""
+                          }`}
                         >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </Button>
-                      </div>
-                    ))}
+                          <span className="w-16 font-medium">{formatAvailabilityDate(win.day_of_week)}</span>
+                          <span className="flex-1 text-muted-foreground">
+                            {formatTime(win.start_time)} – {formatTime(win.end_time)}
+                          </span>
+                          <Badge variant="secondary" className="text-[10px]">
+                            {highlighted ? "AI found" : `${win.slot_minutes} min`}
+                          </Badge>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7"
+                            disabled={pending}
+                            onClick={() => remove(win.id)}
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
+                      );
+                    })}
                 </div>
               </div>
             ))
           )}
+          </div>
+
+          <div className="space-y-3 rounded-lg border bg-secondary/20 p-3" data-tour="appointments-estimator-calendar">
+            <div className="flex items-start gap-2">
+              <CalendarRange className="mt-0.5 h-4 w-4 text-primary" />
+              <div>
+                <p className="text-sm font-medium">Estimator calendar</p>
+                <p className="text-xs text-muted-foreground">
+                  Booked inspections for {selectedEstimatorName}. When the AI books a slot, it
+                  appears here and is no longer offered as open time.
+                </p>
+              </div>
+            </div>
+            {demoCalendarAppointments.length === 0 ? (
+              <p className="rounded-md border bg-background px-3 py-6 text-center text-sm text-muted-foreground">
+                No booked inspections for this estimator yet.
+              </p>
+            ) : (
+              <div className="space-y-2">
+                {demoCalendarAppointments.slice(0, 6).map((appointment) => (
+                  <div key={appointment.id} className="rounded-md border bg-background px-3 py-2 text-sm">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="font-medium">
+                        {new Date(appointment.start_time).toLocaleDateString("en-US", {
+                          month: "2-digit",
+                          day: "2-digit",
+                        })}
+                        {" · "}
+                        {new Date(appointment.start_time).toLocaleTimeString("en-US", {
+                          hour: "numeric",
+                          minute: "2-digit",
+                        })}
+                      </span>
+                      <Badge variant="secondary" className="capitalize">
+                        {appointment.status.replace(/_/g, " ")}
+                      </Badge>
+                    </div>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {appointment.lead
+                        ? `${appointment.lead.first_name} ${appointment.lead.last_name} · ${appointment.lead.service_type.replace(/_/g, " ")}`
+                        : appointment.title}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       </CardContent>
     </Card>

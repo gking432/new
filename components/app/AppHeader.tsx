@@ -13,7 +13,6 @@ const PAGE_TITLES: Array<[string, string]> = [
   ["/app/leads", "Leads"],
   ["/app/pipeline", "Pipeline"],
   ["/app/tasks", "Tasks"],
-  ["/app/follow-up", "Follow-Up Generator"],
   ["/app/feedback", "Customer Feedback"],
   ["/app/automations", "Automations"],
   ["/app/reports", "Reports"],

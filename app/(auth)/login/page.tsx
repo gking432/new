@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Compass, Loader2 } from "lucide-react";
@@ -28,6 +28,7 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const configured = isSupabaseConfigured();
+  const autoStarted = useRef(false);
 
   async function signIn(signInEmail: string, signInPassword: string) {
     if (!configured) {
@@ -49,6 +50,14 @@ export default function LoginPage() {
     router.refresh();
   }
 
+  useEffect(() => {
+    if (!configured || autoStarted.current) return;
+    autoStarted.current = true;
+    void signIn("admin@northstar-demo.com", "demo-password");
+    // signIn is intentionally not memoized; this should only run once on mount.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [configured]);
+
   return (
     <div className="flex min-h-screen items-center justify-center px-4 py-12">
       <div className="w-full max-w-sm space-y-6">
@@ -67,7 +76,9 @@ export default function LoginPage() {
         <Card>
           <CardHeader>
             <CardTitle>Sign in</CardTitle>
-            <CardDescription>Use your team credentials to continue.</CardDescription>
+            <CardDescription>
+              Opening the demo automatically. Manual demo credentials are below if needed.
+            </CardDescription>
           </CardHeader>
           <CardContent>
             <form
@@ -100,7 +111,7 @@ export default function LoginPage() {
               </div>
               <Button type="submit" className="w-full" disabled={loading}>
                 {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-                Sign in
+                {loading ? "Opening demo..." : "Sign in"}
               </Button>
             </form>
           </CardContent>

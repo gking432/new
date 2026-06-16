@@ -1,4 +1,5 @@
 import type { CallScenario } from "@/types/app";
+import { customerServiceLabel } from "@/lib/utils/statuses";
 
 /**
  * Deterministic call scripts used when the OpenAI Realtime API is unavailable
@@ -37,7 +38,7 @@ export function getScriptedScenario(
       steps: [
         {
           ai: `Hi ${first}, thanks for calling back. I have your ${
-            lead?.service_type.replace(/_/g, " ") ?? "storm damage"
+            lead ? customerServiceLabel(lead.service_type).toLowerCase() : "storm damage"
           } request here — you'd mentioned hail damage and a water spot upstairs. How can I help?`,
           options: [
             "I wanted to confirm someone is actually coming out tomorrow.",
@@ -92,7 +93,7 @@ export function getScriptedScenario(
       steps: [
         {
           ai: `Hi${lead ? ` ${first}` : ""}, this is Riley, the scheduling assistant over at Northstar Exterior & Home — thanks for reaching out just now! I saw your note${
-            lead ? ` about ${lead.service_type.replace(/_/g, " ")}` : ""
+            lead ? ` about ${customerServiceLabel(lead.service_type).toLowerCase()}` : ""
           } and wanted to make sure we take good care of you. Do you have a quick minute?`,
           options: ["Sure, that was fast!", "Okay, but I only have a minute."],
         },

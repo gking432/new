@@ -13,6 +13,7 @@ export interface AnalyzeLeadResult {
 
 function leadPromptPayload(lead: Lead) {
   return {
+    stage: lead.stage,
     service_type: lead.service_type,
     project_reason: lead.project_reason,
     timeframe: lead.timeframe,
@@ -38,7 +39,12 @@ function leadPromptPayload(lead: Lead) {
  */
 export async function analyzeAndSaveLead(
   supabase: SupabaseClient,
-  lead: Lead
+  lead: Lead,
+  options: {
+    createTasks?: boolean;
+    forceHeuristic?: boolean;
+    statusOverride?: "completed" | "failed";
+  } = {}
 ): Promise<AnalyzeLeadResult> {
   let analysis: LeadAnalysisOutput;
   let aiStatus: "completed" | "failed" = "completed";
@@ -50,7 +56,10 @@ export async function analyzeAndSaveLead(
     .maybeSingle();
   const aiEnabled = settings?.ai_enabled !== false;
 
-  if (aiEnabled && isAIConfigured()) {
+  if (options.forceHeuristic) {
+    analysis = heuristicLeadAnalysis(lead);
+    aiStatus = options.statusOverride ?? "failed";
+  } else if (aiEnabled && isAIConfigured()) {
     try {
       analysis = await callStructuredAI({
         system: LEAD_ANALYSIS_SYSTEM_PROMPT,
@@ -96,27 +105,26 @@ export async function analyzeAndSaveLead(
     .eq("id", lead.id);
 
   let tasksCreated = 0;
-  for (const task of analysis.task_recommendations) {
-    const dueAt = new Date(Date.now() + task.due_in_minutes * 60_000).toISOString();
-    const { error } = await supabase.from("tasks").insert({
-      lead_id: lead.id,
-      title: task.title,
-      description: task.description,
-      type: task.priority === "urgent" ? "call" : "call",
-      priority: task.priority,
-      status: "open",
-      due_at: dueAt,
-    });
-    if (!error) tasksCreated += 1;
+  if (options.createTasks !== false) {
+    for (const task of analysis.task_recommendations) {
+      const dueAt = new Date(Date.now() + task.due_in_minutes * 60_000).toISOString();
+      const { error } = await supabase.from("tasks").insert({
+        lead_id: lead.id,
+        title: task.title,
+        description: task.description,
+        type: task.priority === "urgent" ? "call" : "call",
+        priority: task.priority,
+        status: "open",
+        due_at: dueAt,
+      });
+      if (!error) tasksCreated += 1;
+    }
   }
 
   await supabase.from("activities").insert({
     lead_id: lead.id,
     type: "ai_analysis",
-    title:
-      aiStatus === "completed"
-        ? "AI analysis completed"
-        : "AI unavailable — rule-based analysis saved",
+    title: aiStatus === "completed" ? "AI analysis completed" : "Lead analysis saved",
     description: analysis.recommended_next_action,
     metadata: {
       urgency: analysis.urgency,

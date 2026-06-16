@@ -25,7 +25,6 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
-import { Textarea } from "@/components/ui/textarea";
 import { generatePropertyProfile, generateQuoteEstimate, type QuoteRequest } from "@/lib/actions/quotes";
 import type { calculateQuote } from "@/lib/property/quoteCalculator";
 import type { PropertyResearch, QuoteEstimate } from "@/types/app";
@@ -72,7 +71,6 @@ export function QuoteToolClient({
   const [manualStories, setManualStories] = useState<string>("");
   const [bathType, setBathType] = useState<"tub_to_shower" | "shower_update" | "full_remodel" | "accessibility">("tub_to_shower");
   const [activeLeak, setActiveLeak] = useState(false);
-  const [notes, setNotes] = useState("");
 
   // Weather context
   const [hail, setHail] = useState(false);
@@ -80,7 +78,6 @@ export function QuoteToolClient({
   const [rain, setRain] = useState(false);
   const [stormDate, setStormDate] = useState("");
   const [severity, setSeverity] = useState<"none" | "minor" | "moderate" | "severe">("none");
-  const [stormVolume, setStormVolume] = useState<"low" | "medium" | "high">("low");
 
   useEffect(() => {
     if (selectedLead) {
@@ -127,9 +124,9 @@ export function QuoteToolClient({
         heavy_rain: rain,
         storm_date: stormDate || null,
         reported_severity: severity,
-        neighborhood_storm_volume: stormVolume,
+        neighborhood_storm_volume: "medium",
       },
-      internal_notes: notes || undefined,
+      internal_notes: undefined,
     };
     startTransition(async () => {
       const result = await generateQuoteEstimate(request);
@@ -208,8 +205,8 @@ export function QuoteToolClient({
             <CardDescription>
               These values are simulated for the demo — not pulled from the web. In production,
               this panel would be fed by county assessor records (public) or a paid property-data
-              API (e.g. ATTOM, Estated); Zillow does not offer a public API. You can also override
-              the key numbers manually in the job inputs.
+              API such as ATTOM or Estated. You can also override the key numbers manually in the
+              job inputs.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
@@ -372,12 +369,6 @@ export function QuoteToolClient({
               </Label>
               <Switch id="active-leak" checked={activeLeak} onCheckedChange={setActiveLeak} />
             </div>
-            <Textarea
-              placeholder="Internal notes (optional)…"
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              rows={2}
-            />
           </CardContent>
         </Card>
 
@@ -425,33 +416,26 @@ export function QuoteToolClient({
                   </SelectContent>
                 </Select>
               </div>
-              <div className="space-y-1.5 sm:col-span-2">
-                <Label>Neighborhood storm volume</Label>
-                <Select value={stormVolume} onValueChange={(v) => setStormVolume(v as typeof stormVolume)}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {["low", "medium", "high"].map((s) => (
-                      <SelectItem key={s} value={s} className="capitalize">
-                        {s}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
             </div>
           </CardContent>
         </Card>
-
-        <Button className="w-full" onClick={generate} disabled={pending || !selectedLead}>
-          {pending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-          Generate internal ballpark
-        </Button>
       </div>
 
       {/* Output */}
-      <div>
+      <div className="space-y-6">
+        <Card>
+          <CardContent className="space-y-3 py-5">
+            <p className="text-sm font-medium">Set the inputs and generate an internal ballpark.</p>
+            <p className="text-xs leading-5 text-muted-foreground">
+              The result saves to the lead timeline for the sales team to review before the
+              inspection.
+            </p>
+            <Button className="w-full" onClick={generate} disabled={pending || !selectedLead}>
+              {pending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+              Generate internal ballpark
+            </Button>
+          </CardContent>
+        </Card>
         {output ? (
           <Card className="border-primary/30">
             <CardHeader>
@@ -510,9 +494,9 @@ export function QuoteToolClient({
           </Card>
         ) : (
           <Card>
-            <CardContent className="py-16 text-center text-sm text-muted-foreground">
+            <CardContent className="py-12 text-center text-sm text-muted-foreground">
               {selectedLead
-                ? "Set the inputs and generate an internal ballpark. It saves to the lead's timeline."
+                ? "No internal ballpark generated yet."
                 : "Select a lead to start."}
             </CardContent>
           </Card>

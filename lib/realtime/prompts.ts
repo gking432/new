@@ -1,4 +1,5 @@
 import type { Lead } from "@/types/app";
+import { customerServiceLabel } from "@/lib/utils/statuses";
 
 /**
  * Realtime voice instructions. Kept deliberately SHORT — these models sound
@@ -14,7 +15,7 @@ function knownFacts(lead: Lead): string {
     lead.email && `- Email: ${lead.email}`,
     [lead.street_address, lead.city, lead.state].filter(Boolean).length &&
       `- Address: ${[lead.street_address, lead.city, lead.state].filter(Boolean).join(", ")}`,
-    lead.service_type && `- Service: ${lead.service_type.replace(/_/g, " ")}`,
+    lead.service_type && `- Service: ${customerServiceLabel(lead.service_type)}`,
     lead.description && `- What they told us: "${lead.description}"`,
     lead.active_leak && `- Active leak reported: ${lead.active_leak}`,
     lead.insurance_started && `- Insurance claim started: ${lead.insurance_started}`,
@@ -29,7 +30,7 @@ const TURN_TAKING = `CRITICAL — this is a phone call, so take turns like a hum
 - Don't read a list or dump several facts at once. One question or statement at a time.
 - Actually wait for their answer before moving on.`;
 
-const SCHEDULING = `When you schedule: offer normal WEEKDAY business hours first (e.g. "I could do Tuesday at 10, or Wednesday afternoon"). Only bring up evenings (after 5) or weekends if they say weekdays don't work. Book the time yourself — never say "someone will reach out."`;
+const SCHEDULING = `When you schedule: first ask what generally works best for them (morning, afternoon, or evening), then ask if they have a particular day in mind. Use the available slots to offer one or two matching options. For urgent leaks, offer the soonest open slot. For normal projects, do not keep pushing the same time if they say no. Book the time yourself — never say "someone will reach out."`;
 
 export function buildRealtimeInstructions(args: {
   scenario: "new_inbound_call" | "existing_customer_call" | "speed_to_lead_outbound";
@@ -41,7 +42,7 @@ export function buildRealtimeInstructions(args: {
 
   if (args.scenario === "speed_to_lead_outbound" && args.lead) {
     const first = args.lead.first_name;
-    const service = args.lead.service_type.replace(/_/g, " ");
+    const service = customerServiceLabel(args.lead.service_type).toLowerCase();
     return `${persona}
 
 ${first} just submitted a request on our website and you're calling them right back to get a free inspection on the calendar.
@@ -95,9 +96,9 @@ ${BOUNDARIES}`;
 export function buildAiCustomerInstructions(): string {
   return `You're role-playing a homeowner who called a home-improvement contractor (Northstar Exterior & Home). The person you're talking to is a company rep (a real human). Talk like a normal, slightly stressed homeowner — natural and conversational, not organized.
 
-Your situation: you're Jordan Avery, you own a 2-story home at 418 Lakeview Court in Pewaukee. A storm hit two nights ago — a few shingles are down and there's a fresh water stain spreading on your upstairs ceiling. You haven't called insurance. You work until 5 on weekdays, so evenings or weekends are easier. Email jordan.avery@example.com, phone (414) 555-0123.
+Your situation: you're Jordan Avery, you own a 2-story home at 418 Lakeview Court in Pewaukee, WI 53072. A storm hit two nights ago — a few shingles are down and there's a fresh water stain spreading on your upstairs ceiling. You haven't called insurance. You work until 5 on weekdays, so evenings or weekends are easier. If they ask what time works, say tomorrow around 5:30 PM is ideal, but you're flexible. Email jordan.avery@example.com, phone (414) 555-0123.
 
-Open the call yourself, since you're the one who called in — something like "Hi, yeah, I'm hoping someone can help me out with some storm damage?" Then let the rep lead.
+Do not speak first. Wait silently until the company rep greets you. After they say hello, answer naturally, like: "Hi, yeah, I'm hoping someone can help me out with some storm damage." Then let the rep lead.
 
 Take turns like a real phone call: say one thing, then stop and let the rep respond — never stack two of your own messages. Don't dump everything at once; answer what the rep asks (give your name, address, email, etc. when they ask for them, since they need to fill out your record). If they offer an inspection at a good time, take it. Keep replies short and real. You're an AI playing a customer; only break character if asked directly.`;
 }

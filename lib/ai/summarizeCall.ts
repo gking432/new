@@ -1,4 +1,5 @@
 import type { Lead, TranscriptTurn } from "@/types/app";
+import { customerServiceLabel } from "@/lib/utils/statuses";
 import { callStructuredAI, isAIConfigured } from "./client";
 import {
   CALL_SUMMARY_SYSTEM_PROMPT,
@@ -83,7 +84,7 @@ export function heuristicCallSummary(args: SummarizeCallArgs): CallSummaryOutput
 
   const mentionsLeak =
     seed.active_leak === "yes" ||
-    /water (spot|stain|coming in|dripping)|active leak|leaking/.test(text);
+    /water (spot|stain|coming in|is dripping|dripping)|active leak|leaking/.test(text);
   const mentionsStorm = /hail|storm|wind/.test(text);
   const urgency = (seed.urgency ??
     (mentionsLeak ? "emergency" : mentionsStorm ? "high" : "medium")) as CallSummaryOutput["urgency"];
@@ -101,7 +102,7 @@ export function heuristicCallSummary(args: SummarizeCallArgs): CallSummaryOutput
     seed.summary_hint ??
     (mentionsStorm
       ? "reported recent storm damage"
-      : `asked about a ${serviceType.replace(/_/g, " ")} project`);
+      : `asked about a ${customerServiceLabel(serviceType).toLowerCase()} project`);
 
   const summary = `${callerName} ${issue}${mentionsLeak ? " with active water intrusion" : ""}.${
     appointmentTime
@@ -117,11 +118,13 @@ export function heuristicCallSummary(args: SummarizeCallArgs): CallSummaryOutput
         : ""
   }`.trim();
 
-  const nextAction = mentionsLeak
-    ? "Call back within 15 minutes to confirm the inspection and advise on containing the leak."
+  const nextAction = appointmentTime
+    ? "Review and send the appointment confirmation, then prep the inspector with the call notes."
     : wantsAppointment
-      ? "Confirm the inspection appointment and send the confirmation message."
-      : "Follow up the same business day to answer questions and book an inspection.";
+      ? "Choose the inspection slot discussed on the call, send the confirmation, and prep the inspector with the notes."
+      : mentionsLeak
+        ? "Prioritize this active leak, verify the homeowner is safe, and book the soonest inspection."
+        : "Follow up the same business day to answer questions and book an inspection.";
 
   return {
     summary,
@@ -145,6 +148,8 @@ export function heuristicCallSummary(args: SummarizeCallArgs): CallSummaryOutput
       phone: seed.phone ?? lead?.phone ?? null,
       address: seed.address ?? lead?.street_address ?? null,
       city: seed.city ?? lead?.city ?? null,
+      state: seed.state ?? lead?.state ?? null,
+      zip_code: seed.zip_code ?? lead?.zip_code ?? null,
       active_leak: seed.active_leak ?? (mentionsLeak ? "yes" : null),
       insurance_started: seed.insurance_started ?? null,
       roof_age: seed.roof_age ?? null,
@@ -154,19 +159,23 @@ export function heuristicCallSummary(args: SummarizeCallArgs): CallSummaryOutput
     },
     recommended_tasks: [
       {
-        title: mentionsLeak
-          ? `Urgent: confirm inspection for ${callerName} (active leak)`
-          : `Follow up with ${callerName} after AI call`,
+        title: appointmentTime
+          ? "Review and send appointment confirmation"
+          : wantsAppointment
+            ? `Choose inspection slot for ${callerName}`
+            : mentionsLeak
+              ? `Prioritize active leak for ${callerName}`
+              : `Follow up with ${callerName} after AI call`,
         description: nextAction,
-        priority: urgency === "emergency" ? "urgent" : urgency === "high" ? "high" : "medium",
-        due_in_minutes: urgency === "emergency" ? 15 : urgency === "high" ? 60 : 240,
+        priority: appointmentTime ? "high" : urgency === "emergency" ? "urgent" : urgency === "high" ? "high" : "medium",
+        due_in_minutes: appointmentTime ? 5 : urgency === "emergency" ? 30 : urgency === "high" ? 60 : 240,
       },
     ],
-    confirmation_message_draft: `Hi${firstName ? ` ${firstName}` : ""}, this is Northstar Exterior & Home. Thanks for talking with our scheduling assistant.${
+    confirmation_message_draft: `Hi${firstName ? ` ${firstName}` : ""}, this is Northstar Exterior & Home.${
       appointmentTime
-        ? ` Your inspection is set for ${appointmentTime}.`
-        : " A team member will follow up shortly to lock in your inspection time."
-    } Reply here with any questions.`,
+        ? ` Your appointment is confirmed for ${appointmentTime}. If you need to reschedule, reply to this message.`
+        : " We have your request on file. Reply here if anything changes."
+    }`,
   };
 }
 

@@ -19,7 +19,7 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { submitLead } from "@/lib/actions";
-import { leadFormSchema, type LeadFormValues } from "@/lib/validations/lead";
+import { leadFormSchema, type LeadFormInput, type LeadFormValues } from "@/lib/validations/lead";
 
 const SERVICE_OPTIONS = [
   ["roofing", "Roofing"],
@@ -190,7 +190,15 @@ const DEMO_CUSTOMERS: LeadFormValues[] = [
 /** Fired by the demo guide widget to auto-fill the form from anywhere on the page. */
 export const DEMO_FILL_EVENT = "northstar-demo-fill";
 
-export function LeadForm() {
+export function LeadForm({
+  dashboardDemo = false,
+  showDemoFill = true,
+  onDashboardSubmit,
+}: {
+  dashboardDemo?: boolean;
+  showDemoFill?: boolean;
+  onDashboardSubmit?: (lead: { leadId: string; name: string; phone: string }) => void;
+}) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [submitting, setSubmitting] = useState(false);
@@ -201,13 +209,18 @@ export function LeadForm() {
     handleSubmit,
     reset,
     formState: { errors },
-  } = useForm<LeadFormValues>({
+  } = useForm<LeadFormInput, unknown, LeadFormValues>({
     resolver: zodResolver(leadFormSchema),
     defaultValues: {
       preferred_contact_method: "phone",
       best_time_to_contact: "anytime",
       homeowner_status: "owner",
-      state: "MN",
+      state: "WI",
+      project_reason: "damage_repair",
+      budget_range: "not_sure",
+      insurance_started: "not_sure",
+      active_leak: "not_sure",
+      source: "other",
     },
   });
 
@@ -228,11 +241,27 @@ export function LeadForm() {
     setSubmitting(true);
     const result = await submitLead(values);
     if (result.success) {
+      const leadId = result.data?.leadId;
+      if (!leadId) {
+        toast.error("Lead created, but the demo could not find the new record.");
+        setSubmitting(false);
+        return;
+      }
+      if (dashboardDemo && onDashboardSubmit) {
+        toast.success("Request sent. Get ready to answer the fake AI call.");
+        onDashboardSubmit({
+          leadId,
+          name: `${values.first_name} ${values.last_name}`.trim(),
+          phone: values.phone,
+        });
+        setSubmitting(false);
+        return;
+      }
       // Carry the dashboard-demo flag so the success page hands the call back
       // to the dashboard tab instead of running the call in this tab.
       const demo = searchParams.get("demo") === "dashboard" ? "&demo=dashboard" : "";
       router.push(
-        `/request/success?name=${encodeURIComponent(values.first_name)}&service=${values.service_type}&timeframe=${values.timeframe}&lead=${result.data?.leadId ?? ""}&phone=${encodeURIComponent(values.phone)}${demo}`
+        `/request/success?name=${encodeURIComponent(values.first_name)}&service=${values.service_type}&timeframe=${values.timeframe}&lead=${leadId}&phone=${encodeURIComponent(values.phone)}${demo}`
       );
     } else {
       toast.error(result.error);
@@ -240,7 +269,7 @@ export function LeadForm() {
     }
   }
 
-  const fromDashboardTour = searchParams.get("demo") === "dashboard";
+  const fromDashboardTour = dashboardDemo || searchParams.get("demo") === "dashboard";
 
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
@@ -250,114 +279,50 @@ export function LeadForm() {
             You are the customer in this scenario
           </p>
           <p className="mt-1 text-sm text-brand-dark/80">
-            Fill this out (or hit “Generate demo customer”) and submit it. Then this tab closes and
-            you answer the call popup back on the dashboard — go through the AI scheduling
-            assistant like a normal customer would and book your inspection.
+            Use your real first and last name so the later callback feels personal. Use fake phone,
+            email, and project details if you want. After submitting, turn your audio up and answer
+            the fake call from the AI assistant.
           </p>
         </div>
       )}
-      <div className="flex flex-wrap items-center gap-3 rounded-lg border border-brand-gold/40 bg-brand-gold/10 p-3">
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          className="bg-background"
-          onClick={() =>
-            reset(DEMO_CUSTOMERS[Math.floor(Math.random() * DEMO_CUSTOMERS.length)])
-          }
-        >
-          <Sparkles className="h-3.5 w-3.5 text-brand-gold" />
-          Generate demo customer
-        </Button>
-        <p className="text-xs text-muted-foreground">
-          Auto-fills the form with a realistic homeowner — or enter your own info; everything you
-          type works in the demo. After submitting, watch for the AI callback.
-        </p>
-      </div>
+      {showDemoFill && (
+        <div className="flex flex-wrap items-center gap-3 rounded-lg border border-brand-gold/40 bg-brand-gold/10 p-3">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="bg-background"
+            onClick={() =>
+              reset(DEMO_CUSTOMERS[Math.floor(Math.random() * DEMO_CUSTOMERS.length)])
+            }
+          >
+            <Sparkles className="h-3.5 w-3.5 text-brand-gold" />
+            Generate demo customer
+          </Button>
+          <p className="text-xs text-muted-foreground">
+            Auto-fills the form with a realistic homeowner — or enter your own info; everything you
+            type works in the demo. After submitting, watch for the AI callback.
+          </p>
+        </div>
+      )}
 
       <Card>
         <CardHeader>
-          <CardTitle>Contact information</CardTitle>
-          <CardDescription>How should we reach you?</CardDescription>
+          <CardTitle>Your contact info</CardTitle>
+          <CardDescription>We need this so the team can call or text you back.</CardDescription>
         </CardHeader>
         <CardContent className="grid gap-4 sm:grid-cols-2">
           <TextField label="First name" id="first_name" error={errors.first_name?.message} {...register("first_name")} />
           <TextField label="Last name" id="last_name" error={errors.last_name?.message} {...register("last_name")} />
-          <TextField label="Email" id="email" type="email" error={errors.email?.message} {...register("email")} />
           <TextField label="Phone" id="phone" type="tel" error={errors.phone?.message} {...register("phone")} />
-          <Controller
-            control={control}
-            name="preferred_contact_method"
-            render={({ field }) => (
-              <SelectField
-                label="Preferred contact method"
-                value={field.value}
-                onChange={field.onChange}
-                error={errors.preferred_contact_method?.message}
-                options={[["phone", "Phone"], ["text", "Text"], ["email", "Email"]]}
-              />
-            )}
-          />
-          <Controller
-            control={control}
-            name="best_time_to_contact"
-            render={({ field }) => (
-              <SelectField
-                label="Best time to contact"
-                value={field.value}
-                onChange={field.onChange}
-                error={errors.best_time_to_contact?.message}
-                options={[
-                  ["morning", "Morning"],
-                  ["afternoon", "Afternoon"],
-                  ["evening", "Evening"],
-                  ["anytime", "Anytime"],
-                ]}
-              />
-            )}
-          />
+          <TextField label="Email (optional)" id="email" type="email" error={errors.email?.message} {...register("email")} />
         </CardContent>
       </Card>
 
       <Card>
         <CardHeader>
-          <CardTitle>Property information</CardTitle>
-          <CardDescription>Where is the work needed?</CardDescription>
-        </CardHeader>
-        <CardContent className="grid gap-4 sm:grid-cols-2">
-          <div className="sm:col-span-2">
-            <TextField label="Street address" id="street_address" error={errors.street_address?.message} {...register("street_address")} />
-          </div>
-          <TextField label="City" id="city" error={errors.city?.message} {...register("city")} />
-          <div className="grid grid-cols-2 gap-4">
-            <TextField label="State" id="state" error={errors.state?.message} {...register("state")} />
-            <TextField label="ZIP code" id="zip_code" error={errors.zip_code?.message} {...register("zip_code")} />
-          </div>
-          <Controller
-            control={control}
-            name="homeowner_status"
-            render={({ field }) => (
-              <SelectField
-                label="Homeowner status"
-                value={field.value}
-                onChange={field.onChange}
-                error={errors.homeowner_status?.message}
-                options={[
-                  ["owner", "Owner"],
-                  ["buyer_under_contract", "Buyer under contract"],
-                  ["property_manager", "Property manager"],
-                  ["other", "Other"],
-                ]}
-              />
-            )}
-          />
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Service need</CardTitle>
-          <CardDescription>What kind of project is this?</CardDescription>
+          <CardTitle>What do you need help with?</CardTitle>
+          <CardDescription>Pick the service and tell us what is going on.</CardDescription>
         </CardHeader>
         <CardContent className="grid gap-4 sm:grid-cols-2">
           <Controller
@@ -365,24 +330,12 @@ export function LeadForm() {
             name="service_type"
             render={({ field }) => (
               <SelectField
-                label="Service type"
+                label="Service"
                 value={field.value}
                 onChange={field.onChange}
                 error={errors.service_type?.message}
                 options={SERVICE_OPTIONS}
-              />
-            )}
-          />
-          <Controller
-            control={control}
-            name="project_reason"
-            render={({ field }) => (
-              <SelectField
-                label="Project reason"
-                value={field.value}
-                onChange={field.onChange}
-                error={errors.project_reason?.message}
-                options={REASON_OPTIONS}
+                placeholder="Choose a service"
               />
             )}
           />
@@ -391,32 +344,53 @@ export function LeadForm() {
             name="timeframe"
             render={({ field }) => (
               <SelectField
-                label="Timeframe"
+                label="How soon?"
                 value={field.value}
                 onChange={field.onChange}
                 error={errors.timeframe?.message}
                 options={TIMEFRAME_OPTIONS}
+                placeholder="Choose timing"
               />
             )}
           />
           <Controller
             control={control}
-            name="budget_range"
+            name="active_leak"
             render={({ field }) => (
               <SelectField
-                label="Budget range"
+                label="Is water leaking now?"
                 value={field.value}
                 onChange={field.onChange}
-                error={errors.budget_range?.message}
-                options={BUDGET_OPTIONS}
+                options={[
+                  ["yes", "Yes"],
+                  ["no", "No"],
+                  ["not_sure", "Not sure"],
+                ]}
+              />
+            )}
+          />
+          <Controller
+            control={control}
+            name="insurance_started"
+            render={({ field }) => (
+              <SelectField
+                label="Insurance started?"
+                value={field.value}
+                onChange={field.onChange}
+                options={[
+                  ["yes", "Yes"],
+                  ["no", "No"],
+                  ["not_sure", "Not sure"],
+                  ["not_applicable", "Not applicable"],
+                ]}
               />
             )}
           />
           <div className="space-y-1.5 sm:col-span-2">
-            <Label htmlFor="description">Tell us what is going on</Label>
+            <Label htmlFor="description">What happened? (optional)</Label>
             <Textarea
               id="description"
-              rows={5}
+              rows={4}
               placeholder="Example: We had hail last week and now I'm seeing missing shingles and water spots on the ceiling upstairs."
               {...register("description")}
             />
@@ -429,40 +403,71 @@ export function LeadForm() {
 
       <Card>
         <CardHeader>
-          <CardTitle>A few optional details</CardTitle>
-          <CardDescription>These help us respond with the right next step.</CardDescription>
+          <CardTitle>Where is the home?</CardTitle>
+          <CardDescription>An address helps the team plan the inspection.</CardDescription>
         </CardHeader>
-        <CardContent className="grid gap-4 sm:grid-cols-3">
+        <CardContent className="grid gap-4 sm:grid-cols-2">
+          <div className="sm:col-span-2">
+            <TextField label="Street address (optional)" id="street_address" error={errors.street_address?.message} {...register("street_address")} />
+          </div>
+          <TextField label="City (optional)" id="city" error={errors.city?.message} {...register("city")} />
+          <TextField label="ZIP code (optional)" id="zip_code" error={errors.zip_code?.message} {...register("zip_code")} />
+        </CardContent>
+      </Card>
+
+      <details className="rounded-lg border bg-card p-4">
+        <summary className="cursor-pointer text-sm font-medium">More details (optional)</summary>
+        <div className="mt-4 grid gap-4 sm:grid-cols-2">
           <Controller
             control={control}
-            name="insurance_started"
+            name="preferred_contact_method"
             render={({ field }) => (
               <SelectField
-                label="Insurance claim started?"
+                label="Best way to reach you"
+                value={field.value}
+                onChange={field.onChange}
+                options={[["phone", "Phone"], ["text", "Text"], ["email", "Email"]]}
+              />
+            )}
+          />
+          <Controller
+            control={control}
+            name="best_time_to_contact"
+            render={({ field }) => (
+              <SelectField
+                label="Best time"
                 value={field.value}
                 onChange={field.onChange}
                 options={[
-                  ["yes", "Yes"],
-                  ["no", "No"],
-                  ["not_sure", "Not sure"],
-                  ["not_applicable", "Not applicable"],
+                  ["morning", "Morning"],
+                  ["afternoon", "Afternoon"],
+                  ["evening", "Evening"],
+                  ["anytime", "Anytime"],
                 ]}
               />
             )}
           />
           <Controller
             control={control}
-            name="active_leak"
+            name="project_reason"
             render={({ field }) => (
               <SelectField
-                label="Active leaking?"
+                label="Reason"
                 value={field.value}
                 onChange={field.onChange}
-                options={[
-                  ["yes", "Yes"],
-                  ["no", "No"],
-                  ["not_sure", "Not sure"],
-                ]}
+                options={REASON_OPTIONS}
+              />
+            )}
+          />
+          <Controller
+            control={control}
+            name="budget_range"
+            render={({ field }) => (
+              <SelectField
+                label="Budget"
+                value={field.value}
+                onChange={field.onChange}
+                options={BUDGET_OPTIONS}
               />
             )}
           />
@@ -478,8 +483,8 @@ export function LeadForm() {
               />
             )}
           />
-        </CardContent>
-      </Card>
+        </div>
+      </details>
 
       <div className="flex flex-col items-start gap-3">
         <Button type="submit" size="lg" disabled={submitting}>

@@ -8,7 +8,9 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { AutomationLibrary } from "@/components/app/AutomationLibrary";
 import { AutomationRuleCard } from "@/components/app/AutomationRuleCard";
+import { ReminderAutomationCard } from "@/components/app/ReminderAutomationCard";
 import { getAutomationRules, getAutomationRuns } from "@/lib/db/queries";
 import { createClient } from "@/lib/supabase/server";
 import { formatDateTime } from "@/lib/utils/format";
@@ -23,9 +25,23 @@ const RUN_STATUS_STYLES: Record<string, string> = {
 
 export default async function AutomationsPage() {
   const supabase = await createClient();
-  const [rules, runs] = await Promise.all([
+  const now = new Date().toISOString();
+  const [rules, runs, scheduledReminders, dueReminders] = await Promise.all([
     getAutomationRules(supabase),
     getAutomationRuns(supabase),
+    supabase
+      .from("communications")
+      .select("id", { count: "exact", head: true })
+      .eq("direction", "outbound")
+      .eq("status", "approved")
+      .not("scheduled_send_at", "is", null),
+    supabase
+      .from("communications")
+      .select("id", { count: "exact", head: true })
+      .eq("direction", "outbound")
+      .eq("status", "approved")
+      .not("scheduled_send_at", "is", null)
+      .lte("scheduled_send_at", now),
   ]);
   const ruleNames = new Map(rules.map((rule) => [rule.id, rule.name]));
 
@@ -34,9 +50,18 @@ export default async function AutomationsPage() {
       <p className="max-w-2xl text-sm text-muted-foreground">
         Automation rules translate business logic into actions: urgent storm leads get a
         15-minute call task, quiet estimates get follow-ups, and bad reviews reach a manager.
-        Rules run automatically on lead creation, stage changes, and feedback submission.
+        Appointment reminders auto-schedule 24-hour and 1-hour texts after a booking.
+        Rules run automatically on lead creation, stage changes, feedback submission, and
+        automated reminder checks.
         &quot;Run test&quot; replays a rule against the most recent matching record.
       </p>
+
+      <ReminderAutomationCard
+        scheduledCount={scheduledReminders.count ?? 0}
+        dueCount={dueReminders.count ?? 0}
+      />
+
+      <AutomationLibrary />
 
       <div className="space-y-4">
         {rules.length === 0 ? (
