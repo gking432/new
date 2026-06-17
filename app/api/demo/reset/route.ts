@@ -3,12 +3,17 @@ import { resetOperationalDemoData } from "@/lib/demo/reset";
 
 export const dynamic = "force-dynamic";
 
-function resetEnabled() {
-  return process.env.DEMO_MODE !== "false" && process.env.DEMO_AUTO_RESET_ON_LOAD !== "false";
+function resetEnabled(manual: boolean) {
+  if (process.env.DEMO_MODE === "false") return false;
+  // The explicit "Restart Demo" button works whenever the demo is on, even if
+  // automatic reset-on-load was turned off.
+  if (manual) return true;
+  return process.env.DEMO_AUTO_RESET_ON_LOAD !== "false";
 }
 
-export async function POST() {
-  if (!resetEnabled()) {
+export async function POST(request: Request) {
+  const manual = new URL(request.url).searchParams.get("manual") === "1";
+  if (!resetEnabled(manual)) {
     return NextResponse.json({ success: true, reset: false, reason: "disabled" });
   }
 

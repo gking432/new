@@ -1,9 +1,9 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
-  Bell,
   CalendarDays,
   Calculator,
   Cable,
@@ -12,15 +12,16 @@ import {
   Kanban,
   LayoutDashboard,
   ListChecks,
+  Loader2,
   LogOut,
   MessageSquareText,
   Phone,
+  RotateCcw,
   Settings,
   Users,
   Workflow,
   BarChart3,
 } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { initials } from "@/lib/utils/format";
@@ -52,6 +53,28 @@ export function AppSidebar({
   badges?: Record<string, number>;
 }) {
   const pathname = usePathname();
+  const [restarting, setRestarting] = useState(false);
+
+  async function restartDemo() {
+    if (restarting) return;
+    setRestarting(true);
+    try {
+      // Clear every demo-created lead/call/message/etc.
+      await fetch("/api/demo/reset?manual=1", { method: "POST" });
+    } catch {
+      // Even if the clear fails, fall through to a fresh tour start.
+    }
+    // Reset the guided-tour progress, then hard-navigate to the welcome step so
+    // the page reloads with the now-empty database.
+    try {
+      sessionStorage.removeItem("northstar-tutorial-completed");
+      sessionStorage.removeItem("northstar-tutorial-index");
+      sessionStorage.removeItem("northstar-tutorial-active");
+    } catch {
+      // sessionStorage can be unavailable in embedded browsers; ignore.
+    }
+    window.location.href = "/app?tour=welcome";
+  }
 
   return (
     <aside className="sticky top-0 hidden h-screen w-60 shrink-0 flex-col bg-sidebar text-sidebar-foreground lg:flex">
@@ -96,10 +119,20 @@ export function AppSidebar({
       </nav>
 
       <div className="border-t border-white/10 p-4">
-        <Badge className="mb-3 bg-brand-gold/20 text-brand-gold border border-brand-gold/30">
-          <Bell className="mr-1 h-3 w-3" />
-          Demo Mode
-        </Badge>
+        <Button
+          type="button"
+          onClick={restartDemo}
+          disabled={restarting}
+          className="mb-3 w-full border border-brand-gold/40 bg-brand-gold/15 text-brand-gold hover:bg-brand-gold/25 hover:text-brand-gold"
+          title="Clear all demo data and start the tour over"
+        >
+          {restarting ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <RotateCcw className="h-4 w-4" />
+          )}
+          {restarting ? "Restarting…" : "Restart Demo"}
+        </Button>
         <div className="flex items-center gap-3">
           <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white/10 text-sm font-medium">
             {initials(profile?.full_name)}
