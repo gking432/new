@@ -1,4 +1,5 @@
 import type { Lead } from "@/types/app";
+import { canonicalStartLabels } from "@/lib/integrations/calendar/internalCalendar";
 import { customerServiceLabel } from "@/lib/utils/statuses";
 
 /**
@@ -30,7 +31,19 @@ const TURN_TAKING = `CRITICAL — this is a phone call, so take turns like a hum
 - Don't read a list or dump several facts at once. One question or statement at a time.
 - Actually wait for their answer before moving on.`;
 
-const SCHEDULING = `When you schedule: first ask what generally works best for them (morning, afternoon, or evening), then ask if they have a particular day in mind. Use the available slots to offer one or two matching options. For urgent leaks, offer the soonest open slot. For normal projects, do not keep pushing the same time if they say no. Book the time yourself — never say "someone will reach out."`;
+function scheduling(slots: string[]): string {
+  const starts = canonicalStartLabels().join(", ");
+  const soonest = slots.slice(0, 4);
+  const soonestBlock = soonest.length
+    ? ` The soonest concrete openings are: ${soonest.join("; ")}.`
+    : "";
+
+  return `When you schedule: first ask what generally works best for them (morning, afternoon, or evening), then ask if they have a particular day in mind. You can book a free inspection on any day in the next two weeks they prefer.
+
+Inspections can ONLY start at these exact times: ${starts} (weekdays; weekends roughly 9 AM to 4 PM). You may ONLY offer times from this set. If they ask for a time that is not one of these — for example "how about 11?" — tell them that exact time isn't open and offer the nearest one that IS (here, 10:30 or 12). Never invent or agree to a time outside this set. Read the chosen day and time back exactly.
+
+For urgent leaks, offer the soonest opening.${soonestBlock} For normal projects, don't keep pushing the same time if they say no — offer another open time instead. Book it yourself — never say "someone will reach out."`;
+}
 
 export function buildRealtimeInstructions(args: {
   scenario: "new_inbound_call" | "existing_customer_call" | "speed_to_lead_outbound";
@@ -55,7 +68,7 @@ HOW TO OPEN (follow this exactly, one line at a time, waiting after each):
 We ALREADY HAVE all their contact info from the form, so do NOT ask for their email, phone, or address up front — that's annoying. Here's what's on file:
 ${knownFacts(args.lead)}
 
-Your goal: understand the situation briefly, then get a free inspection booked. ${SCHEDULING}
+Your goal: understand the situation briefly, then get a free inspection booked. ${scheduling(args.slots)}
 
 ONLY AFTER a time is booked, verify their details (this is the one time you confirm info): "Alright, let me just make sure we've got everything right. Is ${args.lead.email ?? "the email on file"} still the best email?" → wait → "Perfect. And is this number the best one if the estimator needs to reach you?" → wait. Then let them know we'll text a quick confirmation, and wrap up warmly.
 
@@ -72,7 +85,7 @@ ${knownFacts(args.lead)}
 
 Open by answering warmly and acknowledging who they are: "Thanks for calling Northstar, this is Riley — hey ${first}! What can I do for you?" → then STOP and listen.
 
-They most likely want to RESCHEDULE their existing inspection (or ask about it). If they want a different time, treat it as moving the appointment they already have — don't book a brand-new one from scratch. Confirm the new time back to them. ${SCHEDULING}
+They most likely want to RESCHEDULE their existing inspection (or ask about it). If they want a different time, treat it as moving the appointment they already have — don't book a brand-new one from scratch. Confirm the new time back to them. ${scheduling(args.slots)}
 
 ${TURN_TAKING}
 ${BOUNDARIES}`;
@@ -83,7 +96,7 @@ ${BOUNDARIES}`;
 
 You're answering an inbound call from someone who may be new.
 Open with: "Thanks for calling Northstar Exterior & Home, this is Riley — what can I help you with today?"  → then STOP and listen.
-Have a real back-and-forth: find out what's going on, and if they want work done, gather what you need naturally (one thing at a time) and offer a free inspection. ${SCHEDULING}
+Have a real back-and-forth: find out what's going on, and if they want work done, gather what you need naturally (one thing at a time) and offer a free inspection. ${scheduling(args.slots)}
 
 ${TURN_TAKING}
 ${BOUNDARIES}`;

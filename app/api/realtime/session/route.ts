@@ -280,7 +280,10 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Could not create call record" }, { status: 500 });
   }
 
-  const slots = await getAvailableSlots(supabase, 14, 12);
+  // The soonest few concrete openings, for the "offer the soonest slot" case on
+  // urgent calls. General availability (which days/times can be booked) is
+  // conveyed to the assistant via the fixed start-time grid in the prompt.
+  const slots = await getAvailableSlots(supabase, 14, 6);
   const slotLabels = slots.map((s) => s.label);
   const maxSeconds = Number(process.env.REALTIME_MAX_CALL_SECONDS || 180);
   const scripted = getScriptedScenario(scenario, lead);
