@@ -490,6 +490,22 @@ function extractAppointmentRequest(
   );
 }
 
+/**
+ * Removes any sentence that states a scheduled day/time from an AI summary so
+ * the canonical booked-slot label is the ONLY time mentioned in the CRM note.
+ * Without this the model's own prose ("…scheduled for next Monday at 11 AM…")
+ * can contradict the slot we actually booked in the very same paragraph.
+ */
+function stripScheduledTimeSentences(text: string) {
+  return text
+    .replace(
+      /[^.?!]*\b(?:schedul\w*|appointment|inspection|book\w*|set (?:up|for)|slot|come out|stop by)\b[^.?!]*\b(?:a\.?m\.?|p\.?m\.?|o'?clock|noon|morning|afternoon|evening|today|tomorrow|monday|tuesday|wednesday|thursday|friday|saturday|sunday|next week)\b[^.?!]*[.?!]\s*/gi,
+      " "
+    )
+    .replace(/\s{2,}/g, " ")
+    .trim();
+}
+
 function confirmationBody(firstName: string | null | undefined, startTime: string | null) {
   const when = startTime ? slotLabel(new Date(startTime)) : "the scheduled time";
   const greetingName = safeGreetingName(firstName);
@@ -737,7 +753,7 @@ export async function completeCall(
       summary.appointment_requested = true;
       summary.appointment_time = pendingAppointment.start_time;
       summary.next_action = `Save the lead, then review and send the confirmation SMS for ${pendingAppointment.label}.`;
-      summary.crm_note = `${summary.summary.replace(/[.?!]\s*$/, "")}. Inspection discussed for ${pendingAppointment.label}.`;
+      summary.crm_note = `${stripScheduledTimeSentences(summary.summary).replace(/[.?!]\s*$/, "")}. Inspection discussed for ${pendingAppointment.label}.`;
       summary.recommended_tasks = [
         {
           title: "Review and send appointment confirmation",
@@ -986,11 +1002,12 @@ export async function completeCall(
     const customerName =
       fullLeadName && !/^new caller$/i.test(fullLeadName) ? fullLeadName : "the customer";
     const nextAction = `Inspection is scheduled for ${appointment.label}. Review and send the confirmation SMS, then prep the inspector with the call notes.`;
-    const baseSummary = summary.summary
-      .replace(/They are open to scheduling an inspection\.?/gi, "")
-      .replace(/An inspection was tentatively set for[^.]+\.?/gi, "")
-      .replace(/Recommended next step:\s*Call back within 15 minutes[^.]*\.?/gi, "")
-      .trim();
+    const baseSummary = stripScheduledTimeSentences(
+      summary.summary
+        .replace(/They are open to scheduling an inspection\.?/gi, "")
+        .replace(/An inspection was tentatively set for[^.]+\.?/gi, "")
+        .replace(/Recommended next step:\s*Call back within 15 minutes[^.]*\.?/gi, "")
+    );
     const summaryBase = (
       baseSummary || `${customerName} called about ${customerServiceLabel(summary.service_type).toLowerCase()} work`
     ).replace(/[.?!]\s*$/, "");

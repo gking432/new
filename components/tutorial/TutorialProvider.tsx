@@ -471,6 +471,18 @@ export function TutorialProvider() {
 
   const total = steps.length;
   const step = steps[index];
+  // Don't allow Back into a phone-call step: the call already happened and the
+  // call event can't re-fire, so returning there strands the tour waiting for a
+  // call that already finished. (Other event steps — opening the inbox, etc. —
+  // are re-triggerable, so Back stays available for them.)
+  const prevAdvance = steps[index - 1]?.advance;
+  const canGoBack =
+    index > 0 &&
+    !(
+      prevAdvance?.kind === "event" &&
+      (prevAdvance.event === "northstar-call-started" ||
+        prevAdvance.event === "northstar-call-done")
+    );
   const stepId = step?.id;
   const stepAdvanceKind = step?.advance.kind;
   const compactSpotlight = false;
@@ -745,6 +757,7 @@ export function TutorialProvider() {
           onNext={() => go(index + 1)}
           onStop={stop}
           pulseNext={pulseNext}
+          canGoBack={canGoBack}
         />
       </>
     );
@@ -776,6 +789,7 @@ export function TutorialProvider() {
         onNext={() => go(index + 1)}
         onStop={stop}
         pulseNext={pulseNext}
+        canGoBack={canGoBack}
       />
     </>
   );
@@ -1011,6 +1025,7 @@ function TutorialSidebar({
   onNext,
   onStop,
   pulseNext,
+  canGoBack,
 }: {
   step: Step;
   index: number;
@@ -1023,6 +1038,7 @@ function TutorialSidebar({
   onNext: () => void;
   onStop: () => void;
   pulseNext: boolean;
+  canGoBack: boolean;
 }) {
   const ActionIcon = step.action?.icon;
 
@@ -1090,13 +1106,33 @@ function TutorialSidebar({
             {step.simulate.label}
           </Button>
         )}
+
+        {/* Primary Next sits right under the instructions so it's obvious where
+            to click. Only shown for steps that advance manually (and aren't the
+            last step, which shows Finish in the footer instead). */}
+        {step.advance.kind === "manual" && index !== total - 1 && (
+          <Button
+            onClick={onNext}
+            data-tour="tutorial-next-button"
+            className={`mt-4 w-full ring-2 ring-brand-gold ring-offset-2 ring-offset-background ${
+              pulseNext ? "tour-target-wiggle" : ""
+            }`}
+          >
+            Next
+            <ChevronRight className="h-4 w-4" />
+          </Button>
+        )}
       </div>
 
       <div className="flex items-center justify-between gap-2 border-t p-3">
-        <Button variant="ghost" size="sm" onClick={onBack} disabled={index === 0}>
-          <ChevronLeft className="h-3.5 w-3.5" />
-          Back
-        </Button>
+        {canGoBack ? (
+          <Button variant="ghost" size="sm" onClick={onBack}>
+            <ChevronLeft className="h-3.5 w-3.5" />
+            Back
+          </Button>
+        ) : (
+          <span />
+        )}
 
         {step.advance.kind === "manual" ? (
           index === total - 1 ? (
@@ -1104,17 +1140,7 @@ function TutorialSidebar({
               Finish
             </Button>
           ) : (
-            <Button
-              size="sm"
-              onClick={onNext}
-              data-tour="tutorial-next-button"
-              className={`ring-2 ring-brand-gold ring-offset-2 ring-offset-background ${
-                pulseNext ? "tour-target-wiggle" : ""
-              }`}
-            >
-              Next
-              <ChevronRight className="h-3.5 w-3.5" />
-            </Button>
+            <span className="px-2 text-xs text-muted-foreground">Click Next above to continue</span>
           )
         ) : (
           <span className="px-2 text-xs text-muted-foreground">Waiting for the dashboard action…</span>

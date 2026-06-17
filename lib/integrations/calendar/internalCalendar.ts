@@ -202,6 +202,31 @@ export function resolveAppointmentTime(
     if (ampm === "pm" && hour < 12) hour += 12;
     if (!ampm && hour <= 7) hour += 12; // "after 2" almost always means PM
     const targetMin = hour * 60 + minute;
+
+    // Honor the EXACT time both parties agreed to. The canonical slot grid
+    // (…09:00, 10:30, 12:00…) has no 11:00, so "snap to nearest slot" would
+    // silently turn an agreed "11 AM" into 10:30 — and the CRM note + the
+    // confirmation text would then contradict what was said on the call. When
+    // we know the day and a real clock time was spoken, book that precise time
+    // (within plausible business hours) instead of snapping to the grid.
+    const exactDay = targetDate ?? pool[0]?.start ?? null;
+    const explicitClockTime = Boolean(ampm) || timeMatch[2] != null || rawHour.length >= 3;
+    if (exactDay && explicitClockTime && targetMin >= 7 * 60 && targetMin <= 20 * 60) {
+      const onGrid = pool.find(
+        (s) => s.start.getHours() === hour && s.start.getMinutes() === minute
+      );
+      if (onGrid) return onGrid;
+      const start = new Date(exactDay);
+      start.setHours(hour, minute, 0, 0);
+      if (start.getTime() > Date.now() + 3_600_000) {
+        const slotMinutes = pool[0]
+          ? Math.round((pool[0].end.getTime() - pool[0].start.getTime()) / 60_000)
+          : 60;
+        const end = new Date(start.getTime() + slotMinutes * 60_000);
+        return { start, end, label: slotLabel(start) };
+      }
+    }
+
     const afternoon = /after|afternoon|later/.test(text);
     const eligible = afternoon
       ? pool.filter((s) => s.start.getHours() * 60 + s.start.getMinutes() >= targetMin)
