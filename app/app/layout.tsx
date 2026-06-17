@@ -2,14 +2,21 @@ import { AppHeader } from "@/components/app/AppHeader";
 import { AppSidebar } from "@/components/app/AppSidebar";
 import { CallProvider } from "@/components/calls/CallProvider";
 import { TutorialProvider } from "@/components/tutorial/TutorialProvider";
+import { SetupNotice } from "@/components/app/SetupNotice";
 import { getCurrentProfile } from "@/lib/db/queries";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, isAppConfigured } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
 
 export default async function AppLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
+  // No-login demo: with no Supabase keys there's no database to read, so show a
+  // clear setup notice instead of crashing on a missing client.
+  if (!isAppConfigured()) {
+    return <SetupNotice />;
+  }
+
   const supabase = await createClient();
   const profile = await getCurrentProfile(supabase);
   const endOfTomorrow = new Date();

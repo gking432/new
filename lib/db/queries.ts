@@ -283,18 +283,18 @@ export async function getReportData(supabase: SupabaseClient): Promise<ReportDat
   };
 }
 
+// No-login demo: there's no authenticated user, so return the first seeded
+// profile if one exists, otherwise a generic demo profile for the header/UI.
+const DEMO_PROFILE: Profile = {
+  id: "00000000-0000-0000-0000-000000000000",
+  full_name: "Demo User",
+  role: "admin",
+  avatar_url: null,
+  created_at: "",
+  updated_at: "",
+};
+
 export async function getCurrentProfile(supabase: SupabaseClient): Promise<Profile | null> {
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return null;
-  const { data } = await supabase.from("profiles").select("*").eq("id", user.id).maybeSingle();
-  return (data as Profile | null) ?? {
-    id: user.id,
-    full_name: user.email ?? "Team member",
-    role: "sales_rep",
-    avatar_url: null,
-    created_at: "",
-    updated_at: "",
-  };
+  const { data } = await supabase.from("profiles").select("*").limit(1).maybeSingle();
+  return (data as Profile | null) ?? DEMO_PROFILE;
 }

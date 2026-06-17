@@ -13,7 +13,6 @@ import {
   LayoutDashboard,
   ListChecks,
   Loader2,
-  LogOut,
   MessageSquareText,
   Phone,
   RotateCcw,
@@ -23,10 +22,17 @@ import {
   BarChart3,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import { initials } from "@/lib/utils/format";
 import { ROLE_LABELS } from "@/lib/utils/statuses";
-import { signOut } from "@/lib/actions";
 import type { Profile } from "@/types/app";
 
 const NAV_ITEMS = [
@@ -54,6 +60,7 @@ export function AppSidebar({
 }) {
   const pathname = usePathname();
   const [restarting, setRestarting] = useState(false);
+  const [confirmOpen, setConfirmOpen] = useState(false);
 
   async function restartDemo() {
     if (restarting) return;
@@ -121,7 +128,7 @@ export function AppSidebar({
       <div className="border-t border-white/10 p-4">
         <Button
           type="button"
-          onClick={restartDemo}
+          onClick={() => setConfirmOpen(true)}
           disabled={restarting}
           className="mb-3 w-full border border-brand-gold/40 bg-brand-gold/15 text-brand-gold hover:bg-brand-gold/25 hover:text-brand-gold"
           title="Clear all demo data and start the tour over"
@@ -133,6 +140,32 @@ export function AppSidebar({
           )}
           {restarting ? "Restarting…" : "Restart Demo"}
         </Button>
+
+        <Dialog open={confirmOpen} onOpenChange={(open) => !restarting && setConfirmOpen(open)}>
+          <DialogContent className="sm:max-w-sm">
+            <DialogHeader>
+              <DialogTitle>Are you sure?</DialogTitle>
+              <DialogDescription>
+                This clears all demo data — leads, calls, messages, appointments, and tasks —
+                and restarts the guided tour from the beginning.
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+              <Button
+                variant="outline"
+                onClick={() => setConfirmOpen(false)}
+                disabled={restarting}
+              >
+                Cancel
+              </Button>
+              <Button onClick={restartDemo} disabled={restarting}>
+                {restarting ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                {restarting ? "Restarting…" : "Restart Demo"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
         <div className="flex items-center gap-3">
           <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white/10 text-sm font-medium">
             {initials(profile?.full_name)}
@@ -143,17 +176,6 @@ export function AppSidebar({
               {profile ? ROLE_LABELS[profile.role] ?? profile.role : ""}
             </p>
           </div>
-          <form action={signOut}>
-            <Button
-              type="submit"
-              variant="ghost"
-              size="icon"
-              className="h-8 w-8 text-sidebar-foreground/60 hover:bg-white/10 hover:text-white"
-              title="Sign out"
-            >
-              <LogOut className="h-4 w-4" />
-            </Button>
-          </form>
         </div>
       </div>
     </aside>

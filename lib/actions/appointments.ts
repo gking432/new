@@ -18,12 +18,12 @@ function safeGreetingName(firstName: string | null | undefined) {
   return cleaned;
 }
 
-async function requireUser(supabase: SupabaseClient) {
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) throw new Error("Not authenticated");
-  return user;
+// No-login demo: there's no authenticated user. Attribute writes to the first
+// seeded profile if one exists, otherwise leave the (nullable) user columns
+// null. Kept named requireUser so existing call sites are unchanged.
+async function requireUser(supabase: SupabaseClient): Promise<{ id: string | null }> {
+  const { data } = await supabase.from("profiles").select("id").limit(1).maybeSingle();
+  return { id: ((data as { id?: string } | null)?.id as string | null) ?? null };
 }
 
 export async function createAppointment(input: {

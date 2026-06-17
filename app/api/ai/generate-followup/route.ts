@@ -3,15 +3,9 @@ import { generateAndSaveFollowup } from "@/lib/ai/generateFollowup";
 import { createClient } from "@/lib/supabase/server";
 import { followupRequestSchema } from "@/lib/validations/followup";
 
-/** Server-only follow-up generation. Requires an authenticated internal user. */
+/** Server-only follow-up generation (no-login demo). */
 export async function POST(request: Request) {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) {
-    return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
-  }
 
   let body: unknown;
   try {
@@ -29,7 +23,7 @@ export async function POST(request: Request) {
   }
 
   try {
-    const result = await generateAndSaveFollowup(supabase, parsed.data, user.id);
+    const result = await generateAndSaveFollowup(supabase, parsed.data, null);
     return NextResponse.json({ success: true, followup: result.followup, ai_used: result.aiUsed });
   } catch (err) {
     return NextResponse.json(

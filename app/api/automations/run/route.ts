@@ -9,12 +9,6 @@ import type { Feedback, Lead } from "@/types/app";
  */
 export async function POST(request: Request) {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) {
-    return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
-  }
 
   let body: { event?: string; lead_id?: string; feedback_id?: string };
   try {

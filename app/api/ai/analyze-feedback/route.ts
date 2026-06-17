@@ -3,15 +3,9 @@ import { analyzeAndSaveFeedback } from "@/lib/ai/analyzeFeedback";
 import { createClient } from "@/lib/supabase/server";
 import { feedbackFormSchema } from "@/lib/validations/feedback";
 
-/** Server-only feedback analysis. Requires an authenticated internal user. */
+/** Server-only feedback analysis (no-login demo). */
 export async function POST(request: Request) {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) {
-    return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
-  }
 
   let body: unknown;
   try {

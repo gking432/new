@@ -3,15 +3,9 @@ import { analyzeAndSaveLead } from "@/lib/ai/analyzeLead";
 import { createClient } from "@/lib/supabase/server";
 import type { Lead } from "@/types/app";
 
-/** Server-only AI lead analysis. Requires an authenticated internal user. */
+/** Server-only AI lead analysis (no-login demo). */
 export async function POST(request: Request) {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) {
-    return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
-  }
 
   let body: { lead_id?: string };
   try {
