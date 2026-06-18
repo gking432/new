@@ -5,6 +5,7 @@ import { z } from "zod";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { callStructuredAI, isAIConfigured } from "@/lib/ai/client";
 import { scheduleAppointmentReminders } from "@/lib/communications/reminders";
+import { getAvailableSlots } from "@/lib/integrations/calendar/internalCalendar";
 import { createClient } from "@/lib/supabase/server";
 import { customerServiceLabel } from "@/lib/utils/statuses";
 
@@ -110,6 +111,27 @@ export async function createAppointment(input: {
     return { success: true, data: { id: appt.id } };
   } catch (err) {
     return { success: false, error: err instanceof Error ? err.message : "Booking failed" };
+  }
+}
+
+export async function getDemoInspectionSlots(
+  days = 10,
+  limit = 12
+): Promise<ActionResult<Array<{ start: string; end: string; label: string }>>> {
+  const supabase = await createClient();
+  try {
+    await requireUser(supabase);
+    const slots = await getAvailableSlots(supabase, days, limit);
+    return {
+      success: true,
+      data: slots.map((slot) => ({
+        start: slot.start.toISOString(),
+        end: slot.end.toISOString(),
+        label: slot.label,
+      })),
+    };
+  } catch (err) {
+    return { success: false, error: err instanceof Error ? err.message : "Could not load slots" };
   }
 }
 

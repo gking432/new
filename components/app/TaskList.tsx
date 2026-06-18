@@ -61,7 +61,7 @@ export function TaskList({
           `${task.title} ${task.description ?? ""}`
         ));
     if (opensApprovalQueue) {
-      return `/app/inbox${task.lead ? `?lead=${task.lead.id}` : ""}`;
+      return `/app/inbox?tab=approvals${task.lead ? `&lead=${task.lead.id}` : ""}`;
     }
     if (task.lead) return `/app/leads/${task.lead.id}`;
     return null;
@@ -109,6 +109,11 @@ export function TaskList({
             </Button>
             <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-center gap-2">
+                {opensApprovalQueue && task.status !== "complete" ? (
+                  <Badge className="h-5 min-w-5 justify-center rounded-full bg-red-500 px-1.5 text-white">
+                    !
+                  </Badge>
+                ) : null}
                 <span
                   className={cn(
                     "font-medium",

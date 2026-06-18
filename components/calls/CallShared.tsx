@@ -42,7 +42,7 @@ function formatNameCandidate(value: string | null | undefined) {
   if (!value) return null;
   const cleaned = value
     .replace(/^(?:sure|yeah|yes|yep|okay|ok|hi|hello|hey)[,.\s]+/i, "")
-    .replace(/^(?:my name(?:\s+is|'?s|s)?|name(?:\s+is|'?s)?|it'?s|this is|i'?m|i am)\s+/i, "")
+    .replace(/^(?:my name(?:\s+is|'?s|s)?|names?|name(?:\s+is|'?s)?|it'?s|this is|i'?m|i am)\s+/i, "")
     .split(/[,.]/)[0]
     .replace(/\b(?:speaking|here|calling)\b.*$/i, "")
     .replace(/\b(?:my|the)?\s*(?:phone|number|cell|email|address)\b.*$/i, "")
@@ -110,7 +110,7 @@ export function extractLiveFields(
 
   // Name — "I'm Jordan Avery" / "this is Jordan" / "my name is Jordan Avery"
   const nameMatch = customerText.match(
-    /\b(?:i'?m|i am|this is|my name(?:\s+is|'?s|s)?|name(?:\s+is|'?s|s)?|it'?s)\s+([a-z]+(?:\s+[a-z]+){0,2})\b/i
+    /\b(?:i'?m|i am|this is|my name(?:\s+is|'?s|s)?|names?|name(?:\s+is|'?s|s)?|it'?s)\s+([a-z]+(?:\s+[a-z]+){0,2})\b/i
   );
   // Avoid false positives like "this is getting worse".
   if (nameMatch) {

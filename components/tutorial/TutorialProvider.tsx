@@ -83,6 +83,7 @@ export function TutorialProvider() {
   const [requestFormOpen, setRequestFormOpen] = useState(false);
   const [welcomeMorphing, setWelcomeMorphing] = useState(false);
   const [confirmSimulationOpen, setConfirmSimulationOpen] = useState(false);
+  const [showManualNext, setShowManualNext] = useState(true);
   const [pulseNext, setPulseNext] = useState(false);
   const welcomeHandledRef = useRef<string | null>(null);
 
@@ -97,7 +98,7 @@ export function TutorialProvider() {
     {
       id: "you-answer",
       title: "First, you are the sales rep.",
-      body: "Act as the company rep and watch the AI help in real time.\n\nWhat to do:\n1. Click Start.\n2. Answer the fake call in the top-left.\n3. Have your audio on and talk out loud.\n4. Ask for the customer's name, phone, email, address, what happened, how urgent it is, and when they want an inspection.\n\nThe CRM starts blank because the system does not know who is calling yet. As the customer answers, the AI listens, fills the lead form, and drafts CRM notes.",
+      body: "Act as the company rep and watch the AI help in real time.\n\nWhat to do:\n1. Click Start.\n2. Answer the fake call in the top-left.\n3. Have your audio on and talk out loud.\n4. Ask for the customer's name, phone, email, address, what happened, how urgent it is, and when they want an inspection.\n5. When you schedule, try asking about 5:30 tomorrow first.\n\nThe CRM starts blank because the system does not know who is calling yet. As the customer answers, the AI listens, fills the lead form, drafts CRM notes, and checks the schedule while you talk.",
       action: {
         label: "Start",
         icon: Headphones,
@@ -121,13 +122,13 @@ export function TutorialProvider() {
     {
       id: "you-answer-watch",
       title: "Watch the AI help during the call.",
-      body: "Stay on the call and keep acting as the sales rep.\n\nThe AI is listening for useful details. It fills the lead form as the homeowner talks and drafts notes while the call is still happening.\n\nWhen you are done, hang up. After the call ends, click Save lead so the record opens in the CRM.\n\nIf live voice is not available, the app will say so clearly. It will not pretend the call happened.",
+      body: "Stay on the call and keep acting as the sales rep.\n\nThe AI is listening for useful details. It fills the lead form as the homeowner talks and drafts notes while the call is still happening.\n\nWhen you ask about appointment times, watch the AI scheduling assist. It will flag a bad slot, suggest what to ask next, and select the real opening once the customer agrees.\n\nWhen you are done, hang up. After the call ends, click Save lead so the record opens in the CRM.",
       advance: { kind: "event", event: "northstar-call-done" },
     },
     {
       id: "save-first-lead",
       title: "Save the lead.",
-      body: "The call is done. The AI captured the important details and prepared the CRM record.\n\nNow click Save lead. This is the handoff from the call into the CRM: the rep reviews the record, then saves it.",
+      body: "The call is done. The AI captured the important details and prepared the CRM record.\n\nMake sure the AI scheduling assist says Booking ready, then click Save lead. This is the handoff from the call into the CRM: the rep reviews the record, then saves it.",
       spotlight: "lead-intake-save",
       spotlightHint: "Click Save lead",
       advance: { kind: "navigatePrefix", prefix: "/app/leads/" },
@@ -218,9 +219,35 @@ export function TutorialProvider() {
     },
     {
       id: "follow-form-notifications",
-      title: "Follow the notification badges.",
-      body: "The AI phone assistant finished the web-lead call and updated the CRM.\n\nIf a badge appears, follow it. For example, an appointment confirmation task means there is an AI-written text waiting for review.\n\nIf the lead is not urgent yet, it may simply land in Upcoming. That is okay. Click Next when you are ready to keep going.",
-      advance: { kind: "manual" },
+      title: "Follow the task notification.",
+      body: "The AI phone assistant finished the web-lead call and updated the CRM.\n\nA task badge means there is work waiting for the team. In this case, the AI booked the inspection and wrote a confirmation text.\n\nClick Tasks and follow the notification.",
+      spotlight: "nav-tasks",
+      spotlightHint: "Click Tasks",
+      advance: { kind: "navigate", pathname: "/app/tasks" },
+    },
+    {
+      id: "open-form-confirmation-task",
+      title: "Open the confirmation task.",
+      body: "The task tells the team exactly what to review.\n\nClick the task or the message icon. It opens the AI-written confirmation in the Approval Queue.",
+      spotlight: "task-confirmation-link",
+      spotlightHint: "Open the AI draft",
+      advance: { kind: "navigate", pathname: "/app/inbox" },
+    },
+    {
+      id: "open-form-approval-queue",
+      title: "Review the AI draft.",
+      body: "The confirmation text is waiting in Approval Queue.\n\nThis demo asks a human to approve it. In a real rollout, simple appointment confirmations and reminders could also be sent automatically.",
+      spotlight: "inbox-approvals",
+      spotlightHint: "Open Approval Queue",
+      advance: { kind: "event", event: "northstar-inbox-approvals-opened" },
+    },
+    {
+      id: "approve-form-confirmation",
+      title: "Send the confirmation.",
+      body: "Read the SMS and make sure the appointment time matches the call.\n\nThen click Approve & send. Demo mode logs the message without sending anything to a real customer.",
+      spotlight: "inbox-thread",
+      spotlightHint: "Approve and send",
+      advance: { kind: "event", event: "northstar-comm-sent" },
     },
     {
       id: "text",
@@ -270,7 +297,7 @@ export function TutorialProvider() {
     {
       id: "jess-calendar",
       title: "Jess's availability is filtered.",
-      body: "The estimator calendar is focused on Jess Romero.\n\nThe highlighted slot is the same opening the AI found in the customer text thread. This is the schedule the AI assistant uses before it suggests a time to the customer.",
+      body: "The AI has already filtered the calendar to Jess Romero and the suggested date.\n\nThe highlighted slot is the same opening the AI found in the customer text thread. You do not need to change anything here; this step shows how the AI verifies the schedule before it suggests a time.",
       spotlight: "appointments-suggested-slot",
       spotlightHint: "AI-found opening",
       advance: { kind: "manual" },
@@ -278,7 +305,7 @@ export function TutorialProvider() {
     {
       id: "back-to-inbox-reschedule",
       title: "Go back to Jordan's text.",
-      body: "Now that the opening is verified, go back to Inbox.\n\nThe AI can draft the message asking Jordan if that earlier time works.",
+      body: "Now that the opening is verified, go back to Jordan's text by clicking Inbox, or by following the Tasks/message notification if one is visible.\n\nThe AI can draft the message asking Jordan if that earlier time works.",
       spotlight: "nav-inbox",
       spotlightHint: "Click Inbox",
       advance: { kind: "navigate", pathname: "/app/inbox" },
@@ -495,8 +522,42 @@ export function TutorialProvider() {
     "crm-sync",
     "settings",
   ]);
-  const highlightOnlyStepIds = new Set(["jess-booked-after-reschedule"]);
-  const showSpotlightOverlay = Boolean(step?.spotlight && (index < 17 || tabClickStepIds.has(step.id)));
+  const requiredOverlayStepIds = new Set([
+    "save-first-lead",
+    "go-tasks-confirmation",
+    "open-confirmation-task",
+    "open-approval-queue",
+    "approve-1",
+    "go-leads-after-confirm",
+    "open-jordan-after-confirm",
+    "timeline-after-confirm",
+    "follow-form-notifications",
+    "open-form-confirmation-task",
+    "open-form-approval-queue",
+    "approve-form-confirmation",
+  ]);
+  const delayedNextStepIds = new Set([
+    "pipeline-view",
+    "quote-tool-view",
+    "feedback-view",
+    "automations-view",
+    "reports-view",
+    "crm-sync-view",
+    "settings-view",
+  ]);
+  const highlightOnlyStepIds = new Set([
+    "go-inbox-urgent-text",
+    "check-jess-availability",
+    "jess-calendar",
+    "back-to-inbox-reschedule",
+    "draft-reschedule-offer",
+    "approve-reschedule-offer",
+    "go-appointments-after-reschedule",
+    "jess-booked-after-reschedule",
+  ]);
+  const showSpotlightOverlay = Boolean(
+    step?.spotlight && (requiredOverlayStepIds.has(step.id) || tabClickStepIds.has(step.id))
+  );
   const showSpotlightHighlight = Boolean(
     step?.spotlight && (showSpotlightOverlay || highlightOnlyStepIds.has(step.id))
   );
@@ -595,12 +656,19 @@ export function TutorialProvider() {
   }
 
   useEffect(() => {
+    setShowManualNext(!delayedNextStepIds.has(stepId ?? ""));
+    if (!active || !stepId || !delayedNextStepIds.has(stepId)) return;
+    const timer = window.setTimeout(() => setShowManualNext(true), 3000);
+    return () => window.clearTimeout(timer);
+  }, [active, index, stepId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
     setPulseNext(false);
-    if (!active || stepAdvanceKind !== "manual") return;
+    if (!active || stepAdvanceKind !== "manual" || !showManualNext) return;
     if (stepId === "answer-call") return;
     const timer = window.setTimeout(() => setPulseNext(true), 5000);
     return () => window.clearTimeout(timer);
-  }, [active, index, stepAdvanceKind, stepId]);
+  }, [active, index, stepAdvanceKind, stepId, showManualNext]);
 
   // ── Auto-advance on navigation ──────────────────────────────────────────
   useEffect(() => {
@@ -628,6 +696,14 @@ export function TutorialProvider() {
       ev === "northstar-inbox-conversations-opened" &&
       pathname === "/app/inbox" &&
       window.__northstarInboxTab === "conversations"
+    ) {
+      go(index + 1);
+      return;
+    }
+    if (
+      ev === "northstar-inbox-approvals-opened" &&
+      pathname === "/app/inbox" &&
+      window.__northstarInboxTab === "approvals"
     ) {
       go(index + 1);
       return;
@@ -757,6 +833,7 @@ export function TutorialProvider() {
           onNext={() => go(index + 1)}
           onStop={stop}
           pulseNext={pulseNext}
+          showManualNext={showManualNext}
           canGoBack={canGoBack}
         />
       </>
@@ -789,6 +866,7 @@ export function TutorialProvider() {
         onNext={() => go(index + 1)}
         onStop={stop}
         pulseNext={pulseNext}
+        showManualNext={showManualNext}
         canGoBack={canGoBack}
       />
     </>
@@ -1025,6 +1103,7 @@ function TutorialSidebar({
   onNext,
   onStop,
   pulseNext,
+  showManualNext,
   canGoBack,
 }: {
   step: Step;
@@ -1038,6 +1117,7 @@ function TutorialSidebar({
   onNext: () => void;
   onStop: () => void;
   pulseNext: boolean;
+  showManualNext: boolean;
   canGoBack: boolean;
 }) {
   const ActionIcon = step.action?.icon;
@@ -1110,7 +1190,7 @@ function TutorialSidebar({
         {/* Primary Next sits right under the instructions so it's obvious where
             to click. Only shown for steps that advance manually (and aren't the
             last step, which shows Finish in the footer instead). */}
-        {step.advance.kind === "manual" && index !== total - 1 && (
+        {step.advance.kind === "manual" && index !== total - 1 && showManualNext && (
           <Button
             onClick={onNext}
             data-tour="tutorial-next-button"

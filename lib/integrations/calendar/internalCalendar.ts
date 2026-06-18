@@ -1,5 +1,13 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Appointment, AvailabilityWindow } from "@/types/app";
+import {
+  demoDatePlusDays,
+  demoDayOfWeek,
+  demoWallClockParts,
+  formatDemoDateTime,
+  formatDemoTime,
+  sameDemoDay,
+} from "@/lib/utils/demoTime";
 
 export interface AppointmentSlot {
   start: Date;
@@ -29,6 +37,11 @@ function timeToMinutes(t: string) {
   return h * 60 + (m || 0);
 }
 
+function demoMinutes(date: Date) {
+  const parts = demoWallClockParts(date);
+  return parts.hour * 60 + parts.minute;
+}
+
 /**
  * The canonical inspection start times as human-readable labels
  * ("9:00 AM", "10:30 AM", …). These ARE the bookable times, so the voice
@@ -37,14 +50,12 @@ function timeToMinutes(t: string) {
 export function canonicalStartLabels(): string[] {
   return CANONICAL_STARTS.map((t) => {
     const [h, m] = t.split(":").map(Number);
-    const d = new Date();
-    d.setHours(h, m, 0, 0);
-    return d.toLocaleString("en-US", { hour: "numeric", minute: "2-digit" });
+    return formatDemoTime(demoDatePlusDays(0, h, m));
   });
 }
 
 export function slotLabel(start: Date) {
-  return start.toLocaleString("en-US", {
+  return formatDemoDateTime(start, {
     weekday: "short",
     month: "short",
     day: "numeric",
@@ -105,9 +116,8 @@ export async function getAvailableSlots(
 
   const slots: AppointmentSlot[] = [];
   for (let d = 0; d < days && slots.length < limit; d++) {
-    const day = new Date(now);
-    day.setDate(day.getDate() + d);
-    const dow = day.getDay();
+    const day = demoDatePlusDays(d, 12, 0);
+    const dow = demoDayOfWeek(day);
     for (const win of activeWindows.filter((w) => w.day_of_week === dow)) {
       const winStart = timeToMinutes(win.start_time);
       const winEnd = timeToMinutes(win.end_time);
@@ -115,8 +125,7 @@ export async function getAvailableSlots(
       for (const startTime of CANONICAL_STARTS) {
         const startMin = timeToMinutes(startTime);
         if (startMin < winStart || startMin + slotMinutes > winEnd) continue;
-        const start = new Date(day);
-        start.setHours(Math.floor(startMin / 60), startMin % 60, 0, 0);
+        const start = demoDatePlusDays(d, Math.floor(startMin / 60), startMin % 60);
         const end = new Date(start.getTime() + slotMinutes * 60_000);
         // Skip the past and anything within the next hour.
         if (start.getTime() < now.getTime() + 3_600_000) continue;
@@ -148,7 +157,7 @@ export function resolveAppointmentTime(
   if (!Number.isNaN(parsed.getTime())) {
     const exact = slots.find((s) => Math.abs(s.start.getTime() - parsed.getTime()) < 15 * 60_000);
     if (exact) return exact;
-    const sameDay = slots.filter((s) => s.start.toDateString() === parsed.toDateString());
+    const sameDay = slots.filter((s) => sameDemoDay(s.start, parsed));
     if (sameDay.length > 0) {
       return sameDay.reduce((best, s) =>
         Math.abs(s.start.getTime() - parsed.getTime()) < Math.abs(best.start.getTime() - parsed.getTime())
@@ -159,9 +168,8 @@ export function resolveAppointmentTime(
   }
 
   const text = requested.toLowerCase();
-  const today = new Date();
-  const tomorrow = new Date(today);
-  tomorrow.setDate(tomorrow.getDate() + 1);
+  const today = demoDatePlusDays(0, 12, 0);
+  const tomorrow = demoDatePlusDays(1, 12, 0);
   const weekdays: Record<string, number> = {
     sunday: 0,
     monday: 1,
@@ -179,7 +187,7 @@ export function resolveAppointmentTime(
     targetDate = tomorrow;
   } else if (weekdayMatch) {
     const targetDow = weekdays[weekdayMatch[1]];
-    const baseDays = (targetDow - today.getDay() + 7) % 7;
+    const baseDays = (targetDow - demoDayOfWeek(today) + 7) % 7;
     const explicitlyNext = /\bnext\s+(?:week\s+)?(?:sunday|monday|tuesday|wednesday|thursday|friday|saturday)\b/.test(
       text
     );
@@ -188,20 +196,29 @@ export function resolveAppointmentTime(
       : explicitlyNext && baseDays === 0
         ? 7
         : baseDays;
-    targetDate = new Date(today);
-    targetDate.setDate(targetDate.getDate() + addDays);
+    targetDate = demoDatePlusDays(addDays, 12, 0);
   }
 
   const candidates = targetDate
-    ? slots.filter((s) => s.start.toDateString() === targetDate.toDateString())
+    ? slots.filter((s) => sameDemoDay(s.start, targetDate))
     : slots;
   const pool = candidates.length > 0 ? candidates : slots;
 
+  const noon = /\bnoon\b/.test(text);
   const timeMatch =
     text.match(/\b(?:at|around|about|by|for)\s+(\d{1,4})(?::(\d{2}))?\s*(am|pm)?\b/) ||
     text.match(/\b(\d{1,2})(?::(\d{2}))\s*(am|pm)?\b/) ||
     text.match(/\b(\d{1,2})\s*(am|pm)\b/);
-  if (timeMatch) {
+  if (timeMatch || noon) {
+    if (noon) {
+      const targetMin = 12 * 60;
+      return pool.reduce((best, s) => {
+        const mins = demoMinutes(s.start);
+        const bestMins = demoMinutes(best.start);
+        return Math.abs(mins - targetMin) < Math.abs(bestMins - targetMin) ? s : best;
+      });
+    }
+    if (!timeMatch) return pool[0] ?? null;
     const rawHour = timeMatch[1];
     const ampm = /^(am|pm)$/i.test(timeMatch[2] ?? "")
       ? timeMatch[2]
@@ -218,12 +235,12 @@ export function resolveAppointmentTime(
     const targetMin = hour * 60 + minute;
     const afternoon = /after|afternoon|later/.test(text);
     const eligible = afternoon
-      ? pool.filter((s) => s.start.getHours() * 60 + s.start.getMinutes() >= targetMin)
+      ? pool.filter((s) => demoMinutes(s.start) >= targetMin)
       : pool;
     const search = eligible.length > 0 ? eligible : pool;
     return search.reduce((best, s) => {
-      const mins = s.start.getHours() * 60 + s.start.getMinutes();
-      const bestMins = best.start.getHours() * 60 + best.start.getMinutes();
+      const mins = demoMinutes(s.start);
+      const bestMins = demoMinutes(best.start);
       return Math.abs(mins - targetMin) < Math.abs(bestMins - targetMin) ? s : best;
     });
   }

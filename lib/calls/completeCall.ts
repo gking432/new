@@ -132,7 +132,7 @@ function formatNameCandidate(value: string | null | undefined) {
   if (!value) return null;
   const cleaned = value
     .replace(/^(?:sure|yeah|yes|yep|okay|ok|hi|hello|hey)[,.\s]+/i, "")
-    .replace(/^(?:my name(?:\s+is|'?s|s)?|name(?:\s+is|'?s)?|it'?s|this is|i'?m|i am)\s+/i, "")
+    .replace(/^(?:my name(?:\s+is|'?s|s)?|names?|name(?:\s+is|'?s)?|it'?s|this is|i'?m|i am)\s+/i, "")
     .split(/[,.]/)[0]
     .replace(/\b(?:speaking|here|calling)\b.*$/i, "")
     .replace(/\b(?:my|the)?\s*(?:phone|number|cell|email|address)\b.*$/i, "")
@@ -285,7 +285,7 @@ function extractNameFromTranscript(text: string) {
   }
 
   const intro = text.match(
-    /Customer:\s*(?:hi|hello|hey|sure|yeah|yes|yep|okay|ok)?[,.\s]*(?:this is|i'?m|i am|my name(?:\s+is|'?s|s)?|name(?:\s+is|'?s|s)?|it'?s)\s+([a-z]+(?:\s+[a-z]+){0,2})/i
+    /Customer:\s*(?:hi|hello|hey|sure|yeah|yes|yep|okay|ok)?[,.\s]*(?:this is|i'?m|i am|my name(?:\s+is|'?s|s)?|names?|name(?:\s+is|'?s|s)?|it'?s)\s+([a-z]+(?:\s+[a-z]+){0,2})/i
   );
   if (!intro) {
     const standalone = lines
@@ -400,6 +400,8 @@ function extractTimePhrase(text: string) {
   const time =
     "(?:(?:at|around|about|by|for)\\s*)?(?:\\d{1,2}:\\d{2}|\\d{3,4}|\\d{1,2}\\s*(?:am|pm))\\s*(?:am|pm)?|(?:at|around|about|by|for)\\s*\\d{1,2}\\s*(?:am|pm)?";
   const patterns = [
+    new RegExp(`\\b${dayWords}\\b[^.?!\\n]{0,80}?\\bnoon\\b`, "i"),
+    new RegExp(`\\bnoon\\b[^.?!\\n]{0,50}?\\b${dayWords}\\b`, "i"),
     new RegExp(`\\b${dayWords}\\b[^.?!\\n]{0,80}?\\b${time}\\b`, "i"),
     new RegExp(`\\b${time}\\b[^.?!\\n]{0,50}?\\b${dayWords}\\b`, "i"),
     /\b(?:at|around|about|by|for)?\s*(?:\d{1,2}:\d{2}|\d{3,4}|\d{1,2}\s*(?:am|pm))\s*(?:am|pm)?\b/i,
@@ -474,6 +476,12 @@ function extractAppointmentRequest(
     .filter((line) => /appointment|inspection|schedule|book|available|works|reschedule|move/i.test(line));
   const searchText = `${lines.join(" ")} ${transcriptText}`;
   return (
+    searchText.match(
+      /\b(?:today|tomorrow|monday|tuesday|wednesday|thursday|friday|saturday|sunday)[^.?!\n]{0,80}\bnoon\b/i
+    )?.[0]?.trim() ??
+    searchText.match(
+      /\bnoon\b[^.?!\n]{0,80}\b(?:today|tomorrow|monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b/i
+    )?.[0]?.trim() ??
     searchText.match(
       /\b(?:today|tomorrow|monday|tuesday|wednesday|thursday|friday|saturday|sunday)?[^.?!\n]{0,60}\b\d{1,2}(?::\d{2})?\s*(?:am|pm)\b/i
     )?.[0]?.trim() ??
@@ -738,7 +746,8 @@ export async function completeCall(
     summary.appointment_requested || requestedAppointment
       ? await getAvailableSlots(supabase, 21, 160)
       : [];
-  const resolvedRequestedSlot = requestedAppointment
+  const repAssistedManualSave = input.deferLeadCreation && input.aiRole === "customer";
+  const resolvedRequestedSlot = requestedAppointment && !repAssistedManualSave
     ? resolveAppointmentTime(requestedAppointment, slots)
     : null;
 
@@ -762,6 +771,13 @@ export async function completeCall(
           due_in_minutes: 5,
         },
       ];
+    } else if (repAssistedManualSave && (summary.appointment_requested || requestedAppointment)) {
+      summary.appointment_requested = true;
+      summary.appointment_time = null;
+      summary.next_action =
+        "Pick a real inspection slot from the dashboard, save the lead, then review and send the confirmation SMS.";
+      summary.crm_note = `${stripScheduledTimeSentences(summary.summary).replace(/[.?!]\s*$/, "")}. Appointment time was discussed during the call; the rep should choose a real open slot before saving.`;
+      summary.recommended_tasks = [];
     }
 
     await supabase.from("call_summaries").insert({

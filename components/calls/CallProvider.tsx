@@ -21,9 +21,11 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import type { CompleteCallResult } from "@/lib/calls/completeCall";
+import { getDemoInspectionSlots } from "@/lib/actions/appointments";
 import { finishCall } from "@/lib/actions/calls";
 import { appendDemoEvent } from "@/lib/demo-log";
 import { slotLabel } from "@/lib/integrations/calendar/internalCalendar";
+import { demoDatePlusDays } from "@/lib/utils/demoTime";
 import { useRingtone } from "@/lib/ringtone";
 import type { CallScenario } from "@/types/app";
 import { extractLiveFields } from "./CallShared";
@@ -107,9 +109,7 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const simulateRepAssistedCall = useCallback(() => {
-    const appointment = new Date();
-    appointment.setDate(appointment.getDate() + 2);
-    appointment.setHours(17, 30, 0, 0);
+    const appointment = demoDatePlusDays(2, 17, 30);
     const appointmentLabel = slotLabel(appointment);
     const turns: TranscriptTurn[] = [
       {
@@ -236,6 +236,9 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
       return;
     }
     const session = (await res.json()) as { call_id: string };
+    const slotResult = await getDemoInspectionSlots(10, 6);
+    const simulatedSlot = slotResult.success ? slotResult.data[0] : null;
+    const simulatedSlotLabel = simulatedSlot?.label ?? "tomorrow at 12 noon";
     const turns: TranscriptTurn[] = [
       {
         speaker: "ai",
@@ -269,28 +272,23 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
       },
       {
         speaker: "ai",
-        text: "We have an opening tomorrow afternoon at 2 PM. Would that work?",
+        text: `We have an opening ${simulatedSlotLabel}. Would that work?`,
         at: 35,
       },
       {
         speaker: "customer",
-        text: "Anything earlier?",
+        text: "Yes, that works.",
         at: 41,
       },
       {
         speaker: "ai",
-        text: "Sure, we also have tomorrow at 12 noon. Would that be better?",
+        text: `Perfect, I have you down for ${simulatedSlotLabel}. We will text you a quick confirmation.`,
         at: 44,
       },
       {
         speaker: "customer",
-        text: "Yeah, let's do that.",
+        text: "Great, thank you.",
         at: 49,
-      },
-      {
-        speaker: "ai",
-        text: "Perfect, I have you down for tomorrow at 12 noon. We will text you a quick confirmation.",
-        at: 53,
       },
     ];
     setCall(null);

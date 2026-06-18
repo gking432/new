@@ -76,7 +76,7 @@ export const leadFormSchema = z.object({
   zip_code: optionalText(10),
   homeowner_status: z.enum(["owner", "buyer_under_contract", "property_manager", "other"]).default("owner"),
 
-  service_type: z.enum(SERVICE_TYPES),
+  service_type: z.enum(SERVICE_TYPES).default("not_sure"),
   project_reason: z.enum(PROJECT_REASONS).default("damage_repair"),
   timeframe: z.enum(TIMEFRAMES),
   budget_range: z.enum(BUDGET_RANGES).default("not_sure"),

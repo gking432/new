@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Bot, Check, Loader2, PhoneCall, Save } from "lucide-react";
+import { Bot, CalendarClock, Check, Loader2, PhoneCall, Save, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -20,6 +20,13 @@ import { Textarea } from "@/components/ui/textarea";
 import { useLiveCall } from "@/components/calls/CallProvider";
 import { createLead, type LeadInput } from "@/lib/actions/leads";
 import { cn } from "@/lib/utils";
+import {
+  demoDatePlusDays,
+  formatDemoDate,
+  formatDemoDateTime,
+  formatDemoTime,
+} from "@/lib/utils/demoTime";
+import type { TranscriptTurn } from "@/types/app";
 
 type Fields = {
   first_name: string;
@@ -140,6 +147,125 @@ function draftNotesFromCall(
   return notes.join("\n");
 }
 
+const FIVE_THIRTY_RE = /\b(?:5\s*:?\s*30|five[\s-]?thirty)\s*(?:p\.?m\.?)?\b/i;
+const FOUR_PM_RE = /\b(?:4\s*(?::00)?|four(?:\s+o'?clock)?)\s*(?:p\.?m\.?)?\b/i;
+
+function humanSlotLabel(date: Date) {
+  return `${formatDemoDate(date, {
+    weekday: "long",
+    month: "short",
+    day: "numeric",
+  })} at ${formatDemoTime(date)}`;
+}
+
+function crmSlotLabel(date: Date) {
+  return formatDemoDateTime(date, {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
+function mentionsTomorrow(text: string) {
+  return /\btomorrow\b/i.test(text);
+}
+
+function mentionsRecommendedDay(text: string, recommended: Date) {
+  const lower = text.toLowerCase();
+  const longWeekday = formatDemoDate(recommended, { weekday: "long" }).toLowerCase();
+  const shortWeekday = formatDemoDate(recommended, { weekday: "short" }).toLowerCase();
+  const monthDay = formatDemoDate(recommended, { month: "long", day: "numeric" }).toLowerCase();
+  const shortMonthDay = formatDemoDate(recommended, { month: "short", day: "numeric" }).toLowerCase();
+
+  return (
+    /\bday after tomorrow\b/i.test(text) ||
+    lower.includes(longWeekday) ||
+    lower.includes(shortWeekday) ||
+    lower.includes(monthDay) ||
+    lower.includes(shortMonthDay)
+  );
+}
+
+function buildRepSchedulingAssist(turns: TranscriptTurn[]) {
+  const tomorrowAt530 = demoDatePlusDays(1, 17, 30);
+  const tomorrowAt4 = demoDatePlusDays(1, 16, 0);
+  const recommended = demoDatePlusDays(2, 17, 30);
+  const repText = turns
+    .filter((turn) => turn.speaker === "customer")
+    .map((turn) => turn.text)
+    .join(" ");
+
+  const askedTomorrow530 = mentionsTomorrow(repText) && FIVE_THIRTY_RE.test(repText);
+  const askedTomorrow4 = mentionsTomorrow(repText) && FOUR_PM_RE.test(repText);
+  const askedRecommended =
+    mentionsRecommendedDay(repText, recommended) && FIVE_THIRTY_RE.test(repText);
+
+  const recommendedLabel = humanSlotLabel(recommended);
+  const selected = askedRecommended
+    ? {
+        start: recommended.toISOString(),
+        label: crmSlotLabel(recommended),
+      }
+    : null;
+
+  if (selected) {
+    return {
+      status: "ready" as const,
+      eyebrow: "AI scheduling assist",
+      title: `${recommendedLabel} is open.`,
+      body:
+        "The AI matched the time you discussed to a real available inspection slot. This is the appointment that will save to the CRM.",
+      details: [
+        "Jordan works until 5, so evening slots are a better fit.",
+        "The confirmation text will use this exact date and time.",
+      ],
+      selected,
+    };
+  }
+
+  if (askedTomorrow4) {
+    return {
+      status: "coach" as const,
+      eyebrow: "AI scheduling assist",
+      title: `${humanSlotLabel(tomorrowAt4)} is open, but it is probably a bad fit.`,
+      body: `Jordan said she works until 5:00, so ask about ${recommendedLabel} instead.`,
+      details: [
+        "The AI is checking calendar availability and customer constraints at the same time.",
+        "Try the later evening opening so the rep does not book a slot the homeowner cannot make.",
+      ],
+      selected: null,
+    };
+  }
+
+  if (askedTomorrow530) {
+    return {
+      status: "conflict" as const,
+      eyebrow: "AI scheduling assist",
+      title: `${humanSlotLabel(tomorrowAt530)} is not available.`,
+      body: `Try ${formatDemoTime(tomorrowAt4)} tomorrow, or ask about ${recommendedLabel}.`,
+      details: [
+        "The AI caught the conflict while you were still talking.",
+        "It is suggesting a real next step instead of making the rep search manually.",
+      ],
+      selected: null,
+    };
+  }
+
+  return {
+    status: "listening" as const,
+    eyebrow: "AI scheduling assist",
+    title: "Listening for appointment times.",
+    body: `Try asking about 5:30 tomorrow. The AI will check the calendar, flag conflicts, and suggest the next best slot.`,
+    details: [
+      "This panel is not a manual picker.",
+      "It reacts to what the rep says and prepares the correct booking for Save lead.",
+    ],
+    selected: null,
+  };
+}
+
 /**
  * The CRM lead form — a blank lead detail that can be filled MANUALLY (walk-ins,
  * phone notes, or if the AI is ever down) AND fills itself in real time when an
@@ -150,12 +276,27 @@ export function LeadIntakeForm() {
   const live = useLiveCall();
   const [fields, setFields] = useState<Fields>(EMPTY);
   const [saving, setSaving] = useState(false);
+  const [selectedAppointment, setSelectedAppointment] = useState<{
+    start: string;
+    label: string;
+  } | null>(null);
   const touched = useRef<Set<keyof Fields>>(new Set());
   const liveFillTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [aiFilled, setAiFilled] = useState<Set<keyof Fields>>(new Set());
 
   const callActive =
     live && ["incoming", "dialing", "connecting", "connected", "processing"].includes(live.phase);
+  const repAssistedCall = live?.persona === "customer";
+  const schedulingAssist = useMemo(
+    () => buildRepSchedulingAssist(live?.turns ?? []),
+    [live?.turns]
+  );
+  const appointmentWasDiscussed = Boolean(
+    repAssistedCall &&
+      (live?.result?.summary?.appointment_requested ||
+        live?.result?.pendingAppointmentStartTime ||
+        live?.extracted?.["Requested appointment"])
+  );
 
   // Caller ID is known as soon as the phone rings. Everything else waits for
   // the conversation and merges with a short delay so it reads like live notes.
@@ -253,13 +394,26 @@ export function LeadIntakeForm() {
     live?.result?.pendingAppointmentLabel,
   ]);
 
+  useEffect(() => {
+    if (!repAssistedCall) {
+      if (selectedAppointment) setSelectedAppointment(null);
+      return;
+    }
+    if (
+      schedulingAssist.selected &&
+      selectedAppointment?.start !== schedulingAssist.selected.start
+    ) {
+      setSelectedAppointment(schedulingAssist.selected);
+    }
+  }, [repAssistedCall, schedulingAssist.selected, selectedAppointment]);
+
   function update(key: keyof Fields, value: string) {
     touched.current.add(key);
     setFields((p) => ({ ...p, [key]: value }) as Fields);
   }
 
   const missingRequired = useMemo(() => {
-    const req: (keyof Fields)[] = ["first_name", "phone", "service_type"];
+    const req: (keyof Fields)[] = ["first_name", "phone"];
     return req.filter((k) => !fields[k]);
   }, [fields]);
 
@@ -268,8 +422,12 @@ export function LeadIntakeForm() {
       router.push(`/app/leads/${live.result.leadId}`);
       return;
     }
-    if (!fields.first_name || !fields.service_type) {
-      toast.error("At least a name and service are required");
+    if (!fields.first_name) {
+      toast.error("At least a name is required");
+      return;
+    }
+    if (appointmentWasDiscussed && !selectedAppointment) {
+      toast.error("Let the AI scheduling assist select a real slot before saving this call.");
       return;
     }
     setSaving(true);
@@ -282,7 +440,7 @@ export function LeadIntakeForm() {
       city: fields.city || null,
       state: fields.state || null,
       zip_code: fields.zip_code || null,
-      service_type: fields.service_type as LeadInput["service_type"],
+      service_type: (fields.service_type || "not_sure") as LeadInput["service_type"],
       description: fields.description,
       active_leak: fields.active_leak || null,
       insurance_started: fields.insurance_started || null,
@@ -297,10 +455,13 @@ export function LeadIntakeForm() {
           : null,
       appointment_start_time:
         live?.phase === "done"
-          ? (live.result?.pendingAppointmentStartTime ??
-            live.result?.appointment?.start_time ??
-            live.result?.summary?.appointment_time ??
-            null)
+          ? (selectedAppointment?.start ??
+            (repAssistedCall
+              ? null
+              : live.result?.pendingAppointmentStartTime ??
+                live.result?.appointment?.start_time ??
+                live.result?.summary?.appointment_time ??
+                null))
           : null,
     }).then((res) => {
       setSaving(false);
@@ -352,6 +513,58 @@ export function LeadIntakeForm() {
             anything still blank.
           </div>
         )}
+        {repAssistedCall && (
+          <div
+            className={cn(
+              "rounded-xl border-2 p-3 shadow-sm transition-colors",
+              schedulingAssist.status === "ready" && "border-brand-gold bg-brand-gold/10",
+              schedulingAssist.status === "conflict" && "border-amber-300 bg-amber-50",
+              schedulingAssist.status === "coach" && "border-blue-300 bg-blue-50",
+              schedulingAssist.status === "listening" && "border-primary/25 bg-primary/5"
+            )}
+            data-tour="rep-assisted-slot-picker"
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex items-start gap-2">
+                <CalendarClock className="mt-0.5 h-4 w-4 text-brand-dark" />
+                <div>
+                  <p className="flex flex-wrap items-center gap-2 text-sm font-semibold text-brand-dark">
+                    {schedulingAssist.eyebrow}
+                    {schedulingAssist.status === "ready" && (
+                      <Badge className="bg-brand-dark text-white">Booking ready</Badge>
+                    )}
+                    {schedulingAssist.status === "conflict" && (
+                      <Badge variant="secondary">Conflict found</Badge>
+                    )}
+                    {schedulingAssist.status === "coach" && (
+                      <Badge variant="secondary">Suggestion</Badge>
+                    )}
+                  </p>
+                  <p className="mt-1 text-sm font-medium leading-5 text-brand-dark">
+                    {schedulingAssist.title}
+                  </p>
+                  <p className="mt-1 text-xs leading-5 text-brand-dark/75">
+                    {schedulingAssist.body}
+                  </p>
+                </div>
+              </div>
+              <Sparkles className="mt-0.5 h-4 w-4 shrink-0 text-brand-gold" />
+            </div>
+            <ul className="mt-3 space-y-1.5 text-xs leading-5 text-brand-dark/75">
+              {schedulingAssist.details.map((detail) => (
+                <li key={detail} className="flex gap-2">
+                  <span className="mt-2 h-1 w-1 shrink-0 rounded-full bg-brand-dark/55" />
+                  <span>{detail}</span>
+                </li>
+              ))}
+            </ul>
+            {selectedAppointment && (
+              <div className="mt-3 rounded-lg border border-brand-dark/15 bg-white/70 px-3 py-2 text-xs font-medium text-brand-dark">
+                Selected by AI for Save lead: {selectedAppointment.label}
+              </div>
+            )}
+          </div>
+        )}
         <div className="grid gap-3 sm:grid-cols-2">
           <Field label="First name" required filled={aiFilled.has("first_name")}>
             <Input value={fields.first_name} onChange={(e) => update("first_name", e.target.value)} className={fieldCls("first_name")} />
@@ -379,7 +592,7 @@ export function LeadIntakeForm() {
               <Input value={fields.zip_code} onChange={(e) => update("zip_code", e.target.value)} className={fieldCls("zip_code")} />
             </Field>
           </div>
-          <Field label="Service" required filled={aiFilled.has("service_type")}>
+          <Field label="Service" filled={aiFilled.has("service_type")}>
             <Select value={fields.service_type} onValueChange={(v) => update("service_type", v)}>
               <SelectTrigger className={fieldCls("service_type")}>
                 <SelectValue placeholder="Select…" />

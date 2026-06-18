@@ -87,7 +87,7 @@ function SelectField({
   return (
     <div className="space-y-1.5">
       <Label>{label}</Label>
-      <Select value={value} onValueChange={onChange}>
+      <Select value={value ?? ""} onValueChange={onChange}>
         <SelectTrigger>
           <SelectValue placeholder={placeholder} />
         </SelectTrigger>
@@ -322,7 +322,7 @@ export function LeadForm({
       <Card>
         <CardHeader>
           <CardTitle>What do you need help with?</CardTitle>
-          <CardDescription>Pick the service and tell us what is going on.</CardDescription>
+          <CardDescription>Tell us what is going on. Pick a service if you know it.</CardDescription>
         </CardHeader>
         <CardContent className="grid gap-4 sm:grid-cols-2">
           <Controller
@@ -335,7 +335,7 @@ export function LeadForm({
                 onChange={field.onChange}
                 error={errors.service_type?.message}
                 options={SERVICE_OPTIONS}
-                placeholder="Choose a service"
+                placeholder="Optional"
               />
             )}
           />
@@ -350,39 +350,6 @@ export function LeadForm({
                 error={errors.timeframe?.message}
                 options={TIMEFRAME_OPTIONS}
                 placeholder="Choose timing"
-              />
-            )}
-          />
-          <Controller
-            control={control}
-            name="active_leak"
-            render={({ field }) => (
-              <SelectField
-                label="Is water leaking now?"
-                value={field.value}
-                onChange={field.onChange}
-                options={[
-                  ["yes", "Yes"],
-                  ["no", "No"],
-                  ["not_sure", "Not sure"],
-                ]}
-              />
-            )}
-          />
-          <Controller
-            control={control}
-            name="insurance_started"
-            render={({ field }) => (
-              <SelectField
-                label="Insurance started?"
-                value={field.value}
-                onChange={field.onChange}
-                options={[
-                  ["yes", "Yes"],
-                  ["no", "No"],
-                  ["not_sure", "Not sure"],
-                  ["not_applicable", "Not applicable"],
-                ]}
               />
             )}
           />
@@ -480,6 +447,39 @@ export function LeadForm({
                 value={field.value}
                 onChange={field.onChange}
                 options={SOURCE_OPTIONS}
+              />
+            )}
+          />
+          <Controller
+            control={control}
+            name="active_leak"
+            render={({ field }) => (
+              <SelectField
+                label="Is water leaking now?"
+                value={field.value}
+                onChange={field.onChange}
+                options={[
+                  ["yes", "Yes"],
+                  ["no", "No"],
+                  ["not_sure", "Not sure"],
+                ]}
+              />
+            )}
+          />
+          <Controller
+            control={control}
+            name="insurance_started"
+            render={({ field }) => (
+              <SelectField
+                label="Insurance started?"
+                value={field.value}
+                onChange={field.onChange}
+                options={[
+                  ["yes", "Yes"],
+                  ["no", "No"],
+                  ["not_sure", "Not sure"],
+                  ["not_applicable", "Not applicable"],
+                ]}
               />
             )}
           />

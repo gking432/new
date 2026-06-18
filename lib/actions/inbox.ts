@@ -4,6 +4,14 @@ import { revalidatePath } from "next/cache";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { runDueScheduledReminders } from "@/lib/communications/reminders";
 import { createClient } from "@/lib/supabase/server";
+import {
+  demoDatePlusDays,
+  demoDayOfWeek,
+  demoWallClockParts,
+  formatDemoDate,
+  formatDemoTime,
+  sameDemoDay,
+} from "@/lib/utils/demoTime";
 import type { Communication, Lead, Profile } from "@/types/app";
 
 type ActionResult<T = undefined> =
@@ -22,27 +30,25 @@ function sameDayLabel(startIso: string) {
   const start = new Date(startIso);
   const now = new Date();
   const day =
-    start.toDateString() === now.toDateString()
+    sameDemoDay(start, now)
       ? "today"
-      : start.toDateString() === new Date(now.getTime() + 86_400_000).toDateString()
+      : sameDemoDay(start, demoDatePlusDays(1, 12, 0))
         ? "tomorrow"
-        : start.toLocaleDateString("en-US", { weekday: "long", month: "short", day: "numeric" });
-  return `${day} at ${start.toLocaleTimeString("en-US", {
-    hour: "numeric",
-    minute: "2-digit",
-  })}`;
+        : formatDemoDate(start, { weekday: "long", month: "short", day: "numeric" });
+  return `${day} at ${formatDemoTime(start)}`;
 }
 
 function roundUpToNextHalfHour(date: Date) {
-  const rounded = new Date(date);
-  rounded.setSeconds(0, 0);
-  const minutes = rounded.getMinutes();
-  if (minutes === 0 || minutes === 30) return rounded;
-  if (minutes < 30) rounded.setMinutes(30);
+  const parts = demoWallClockParts(date);
+  let hour = parts.hour;
+  let minute = parts.minute;
+  if (minute === 0 || minute === 30) return demoDatePlusDays(0, hour, minute);
+  if (minute < 30) minute = 30;
   else {
-    rounded.setHours(rounded.getHours() + 1, 0, 0, 0);
+    hour += 1;
+    minute = 0;
   }
-  return rounded;
+  return demoDatePlusDays(0, hour, minute);
 }
 
 function pickSoonerInspectionSlot() {
@@ -57,18 +63,15 @@ function pickSoonerInspectionSlot() {
     { hour: 19, minute: 30 },
   ];
   for (const option of todayStarts) {
-    const start = new Date(now);
-    start.setHours(option.hour, option.minute, 0, 0);
-    if (start.getTime() > now.getTime() + 45 * 60_000 && start.getHours() < 21) {
+    const start = demoDatePlusDays(0, option.hour, option.minute);
+    if (start.getTime() > now.getTime() + 45 * 60_000 && demoWallClockParts(start).hour < 21) {
       return {
         start,
         end: new Date(start.getTime() + 60 * 60_000),
       };
     }
   }
-  const tomorrow = new Date(now);
-  tomorrow.setDate(tomorrow.getDate() + 1);
-  tomorrow.setHours(9, 0, 0, 0);
+  const tomorrow = demoDatePlusDays(1, 9, 0);
   return {
     start: tomorrow,
     end: new Date(tomorrow.getTime() + 60 * 60_000),
@@ -76,7 +79,8 @@ function pickSoonerInspectionSlot() {
 }
 
 function hhmm(date: Date) {
-  return `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
+  const parts = demoWallClockParts(date);
+  return `${String(parts.hour).padStart(2, "0")}:${String(parts.minute).padStart(2, "0")}`;
 }
 
 async function getJessAvailability(supabase: SupabaseClient) {
@@ -104,7 +108,7 @@ async function getJessAvailability(supabase: SupabaseClient) {
       .from("availability_windows")
       .select("id")
       .eq("user_id", estimator.id)
-      .eq("day_of_week", slot.start.getDay())
+      .eq("day_of_week", demoDayOfWeek(slot.start))
       .eq("start_time", startTime)
       .eq("end_time", endTime)
       .eq("active", true)
@@ -113,7 +117,7 @@ async function getJessAvailability(supabase: SupabaseClient) {
     if (!existing) {
       await supabase.from("availability_windows").insert({
         user_id: estimator.id,
-        day_of_week: slot.start.getDay(),
+        day_of_week: demoDayOfWeek(slot.start),
         start_time: startTime,
         end_time: endTime,
         slot_minutes: 60,

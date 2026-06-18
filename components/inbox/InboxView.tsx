@@ -359,6 +359,8 @@ export function InboxView({
     window.__northstarInboxTab = tab;
     if (tab === "conversations") {
       window.dispatchEvent(new CustomEvent("northstar-inbox-conversations-opened"));
+    } else if (tab === "approvals") {
+      window.dispatchEvent(new CustomEvent("northstar-inbox-approvals-opened"));
     }
   }, [tab]);
 
