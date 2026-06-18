@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Bot, CalendarClock, Check, Loader2, PhoneCall, Save, Sparkles } from "lucide-react";
+import { Bot, CalendarClock, Check, Loader2, PhoneCall, Save, Sparkles, X } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -22,6 +22,8 @@ import { createLead, type LeadInput } from "@/lib/actions/leads";
 import { cn } from "@/lib/utils";
 import {
   demoDatePlusDays,
+  demoDateKey,
+  demoDayOfWeek,
   formatDemoDate,
   formatDemoDateTime,
   formatDemoTime,
@@ -147,8 +149,19 @@ function draftNotesFromCall(
   return notes.join("\n");
 }
 
-const FIVE_THIRTY_RE = /\b(?:5\s*:?\s*30|five[\s-]?thirty)\s*(?:p\.?m\.?)?\b/i;
-const FOUR_PM_RE = /\b(?:4\s*(?::00)?|four(?:\s+o'?clock)?)\s*(?:p\.?m\.?)?\b/i;
+type SchedulingPreference = "morning" | "afternoon" | "evening" | "after_5" | null;
+type SlotStatus = "open" | "booked";
+type CalendarSlot = {
+  start: Date;
+  label: string;
+  status: SlotStatus;
+};
+type ParsedAppointmentRequest = {
+  start: Date;
+  turnIndex: number;
+  speaker: TranscriptTurn["speaker"];
+  text: string;
+};
 
 function humanSlotLabel(date: Date) {
   return `${formatDemoDate(date, {
@@ -168,101 +181,270 @@ function crmSlotLabel(date: Date) {
   });
 }
 
-function mentionsTomorrow(text: string) {
-  return /\btomorrow\b/i.test(text);
+function sameMinute(a: Date, b: Date) {
+  return Math.abs(a.getTime() - b.getTime()) < 60_000;
 }
 
-function mentionsRecommendedDay(text: string, recommended: Date) {
-  const lower = text.toLowerCase();
-  const longWeekday = formatDemoDate(recommended, { weekday: "long" }).toLowerCase();
-  const shortWeekday = formatDemoDate(recommended, { weekday: "short" }).toLowerCase();
-  const monthDay = formatDemoDate(recommended, { month: "long", day: "numeric" }).toLowerCase();
-  const shortMonthDay = formatDemoDate(recommended, { month: "short", day: "numeric" }).toLowerCase();
+function demoDayOffset(date: Date) {
+  const today = demoDatePlusDays(0, 12, 0);
+  const startOfToday = new Date(today);
+  startOfToday.setUTCHours(0, 0, 0, 0);
+  const startOfDate = new Date(date);
+  startOfDate.setUTCHours(0, 0, 0, 0);
+  return Math.round((startOfDate.getTime() - startOfToday.getTime()) / 86_400_000);
+}
 
-  return (
-    /\bday after tomorrow\b/i.test(text) ||
-    lower.includes(longWeekday) ||
-    lower.includes(shortWeekday) ||
-    lower.includes(monthDay) ||
-    lower.includes(shortMonthDay)
+function appointmentDateFromText(text: string) {
+  const lower = text.toLowerCase();
+  if (/\bday after tomorrow\b/.test(lower)) return demoDatePlusDays(2, 12, 0);
+  if (/\btomorrow\b/.test(lower)) return demoDatePlusDays(1, 12, 0);
+  if (/\btoday\b/.test(lower)) return demoDatePlusDays(0, 12, 0);
+
+  const weekdays: Record<string, number> = {
+    sunday: 0,
+    monday: 1,
+    tuesday: 2,
+    wednesday: 3,
+    thursday: 4,
+    friday: 5,
+    saturday: 6,
+  };
+  const weekday = lower.match(
+    /\b(?:next\s+)?(sunday|monday|tuesday|wednesday|thursday|friday|saturday)\b/
+  );
+  if (!weekday) return null;
+  const today = demoDatePlusDays(0, 12, 0);
+  const todayDow = demoDayOfWeek(today);
+  const targetDow = weekdays[weekday[1]];
+  const base = (targetDow - todayDow + 7) % 7;
+  const daysAhead = lower.includes("next ") || base === 0 ? base || 7 : base;
+  return demoDatePlusDays(daysAhead, 12, 0);
+}
+
+function appointmentTimeFromText(text: string) {
+  const lower = text.toLowerCase();
+  if (/\bnoon\b/.test(lower)) return { hour: 12, minute: 0 };
+  const wordTime = lower.match(
+    /\b(one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)(?:[\s-]+(fifteen|thirty|forty five))?\s*(a\.?m\.?|p\.?m\.?)?\b/
+  );
+  const numericTime =
+    lower.match(/\b(\d{1,2})(?::?(\d{2}))\s*(a\.?m\.?|p\.?m\.?)\b/) ||
+    lower.match(/\b(\d{1,2}):(\d{2})\b/);
+
+  let hour: number | null = null;
+  let minute = 0;
+  let meridiem: string | undefined;
+
+  if (numericTime) {
+    hour = Number(numericTime[1]);
+    minute = numericTime[2] ? Number(numericTime[2]) : 0;
+    meridiem = numericTime[3];
+  } else if (wordTime) {
+    const words: Record<string, number> = {
+      one: 1,
+      two: 2,
+      three: 3,
+      four: 4,
+      five: 5,
+      six: 6,
+      seven: 7,
+      eight: 8,
+      nine: 9,
+      ten: 10,
+      eleven: 11,
+      twelve: 12,
+    };
+    hour = words[wordTime[1]];
+    minute = wordTime[2] === "thirty" ? 30 : wordTime[2] === "fifteen" ? 15 : wordTime[2] ? 45 : 0;
+    meridiem = wordTime[3];
+  }
+
+  if (!hour) return null;
+  const hasPm = meridiem?.startsWith("p");
+  const hasAm = meridiem?.startsWith("a");
+  if (hasPm && hour < 12) hour += 12;
+  if (hasAm && hour === 12) hour = 0;
+  // In a sales call, bare "4" or "5:30" almost always means afternoon/evening.
+  if (!hasPm && !hasAm && hour >= 1 && hour <= 7) hour += 12;
+  return { hour, minute };
+}
+
+function parseAppointmentRequest(text: string, turnIndex: number, speaker: TranscriptTurn["speaker"]) {
+  const date = appointmentDateFromText(text);
+  const time = appointmentTimeFromText(text);
+  if (!date || !time) return null;
+  const dayOffset = demoDayOffset(date);
+  return {
+    start: demoDatePlusDays(dayOffset, time.hour, time.minute),
+    turnIndex,
+    speaker,
+    text,
+  };
+}
+
+function extractLatestAppointmentRequest(turns: TranscriptTurn[]) {
+  for (let index = turns.length - 1; index >= 0; index -= 1) {
+    const turn = turns[index];
+    if (turn.speaker === "system") continue;
+    const parsed = parseAppointmentRequest(turn.text, index, turn.speaker);
+    if (parsed) return parsed;
+  }
+  return null;
+}
+
+function customerPreferences(turns: TranscriptTurn[]): Exclude<SchedulingPreference, null>[] {
+  const customerText = turns
+    .filter((turn) => turn.speaker === "ai")
+    .map((turn) => turn.text)
+    .join(" ")
+    .toLowerCase();
+  const preferences: Exclude<SchedulingPreference, null>[] = [];
+  if (/work(?:ing)?\s+(?:until|til|till)\s+5|after\s+5|after\s+five|not\s+(?:free|available)\s+(?:until|before)\s+5/.test(customerText)) {
+    preferences.push("after_5");
+  }
+  if (/morning|before noon|early in the day/.test(customerText)) preferences.push("morning");
+  if (/afternoon/.test(customerText)) preferences.push("afternoon");
+  if (/evening|after work|after 5|after five/.test(customerText)) preferences.push("evening");
+  return Array.from(new Set(preferences));
+}
+
+function slotFitsPreferences(slot: Date, preferences: SchedulingPreference[]) {
+  const hour = Number(formatDemoTime(slot, { hour: "numeric", hour12: false }).split(":")[0]);
+  if (preferences.includes("after_5") || preferences.includes("evening")) return hour >= 17;
+  if (preferences.includes("morning")) return hour < 12;
+  if (preferences.includes("afternoon")) return hour >= 12 && hour < 17;
+  return true;
+}
+
+function buildDemoCalendarSlots(request: ParsedAppointmentRequest | null) {
+  const baseSlots: CalendarSlot[] = [
+    { start: demoDatePlusDays(1, 9, 0), status: "booked", label: "Crew sync" },
+    { start: demoDatePlusDays(1, 12, 0), status: "booked", label: "Booked" },
+    { start: demoDatePlusDays(1, 16, 0), status: "open", label: "Open" },
+    { start: demoDatePlusDays(1, 17, 30), status: "booked", label: "Booked" },
+    { start: demoDatePlusDays(2, 9, 0), status: "open", label: "Open" },
+    { start: demoDatePlusDays(2, 10, 30), status: "open", label: "Open" },
+    { start: demoDatePlusDays(2, 14, 30), status: "open", label: "Open" },
+    { start: demoDatePlusDays(2, 17, 30), status: "open", label: "Open" },
+    { start: demoDatePlusDays(3, 9, 0), status: "open", label: "Open" },
+    { start: demoDatePlusDays(3, 13, 0), status: "open", label: "Open" },
+    { start: demoDatePlusDays(3, 16, 0), status: "open", label: "Open" },
+    { start: demoDatePlusDays(3, 18, 0), status: "open", label: "Open" },
+  ];
+  if (request && !baseSlots.some((slot) => sameMinute(slot.start, request.start))) {
+    baseSlots.push({ start: request.start, status: "booked", label: "Unavailable" });
+  }
+  return baseSlots.sort((a, b) => a.start.getTime() - b.start.getTime());
+}
+
+function customerAcceptedAfterRequest(turns: TranscriptTurn[], request: ParsedAppointmentRequest | null) {
+  if (!request) return false;
+  return turns.slice(request.turnIndex + 1).some(
+    (turn) =>
+      turn.speaker === "ai" &&
+      /\b(yes|yeah|yep|that works|works for me|let'?s do|sounds good|perfect|that'?s fine)\b/i.test(
+        turn.text
+      )
   );
 }
 
 function buildRepSchedulingAssist(turns: TranscriptTurn[]) {
-  const tomorrowAt530 = demoDatePlusDays(1, 17, 30);
-  const tomorrowAt4 = demoDatePlusDays(1, 16, 0);
-  const recommended = demoDatePlusDays(2, 17, 30);
-  const repText = turns
-    .filter((turn) => turn.speaker === "customer")
-    .map((turn) => turn.text)
-    .join(" ");
-
-  const askedTomorrow530 = mentionsTomorrow(repText) && FIVE_THIRTY_RE.test(repText);
-  const askedTomorrow4 = mentionsTomorrow(repText) && FOUR_PM_RE.test(repText);
-  const askedRecommended =
-    mentionsRecommendedDay(repText, recommended) && FIVE_THIRTY_RE.test(repText);
-
-  const recommendedLabel = humanSlotLabel(recommended);
-  const selected = askedRecommended
-    ? {
-        start: recommended.toISOString(),
-        label: crmSlotLabel(recommended),
-      }
+  const request = extractLatestAppointmentRequest(turns);
+  const preferences = customerPreferences(turns);
+  const slots = buildDemoCalendarSlots(request);
+  const requestedSlot = request
+    ? slots.find((slot) => sameMinute(slot.start, request.start)) ?? null
     : null;
+  const accepted = customerAcceptedAfterRequest(turns, request);
+  const suggestion =
+    request &&
+    slots.find(
+      (slot) =>
+        slot.status === "open" &&
+        slot.start.getTime() > request.start.getTime() &&
+        slotFitsPreferences(slot.start, preferences)
+    );
+  const selected =
+    request && requestedSlot?.status === "open" && accepted
+      ? {
+          start: request.start.toISOString(),
+          label: crmSlotLabel(request.start),
+        }
+      : null;
 
-  if (selected) {
+  if (!request) {
     return {
-      status: "ready" as const,
-      eyebrow: "AI scheduling assist",
-      title: `${recommendedLabel} is open.`,
-      body:
-        "The AI matched the time you discussed to a real available inspection slot. This is the appointment that will save to the CRM.",
-      details: [
-        "Jordan works until 5, so evening slots are a better fit.",
-        "The confirmation text will use this exact date and time.",
-      ],
+      status: "listening" as const,
+      title: "Listening for scheduling details",
+      body: "Waiting for the customer or rep to mention a date and time.",
+      cue: "No appointment time detected yet.",
+      request,
+      requestedSlot,
+      suggestion: null,
+      preferences,
+      slots,
       selected,
     };
   }
 
-  if (askedTomorrow4) {
+  if (selected) {
     return {
-      status: "coach" as const,
-      eyebrow: "AI scheduling assist",
-      title: `${humanSlotLabel(tomorrowAt4)} is open, but it is probably a bad fit.`,
-      body: `Jordan said she works until 5:00, so ask about ${recommendedLabel} instead.`,
-      details: [
-        "The AI is checking calendar availability and customer constraints at the same time.",
-        "Try the later evening opening so the rep does not book a slot the homeowner cannot make.",
-      ],
-      selected: null,
+      status: "ready" as const,
+      title: "Booking ready",
+      body: `${humanSlotLabel(request.start)} is open and the customer agreed. This exact slot will save to the CRM.`,
+      cue: "Customer agreed to the available slot.",
+      request,
+      requestedSlot,
+      suggestion: null,
+      preferences,
+      slots,
+      selected,
     };
   }
 
-  if (askedTomorrow530) {
+  if (requestedSlot?.status === "open" && !slotFitsPreferences(request.start, preferences)) {
     return {
-      status: "conflict" as const,
-      eyebrow: "AI scheduling assist",
-      title: `${humanSlotLabel(tomorrowAt530)} is not available.`,
-      body: `Try ${formatDemoTime(tomorrowAt4)} tomorrow, or ask about ${recommendedLabel}.`,
-      details: [
-        "The AI caught the conflict while you were still talking.",
-        "It is suggesting a real next step instead of making the rep search manually.",
-      ],
-      selected: null,
+      status: "coach" as const,
+      title: "Open slot, bad fit",
+      body: `${humanSlotLabel(request.start)} is open, but it conflicts with what the customer said. Try ${suggestion ? humanSlotLabel(suggestion.start) : "a different slot"} instead.`,
+      cue: "Customer constraint detected.",
+      request,
+      requestedSlot,
+      suggestion: suggestion ?? null,
+      preferences,
+      slots,
+      selected,
+    };
+  }
+
+  if (requestedSlot?.status === "open") {
+    return {
+      status: "open" as const,
+      title: "Slot is open",
+      body: `${humanSlotLabel(request.start)} is available. Ask the customer if that works.`,
+      cue: "Waiting for customer agreement.",
+      request,
+      requestedSlot,
+      suggestion: null,
+      preferences,
+      slots,
+      selected,
     };
   }
 
   return {
-    status: "listening" as const,
-    eyebrow: "AI scheduling assist",
-    title: "Listening for appointment times.",
-    body: `Try asking about 5:30 tomorrow. The AI will check the calendar, flag conflicts, and suggest the next best slot.`,
-    details: [
-      "This panel is not a manual picker.",
-      "It reacts to what the rep says and prepares the correct booking for Save lead.",
-    ],
-    selected: null,
+    status: "conflict" as const,
+    title: "Slot unavailable",
+    body: `We're fully booked at ${humanSlotLabel(request.start)}. Try asking about ${
+      suggestion ? humanSlotLabel(suggestion.start) : "the next open slot"
+    }.`,
+    cue: "Calendar conflict detected.",
+    request,
+    requestedSlot,
+    suggestion: suggestion ?? null,
+    preferences,
+    slots,
+    selected,
   };
 }
 
@@ -280,6 +462,7 @@ export function LeadIntakeForm() {
     start: string;
     label: string;
   } | null>(null);
+  const [schedulerOpen, setSchedulerOpen] = useState(true);
   const touched = useRef<Set<keyof Fields>>(new Set());
   const liveFillTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [aiFilled, setAiFilled] = useState<Set<keyof Fields>>(new Set());
@@ -293,7 +476,8 @@ export function LeadIntakeForm() {
   );
   const appointmentWasDiscussed = Boolean(
     repAssistedCall &&
-      (live?.result?.summary?.appointment_requested ||
+      (schedulingAssist.request ||
+        live?.result?.summary?.appointment_requested ||
         live?.result?.pendingAppointmentStartTime ||
         live?.extracted?.["Requested appointment"])
   );
@@ -304,6 +488,10 @@ export function LeadIntakeForm() {
     if (!live?.callerPhone || touched.current.has("phone")) return;
     setFields((prev) => (prev.phone ? prev : { ...prev, phone: live.callerPhone ?? "" }));
   }, [live?.callerPhone]);
+
+  useEffect(() => {
+    if (repAssistedCall) setSchedulerOpen(true);
+  }, [repAssistedCall, live?.callerPhone, live?.scenario]);
 
   // Merge live-extracted info into any field the human hasn't manually edited.
   // This is the "watch the AI fill the form and draft the notes" moment.
@@ -483,6 +671,7 @@ export function LeadIntakeForm() {
   }
 
   return (
+    <>
     <Card>
       <CardHeader>
         <CardTitle className="flex flex-wrap items-center gap-2 text-base">
@@ -511,58 +700,6 @@ export function LeadIntakeForm() {
           <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950">
             AI can miss a detail in live conversation. Review the fields before saving, and type in
             anything still blank.
-          </div>
-        )}
-        {repAssistedCall && (
-          <div
-            className={cn(
-              "rounded-xl border-2 p-3 shadow-sm transition-colors",
-              schedulingAssist.status === "ready" && "border-brand-gold bg-brand-gold/10",
-              schedulingAssist.status === "conflict" && "border-amber-300 bg-amber-50",
-              schedulingAssist.status === "coach" && "border-blue-300 bg-blue-50",
-              schedulingAssist.status === "listening" && "border-primary/25 bg-primary/5"
-            )}
-            data-tour="rep-assisted-slot-picker"
-          >
-            <div className="flex items-start justify-between gap-3">
-              <div className="flex items-start gap-2">
-                <CalendarClock className="mt-0.5 h-4 w-4 text-brand-dark" />
-                <div>
-                  <p className="flex flex-wrap items-center gap-2 text-sm font-semibold text-brand-dark">
-                    {schedulingAssist.eyebrow}
-                    {schedulingAssist.status === "ready" && (
-                      <Badge className="bg-brand-dark text-white">Booking ready</Badge>
-                    )}
-                    {schedulingAssist.status === "conflict" && (
-                      <Badge variant="secondary">Conflict found</Badge>
-                    )}
-                    {schedulingAssist.status === "coach" && (
-                      <Badge variant="secondary">Suggestion</Badge>
-                    )}
-                  </p>
-                  <p className="mt-1 text-sm font-medium leading-5 text-brand-dark">
-                    {schedulingAssist.title}
-                  </p>
-                  <p className="mt-1 text-xs leading-5 text-brand-dark/75">
-                    {schedulingAssist.body}
-                  </p>
-                </div>
-              </div>
-              <Sparkles className="mt-0.5 h-4 w-4 shrink-0 text-brand-gold" />
-            </div>
-            <ul className="mt-3 space-y-1.5 text-xs leading-5 text-brand-dark/75">
-              {schedulingAssist.details.map((detail) => (
-                <li key={detail} className="flex gap-2">
-                  <span className="mt-2 h-1 w-1 shrink-0 rounded-full bg-brand-dark/55" />
-                  <span>{detail}</span>
-                </li>
-              ))}
-            </ul>
-            {selectedAppointment && (
-              <div className="mt-3 rounded-lg border border-brand-dark/15 bg-white/70 px-3 py-2 text-xs font-medium text-brand-dark">
-                Selected by AI for Save lead: {selectedAppointment.label}
-              </div>
-            )}
           </div>
         )}
         <div className="grid gap-3 sm:grid-cols-2">
@@ -680,6 +817,15 @@ export function LeadIntakeForm() {
         )}
       </CardContent>
     </Card>
+    {repAssistedCall && (
+      <SchedulingAssistantPopup
+        assist={schedulingAssist}
+        open={schedulerOpen}
+        onClose={() => setSchedulerOpen(false)}
+        onOpen={() => setSchedulerOpen(true)}
+      />
+    )}
+    </>
   );
 }
 
@@ -706,6 +852,187 @@ function Field({
         )}
       </Label>
       {children}
+    </div>
+  );
+}
+
+function SchedulingAssistantPopup({
+  assist,
+  open,
+  onClose,
+  onOpen,
+}: {
+  assist: ReturnType<typeof buildRepSchedulingAssist>;
+  open: boolean;
+  onClose: () => void;
+  onOpen: () => void;
+}) {
+  const days = Array.from(
+    new Map(
+      assist.slots.map((slot) => [
+        demoDateKey(slot.start),
+        {
+          key: demoDateKey(slot.start),
+          label: formatDemoDate(slot.start, { weekday: "short", month: "numeric", day: "numeric" }),
+        },
+      ])
+    ).values()
+  ).slice(0, 3);
+  const preferenceLabels: Record<Exclude<SchedulingPreference, null>, string> = {
+    morning: "Prefers morning",
+    afternoon: "Prefers afternoon",
+    evening: "Prefers evening",
+    after_5: "Works until 5",
+  };
+  const statusLabel =
+    assist.status === "listening"
+      ? "Listening"
+      : assist.status === "ready"
+        ? "Ready"
+        : assist.status === "open"
+          ? "Open"
+          : assist.status === "coach"
+            ? "Coaching"
+            : "Conflict";
+
+  if (!open) {
+    return (
+      <button
+        type="button"
+        onClick={onOpen}
+        className="fixed bottom-6 right-6 z-50 flex items-center gap-2 rounded-full border border-brand-gold/40 bg-brand-dark px-4 py-3 text-sm font-semibold text-white shadow-2xl"
+        data-tour="rep-assisted-slot-picker"
+      >
+        <span className="relative flex h-2.5 w-2.5">
+          <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-brand-gold opacity-75" />
+          <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-brand-gold" />
+        </span>
+        AI scheduler
+      </button>
+    );
+  }
+
+  return (
+    <div
+      className="fixed bottom-6 right-6 z-50 w-[min(440px,calc(100vw-2rem))] overflow-hidden rounded-2xl border border-border bg-card shadow-2xl"
+      data-tour="rep-assisted-slot-picker"
+    >
+      <div className="flex items-start justify-between gap-3 border-b bg-brand-dark px-4 py-3 text-white">
+        <div className="flex items-start gap-3">
+          <div className="relative mt-0.5 flex h-9 w-9 items-center justify-center rounded-full bg-white/10">
+            {assist.status === "listening" ? (
+              <>
+                <span className="absolute h-9 w-9 animate-ping rounded-full bg-brand-gold/40" />
+                <Loader2 className="relative h-4 w-4 animate-spin text-brand-gold" />
+              </>
+            ) : (
+              <Sparkles className="h-4 w-4 text-brand-gold" />
+            )}
+          </div>
+          <div>
+            <p className="text-sm font-semibold">AI scheduling assistant</p>
+            <p className="mt-0.5 text-xs text-white/70">{statusLabel} to the live call</p>
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={onClose}
+          className="rounded-full p-1 text-white/70 transition hover:bg-white/10 hover:text-white"
+          aria-label="Close scheduling assistant"
+        >
+          <X className="h-4 w-4" />
+        </button>
+      </div>
+
+      <div className="space-y-4 p-4">
+        <div className="rounded-xl border bg-secondary/25 p-3">
+          <div className="flex items-start gap-2">
+            <CalendarClock className="mt-0.5 h-4 w-4 shrink-0 text-brand-dark" />
+            <div>
+              <p className="text-sm font-semibold text-foreground">{assist.title}</p>
+              <p className="mt-1 text-sm leading-5 text-muted-foreground">{assist.body}</p>
+              <p className="mt-2 text-xs font-medium text-brand-dark">{assist.cue}</p>
+            </div>
+          </div>
+        </div>
+
+        <div>
+          <p className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            Customer cues
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {assist.preferences.length > 0 ? (
+              assist.preferences.map((preference) => (
+                <Badge key={preference} variant="secondary">
+                  {preferenceLabels[preference]}
+                </Badge>
+              ))
+            ) : (
+              <span className="rounded-full border px-2.5 py-1 text-xs text-muted-foreground">
+                Listening for schedule constraints
+              </span>
+            )}
+          </div>
+        </div>
+
+        <div>
+          <div className="mb-2 flex items-center justify-between gap-2">
+            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              Calendar check
+            </p>
+            {assist.request && (
+              <span className="text-xs text-muted-foreground">
+                Requested: {formatDemoTime(assist.request.start)}
+              </span>
+            )}
+          </div>
+          <div className="grid grid-cols-3 gap-2">
+            {days.map((day) => (
+              <div key={day.key} className="rounded-xl border bg-background p-2">
+                <p className="mb-2 text-center text-xs font-semibold text-foreground">{day.label}</p>
+                <div className="space-y-1.5">
+                  {assist.slots
+                    .filter((slot) => demoDateKey(slot.start) === day.key)
+                    .map((slot) => {
+                      const requested = Boolean(assist.request && sameMinute(slot.start, assist.request.start));
+                      const suggested = Boolean(
+                        assist.suggestion && sameMinute(slot.start, assist.suggestion.start)
+                      );
+                      const selected = Boolean(
+                        assist.selected && sameMinute(slot.start, new Date(assist.selected.start))
+                      );
+                      return (
+                        <div
+                          key={slot.start.toISOString()}
+                          className={cn(
+                            "rounded-lg border px-2 py-1.5 text-center text-[11px] font-medium",
+                            slot.status === "open"
+                              ? "border-emerald-200 bg-emerald-50 text-emerald-900"
+                              : "border-muted bg-muted/55 text-muted-foreground line-through",
+                            requested && "border-red-300 bg-red-50 text-red-800 line-through",
+                            suggested && "border-brand-gold bg-brand-gold/20 text-brand-dark no-underline",
+                            selected && "border-brand-dark bg-brand-dark text-white no-underline"
+                          )}
+                        >
+                          <span className="block">{formatDemoTime(slot.start)}</span>
+                          {requested && <span className="block text-[10px]">asked</span>}
+                          {suggested && <span className="block text-[10px]">try this</span>}
+                          {selected && <span className="block text-[10px]">selected</span>}
+                        </div>
+                      );
+                    })}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {assist.selected && (
+          <div className="rounded-xl border border-brand-gold bg-brand-gold/15 px-3 py-2 text-sm font-medium text-brand-dark">
+            Booking ready for Save lead: {assist.selected.label}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
