@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
@@ -45,7 +45,7 @@ const NAV_ITEMS = [
   { href: "/app/appointments", label: "Appointments", icon: CalendarDays },
   { href: "/app/quote-tool", label: "Quote Tool", icon: Calculator },
   { href: "/app/feedback", label: "Feedback", icon: MessageSquareText },
-  { href: "/app/automations", label: "Automations", icon: Workflow },
+  { href: "/app/automations", label: "AI Automations", icon: Workflow },
   { href: "/app/reports", label: "Reports", icon: BarChart3 },
   { href: "/app/crm-sync", label: "CRM Sync", icon: Cable },
   { href: "/app/settings", label: "Settings", icon: Settings },
@@ -61,6 +61,37 @@ export function AppSidebar({
   const pathname = usePathname();
   const [restarting, setRestarting] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const [liveBadges, setLiveBadges] = useState(badges);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function refreshBadges() {
+      try {
+        const res = await fetch("/api/app/badges", { cache: "no-store" });
+        if (!res.ok) return;
+        const data = (await res.json()) as { badges?: Record<string, number> };
+        if (!cancelled && data.badges) setLiveBadges(data.badges);
+      } catch {
+        // Badge counts are helpful but not critical to loading the dashboard.
+      }
+    }
+
+    void refreshBadges();
+
+    const events = [
+      "northstar-call-done",
+      "northstar-comm-sent",
+      "northstar-lead-saved",
+      "northstar-task-completed",
+    ];
+    events.forEach((event) => window.addEventListener(event, refreshBadges));
+
+    return () => {
+      cancelled = true;
+      events.forEach((event) => window.removeEventListener(event, refreshBadges));
+    };
+  }, [pathname]);
 
   async function restartDemo() {
     if (restarting) return;
@@ -115,9 +146,9 @@ export function AppSidebar({
             >
               <item.icon className="h-4 w-4" />
               <span className="flex-1">{item.label}</span>
-              {(badges[item.href] ?? 0) > 0 && (
+              {(liveBadges[item.href] ?? 0) > 0 && (
                 <span className="flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold leading-none text-white">
-                  {badges[item.href]! > 9 ? "9+" : badges[item.href]}
+                  {liveBadges[item.href]! > 9 ? "9+" : liveBadges[item.href]}
                 </span>
               )}
             </Link>
