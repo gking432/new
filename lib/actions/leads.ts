@@ -70,6 +70,21 @@ function confirmationBody(firstName: string | null | undefined, startTime: strin
   )}. If you need to reschedule, reply to this message.`;
 }
 
+const supabaseConnectionError =
+  "Could not reach Supabase. Check NEXT_PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, and that the Supabase project is active.";
+
+function errorText(error: unknown): string {
+  if (error instanceof Error) {
+    const cause = "cause" in error ? (error as Error & { cause?: unknown }).cause : undefined;
+    return `${error.message} ${cause ? errorText(cause) : ""}`;
+  }
+  return typeof error === "string" ? error : "";
+}
+
+function isSupabaseConnectionError(error: unknown) {
+  return /fetch failed|ENOTFOUND|ECONNREFUSED|ETIMEDOUT|network/i.test(errorText(error));
+}
+
 /**
  * Manually creates a lead from the in-dashboard CRM form (walk-ins, phone
  * notes, or AI downtime). Runs AI analysis like any other lead.
@@ -288,6 +303,9 @@ export async function createLead(input: LeadInput): Promise<ActionResult<{ leadI
     revalidatePath("/app", "layout");
     return { success: true, data: { leadId: lead.id } };
   } catch (err) {
+    if (isSupabaseConnectionError(err)) {
+      return { success: false, error: supabaseConnectionError };
+    }
     return { success: false, error: err instanceof Error ? err.message : "Could not create lead" };
   }
 }
