@@ -24,6 +24,8 @@ import {
   demoDatePlusDays,
   demoDateKey,
   demoDayOfWeek,
+  demoWallClockParts,
+  dateFromDemoWallClock,
   formatDemoDate,
   formatDemoDateTime,
   formatDemoTime,
@@ -200,17 +202,67 @@ function appointmentDateFromText(text: string) {
   if (/\btomorrow\b/.test(lower)) return demoDatePlusDays(1, 12, 0);
   if (/\btoday\b/.test(lower)) return demoDatePlusDays(0, 12, 0);
 
+  const monthDate = lower.match(
+    /\b(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\.?\s+(\d{1,2})(?:st|nd|rd|th)?\b/
+  );
+  if (monthDate) {
+    const months: Record<string, number> = {
+      jan: 1,
+      january: 1,
+      feb: 2,
+      february: 2,
+      mar: 3,
+      march: 3,
+      apr: 4,
+      april: 4,
+      may: 5,
+      jun: 6,
+      june: 6,
+      jul: 7,
+      july: 7,
+      aug: 8,
+      august: 8,
+      sep: 9,
+      sept: 9,
+      september: 9,
+      oct: 10,
+      october: 10,
+      nov: 11,
+      november: 11,
+      dec: 12,
+      december: 12,
+    };
+    const now = demoWallClockParts();
+    const month = months[monthDate[1].replace(/\.$/, "")] ?? now.month;
+    const day = Number(monthDate[2]);
+    const candidate = dateFromDemoWallClock(now.year, month, day, 12, 0);
+    const today = demoDatePlusDays(0, 0, 0);
+    return candidate < today
+      ? dateFromDemoWallClock(now.year + 1, month, day, 12, 0)
+      : candidate;
+  }
+
   const weekdays: Record<string, number> = {
+    sun: 0,
     sunday: 0,
+    mon: 1,
     monday: 1,
+    tue: 2,
+    tues: 2,
     tuesday: 2,
+    wed: 3,
     wednesday: 3,
+    thu: 4,
+    thur: 4,
+    thurs: 4,
     thursday: 4,
+    fri: 5,
     friday: 5,
+    sat: 6,
     saturday: 6,
   };
   const weekday = lower.match(
-    /\b(?:next\s+)?(sunday|monday|tuesday|wednesday|thursday|friday|saturday)\b/
+    /\b(?:next\s+)?(sun(?:day)?|mon(?:day)?|tue(?:sday)?|tues|wed(?:nesday)?|thu(?:rsday)?|thur(?:sday)?|thurs|fri(?:day)?|sat(?:urday)?)\b/
   );
   if (!weekday) return null;
   const today = demoDatePlusDays(0, 12, 0);
@@ -481,6 +533,25 @@ export function LeadIntakeForm() {
         live?.result?.pendingAppointmentStartTime ||
         live?.extracted?.["Requested appointment"])
   );
+  const resultAppointment = useMemo(() => {
+    const start =
+      live?.result?.pendingAppointmentStartTime ?? live?.result?.appointment?.start_time ?? null;
+    if (!start || Number.isNaN(new Date(start).getTime())) return null;
+    return {
+      start,
+      label:
+        live?.result?.pendingAppointmentLabel ??
+        live?.result?.appointment?.label ??
+        crmSlotLabel(new Date(start)),
+    };
+  }, [
+    live?.result?.appointment?.label,
+    live?.result?.appointment?.start_time,
+    live?.result?.pendingAppointmentLabel,
+    live?.result?.pendingAppointmentStartTime,
+  ]);
+  const bookingAppointment =
+    selectedAppointment ?? schedulingAssist.selected ?? (repAssistedCall ? resultAppointment : null);
 
   // Caller ID is known as soon as the phone rings. Everything else waits for
   // the conversation and merges with a short delay so it reads like live notes.
@@ -587,13 +658,14 @@ export function LeadIntakeForm() {
       if (selectedAppointment) setSelectedAppointment(null);
       return;
     }
+    const nextAppointment = schedulingAssist.selected ?? resultAppointment;
     if (
-      schedulingAssist.selected &&
-      selectedAppointment?.start !== schedulingAssist.selected.start
+      nextAppointment &&
+      selectedAppointment?.start !== nextAppointment.start
     ) {
-      setSelectedAppointment(schedulingAssist.selected);
+      setSelectedAppointment(nextAppointment);
     }
-  }, [repAssistedCall, schedulingAssist.selected, selectedAppointment]);
+  }, [repAssistedCall, schedulingAssist.selected, resultAppointment, selectedAppointment]);
 
   function update(key: keyof Fields, value: string) {
     touched.current.add(key);
@@ -614,7 +686,7 @@ export function LeadIntakeForm() {
       toast.error("At least a name is required");
       return;
     }
-    if (appointmentWasDiscussed && !selectedAppointment) {
+    if (appointmentWasDiscussed && !bookingAppointment) {
       toast.error("Let the AI scheduling assist select a real slot before saving this call.");
       return;
     }
@@ -643,7 +715,7 @@ export function LeadIntakeForm() {
           : null,
       appointment_start_time:
         live?.phase === "done"
-          ? (selectedAppointment?.start ??
+          ? (bookingAppointment?.start ??
             (repAssistedCall
               ? null
               : live.result?.pendingAppointmentStartTime ??

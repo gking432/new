@@ -277,7 +277,18 @@ export async function POST(request: Request) {
 
   if (callError || !call) {
     console.error("Call record insert failed:", callError);
-    return NextResponse.json({ error: "Could not create call record" }, { status: 500 });
+    const detail = [callError?.message, callError?.details, callError?.hint]
+      .filter(Boolean)
+      .join(" ");
+    const isConnectionFailure = /fetch failed|ENOTFOUND|ECONNREFUSED|ETIMEDOUT|network/i.test(detail);
+    return NextResponse.json(
+      {
+        error: isConnectionFailure
+          ? "Could not reach Supabase. Check NEXT_PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, and that the Supabase project is active."
+          : "Could not create call record",
+      },
+      { status: isConnectionFailure ? 503 : 500 }
+    );
   }
 
   // The soonest few concrete openings, for the "offer the soonest slot" case on

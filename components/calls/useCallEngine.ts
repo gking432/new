@@ -344,7 +344,16 @@ export function useCallEngine(options: CallEngineOptions) {
           seedFields: opts.seedFields,
         }),
       });
-      if (!res.ok) throw new Error("Session request failed");
+      if (!res.ok) {
+        let message = "Session request failed";
+        try {
+          const payload = (await res.json()) as { error?: string };
+          message = payload.error ?? message;
+        } catch {
+          // Keep the generic message when the server does not return JSON.
+        }
+        throw new Error(message);
+      }
       const s = (await res.json()) as SessionResponse;
       sessionRef.current = s;
       setSession(s);
@@ -374,7 +383,11 @@ export function useCallEngine(options: CallEngineOptions) {
       }
     } catch (err) {
       console.error("Could not start call:", err);
-      setError("Could not start the call. Check that Supabase is configured.");
+      setError(
+        err instanceof Error
+          ? `Could not start the call. ${err.message}`
+          : "Could not start the call. Check that Supabase is configured."
+      );
       setPhase("failed");
     }
   }, [connectRealtime, emit]);
