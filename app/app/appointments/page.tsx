@@ -8,6 +8,14 @@ import {
   getLeadsForPicker,
 } from "@/lib/db/queries-phase2";
 import { createClient } from "@/lib/supabase/server";
+import { isLocalDemoMode } from "@/lib/demo/mode";
+import {
+  getLocalAppointments,
+  getLocalAvailabilityWindows,
+  getLocalAvailableSlots,
+  getLocalLeads,
+  getLocalProfiles,
+} from "@/lib/demo/localData";
 
 export const dynamic = "force-dynamic";
 
@@ -17,14 +25,24 @@ export default async function AppointmentsPage({
   searchParams: Promise<{ estimator?: string; slot?: string }>;
 }) {
   const { estimator, slot } = await searchParams;
-  const supabase = await createClient();
-  const [appointments, windows, leads, slots, profiles] = await Promise.all([
-    getAppointments(supabase),
-    getAvailabilityWindows(supabase),
-    getLeadsForPicker(supabase),
-    getAvailableSlots(supabase, 7, 10),
-    getProfiles(supabase),
-  ]);
+  const [appointments, windows, leads, slots, profiles] = isLocalDemoMode()
+    ? await Promise.all([
+        getLocalAppointments(),
+        getLocalAvailabilityWindows(),
+        getLocalLeads(),
+        getLocalAvailableSlots(7, 10),
+        getLocalProfiles(),
+      ])
+    : await (async () => {
+        const supabase = await createClient();
+        return Promise.all([
+          getAppointments(supabase),
+          getAvailabilityWindows(supabase),
+          getLeadsForPicker(supabase),
+          getAvailableSlots(supabase, 7, 10),
+          getProfiles(supabase),
+        ]);
+      })();
 
   const normalizedEstimator = estimator?.toLowerCase();
   const jessEstimator = profiles.find((profile) => profile.full_name.toLowerCase() === "jess romero");

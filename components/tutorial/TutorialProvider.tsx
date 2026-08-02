@@ -637,10 +637,9 @@ export function TutorialProvider() {
   }, [index, router, total]);
 
   const stop = useCallback(() => {
-    if (index >= total - 1) {
-      writeTourStorage(COMPLETED_KEY, "1");
-      writeTourStorage(INDEX_KEY, String(total - 1));
-    }
+    writeTourStorage(COMPLETED_KEY, "1");
+    writeTourStorage(ACTIVE_KEY, "0");
+    writeTourStorage(INDEX_KEY, String(index >= total - 1 ? total - 1 : index));
     setActive(false);
     setWelcomeMorphing(false);
     setRequestFormOpen(false);

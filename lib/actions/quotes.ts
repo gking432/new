@@ -9,6 +9,8 @@ import { calculateQuote, type QuoteInputs } from "@/lib/property/quoteCalculator
 import { DEFAULT_WEATHER, type WeatherContext } from "@/lib/property/types";
 import { createClient } from "@/lib/supabase/server";
 import type { PropertyResearch } from "@/types/app";
+import { isLocalDemoMode } from "@/lib/demo/mode";
+import { demoAdminId, demoId, mutateDemoState, readDemoState } from "@/lib/demo/serverStore";
 
 type ActionResult<T = undefined> =
   | { success: true; data: T }
@@ -29,6 +31,44 @@ async function requireUser(supabase: SupabaseClient): Promise<{ id: string | nul
 export async function generatePropertyProfile(
   leadId: string
 ): Promise<ActionResult<PropertyResearch>> {
+  if (isLocalDemoMode()) {
+    try {
+      const state = await readDemoState();
+      const lead = state.leads.find((item) => item.id === leadId);
+      if (!lead) return { success: false, error: "Lead not found" };
+      const address = [lead.street_address, lead.city, lead.state].filter(Boolean).join(", ") || `Lead ${leadId.slice(0, 8)}`;
+      const profile = await getPropertyProvider().lookupByAddress(address);
+      const record: PropertyResearch = {
+        id: state.properties.find((item) => item.lead_id === leadId)?.id ?? demoId(),
+        lead_id: leadId,
+        address: profile.address,
+        year_built: profile.year_built,
+        finished_sqft: profile.finished_sqft,
+        stories: profile.stories,
+        lot_size_sqft: profile.lot_size_sqft,
+        roof_type: profile.roof_type,
+        roof_pitch: profile.roof_pitch,
+        siding_material: profile.siding_material,
+        estimated_roof_sqft: profile.estimated_roof_sqft,
+        estimated_siding_sqft: profile.estimated_siding_sqft,
+        estimated_window_count: profile.estimated_window_count,
+        data_source: profile.data_source,
+        confidence: profile.confidence,
+        notes: profile.notes,
+        raw_data: { generated_for_demo: true },
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+      await mutateDemoState((next) => {
+        next.properties = next.properties.filter((item) => item.lead_id !== leadId);
+        next.properties.push(record);
+      });
+      revalidatePath("/app/quote-tool");
+      return { success: true, data: record };
+    } catch (err) {
+      return { success: false, error: err instanceof Error ? err.message : "Lookup failed" };
+    }
+  }
   const supabase = await createClient();
   try {
     await requireUser(supabase);
@@ -138,6 +178,53 @@ export async function generateQuoteEstimate(input: QuoteRequest): Promise<
 > {
   const parsed = quoteRequestSchema.safeParse(input);
   if (!parsed.success) return { success: false, error: "Invalid quote inputs" };
+
+  if (isLocalDemoMode()) {
+    try {
+      const state = await readDemoState();
+      const lead = state.leads.find((item) => item.id === parsed.data.lead_id);
+      if (!lead) return { success: false, error: "Lead not found" };
+      const weather: WeatherContext = parsed.data.weather ?? DEFAULT_WEATHER;
+      const inputs: QuoteInputs = { ...parsed.data };
+      const result = calculateQuote(inputs, weather);
+      const aiSummary = `Internal ballpark for ${lead.first_name} ${lead.last_name}: $${result.estimate_low.toLocaleString()}-$${result.estimate_high.toLocaleString()} (${result.confidence} confidence). Final scope requires an on-site inspection.`;
+      const talkingPoints = [
+        "Use this range as a planning number, not a final customer quote",
+        "Explain which material, access, and scope assumptions drive the range",
+        "Confirm measurements and hidden conditions during the inspection",
+      ];
+      const id = demoId();
+      await mutateDemoState((next) => {
+        next.quotes.push({
+          id,
+          lead_id: lead.id,
+          created_by: demoAdminId(next),
+          service_type: parsed.data.service_type,
+          estimate_low: result.estimate_low,
+          estimate_high: result.estimate_high,
+          confidence: result.confidence,
+          assumptions: result.assumptions,
+          line_items: result.line_items,
+          missing_info: result.missing_info,
+          inspection_questions: result.inspection_questions,
+          weather_adjustment: { ...weather, note: result.weather_note },
+          property_inputs: inputs as unknown as Record<string, unknown>,
+          ai_summary: aiSummary,
+          internal_notes: parsed.data.internal_notes ?? null,
+          created_at: new Date().toISOString(),
+        });
+        next.activities.push({
+          id: demoId(), lead_id: lead.id, user_id: demoAdminId(next), type: "quote",
+          title: `Internal ballpark estimate generated: $${result.estimate_low.toLocaleString()}-$${result.estimate_high.toLocaleString()}`,
+          description: aiSummary, metadata: { quote_id: id, confidence: result.confidence }, created_at: new Date().toISOString(),
+        });
+      });
+      revalidatePath("/app", "layout");
+      return { success: true, data: { id, result, ai_summary: aiSummary, talking_points: talkingPoints } };
+    } catch (err) {
+      return { success: false, error: err instanceof Error ? err.message : "Quote generation failed" };
+    }
+  }
 
   const supabase = await createClient();
   try {

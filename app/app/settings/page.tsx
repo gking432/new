@@ -11,12 +11,18 @@ import { getProfiles, getSettings } from "@/lib/db/queries";
 import { createClient } from "@/lib/supabase/server";
 import { initials } from "@/lib/utils/format";
 import { ROLE_LABELS, SERVICE_LABELS } from "@/lib/utils/statuses";
+import { isLocalDemoMode } from "@/lib/demo/mode";
+import { getLocalProfiles } from "@/lib/demo/localData";
 
 export const dynamic = "force-dynamic";
 
 export default async function SettingsPage() {
-  const supabase = await createClient();
-  const [settings, profiles] = await Promise.all([getSettings(supabase), getProfiles(supabase)]);
+  const [settings, profiles] = isLocalDemoMode()
+    ? [null, await getLocalProfiles()]
+    : await (async () => {
+        const supabase = await createClient();
+        return Promise.all([getSettings(supabase), getProfiles(supabase)]);
+      })();
 
   return (
     <div className="grid gap-6 xl:grid-cols-3">

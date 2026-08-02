@@ -5,6 +5,9 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { analyzeAndSaveLead } from "@/lib/ai/analyzeLead";
 import { analyzeAndSaveFeedback } from "@/lib/ai/analyzeFeedback";
 import { generateAndSaveFollowup } from "@/lib/ai/generateFollowup";
+import { analyzeLeadForAutomation, buildWebhookPreview } from "@/lib/ai-workflows/services";
+import { runAiWorkflowModule } from "@/lib/ai-workflows/runModule";
+import type { AiWorkflowModuleId, ModuleRunOutput } from "@/lib/ai-workflows/types";
 import { runAutomationRules } from "@/lib/automations/runner";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
@@ -12,6 +15,9 @@ import { feedbackFormSchema, type FeedbackFormValues } from "@/lib/validations/f
 import { followupRequestSchema, type FollowupRequest } from "@/lib/validations/followup";
 import { leadFormSchema, leadStageSchema, type LeadFormInput } from "@/lib/validations/lead";
 import type { Lead, TaskPriority, TaskType } from "@/types/app";
+import { isLocalDemoMode } from "@/lib/demo/mode";
+import { submitLocalWebLead } from "@/lib/demo/localWorkflows";
+import { demoId, mutateDemoState } from "@/lib/demo/serverStore";
 
 type ActionResult<T = undefined> =
   | { success: true; data?: T }
@@ -52,6 +58,15 @@ export async function submitLead(
   }
   if (publicRateLimitExceeded()) {
     return { success: false, error: "Too many requests right now. Please try again in a minute." };
+  }
+
+  if (isLocalDemoMode()) {
+    try {
+      const leadId = await submitLocalWebLead(parsed.data);
+      return { success: true, data: { leadId } };
+    } catch (err) {
+      return { success: false, error: err instanceof Error ? err.message : "Could not save the demo request" };
+    }
   }
 
   let supabase: SupabaseClient;
@@ -112,6 +127,26 @@ export async function updateLeadStage(
   const parsedStage = leadStageSchema.safeParse(stage);
   if (!parsedStage.success) return { success: false, error: "Invalid stage" };
 
+  if (isLocalDemoMode()) {
+    try {
+      await mutateDemoState((state) => {
+        const lead = state.leads.find((item) => item.id === leadId);
+        if (!lead) throw new Error("Lead not found");
+        lead.stage = parsedStage.data;
+        lead.updated_at = new Date().toISOString();
+        state.activities.push({
+          id: demoId(), lead_id: leadId, user_id: null, type: "stage_change",
+          title: `Stage updated to ${parsedStage.data.replace(/_/g, " ")}`,
+          description: null, metadata: {}, created_at: new Date().toISOString(),
+        });
+      });
+      revalidatePath("/app", "layout");
+      return { success: true };
+    } catch (err) {
+      return { success: false, error: err instanceof Error ? err.message : "Update failed" };
+    }
+  }
+
   const supabase = await createClient();
   try {
     const user = await requireUser(supabase);
@@ -145,6 +180,20 @@ export async function updateLeadStage(
 }
 
 export async function assignLead(leadId: string, profileId: string | null): Promise<ActionResult> {
+  if (isLocalDemoMode()) {
+    try {
+      await mutateDemoState((state) => {
+        const lead = state.leads.find((item) => item.id === leadId);
+        if (!lead) throw new Error("Lead not found");
+        lead.assigned_to = profileId;
+        lead.updated_at = new Date().toISOString();
+      });
+      revalidatePath("/app", "layout");
+      return { success: true };
+    } catch (err) {
+      return { success: false, error: err instanceof Error ? err.message : "Assignment failed" };
+    }
+  }
   const supabase = await createClient();
   try {
     const user = await requireUser(supabase);
@@ -170,6 +219,22 @@ export async function assignLead(leadId: string, profileId: string | null): Prom
 export async function addLeadNote(leadId: string, note: string): Promise<ActionResult> {
   const text = note.trim().slice(0, 2000);
   if (!text) return { success: false, error: "Note cannot be empty" };
+
+  if (isLocalDemoMode()) {
+    try {
+      await mutateDemoState((state) => {
+        if (!state.leads.some((lead) => lead.id === leadId)) throw new Error("Lead not found");
+        state.activities.push({
+          id: demoId(), lead_id: leadId, user_id: null, type: "note", title: "Note added",
+          description: text, metadata: {}, created_at: new Date().toISOString(),
+        });
+      });
+      revalidatePath(`/app/leads/${leadId}`);
+      return { success: true };
+    } catch (err) {
+      return { success: false, error: err instanceof Error ? err.message : "Could not add note" };
+    }
+  }
 
   const supabase = await createClient();
   try {
@@ -234,6 +299,21 @@ export async function updateTaskStatus(
   taskId: string,
   status: "open" | "in_progress" | "complete" | "cancelled"
 ): Promise<ActionResult> {
+  if (isLocalDemoMode()) {
+    try {
+      await mutateDemoState((state) => {
+        const task = state.tasks.find((item) => item.id === taskId);
+        if (!task) throw new Error("Task not found");
+        task.status = status;
+        task.completed_at = status === "complete" ? new Date().toISOString() : null;
+        task.updated_at = new Date().toISOString();
+      });
+      revalidatePath("/app", "layout");
+      return { success: true };
+    } catch (err) {
+      return { success: false, error: err instanceof Error ? err.message : "Task update failed" };
+    }
+  }
   const supabase = await createClient();
   try {
     await requireUser(supabase);
@@ -254,6 +334,20 @@ export async function updateTaskStatus(
 }
 
 export async function snoozeTask(taskId: string, hours: number): Promise<ActionResult> {
+  if (isLocalDemoMode()) {
+    try {
+      await mutateDemoState((state) => {
+        const task = state.tasks.find((item) => item.id === taskId);
+        if (!task) throw new Error("Task not found");
+        task.due_at = new Date(Date.now() + hours * 60 * 60_000).toISOString();
+        task.updated_at = new Date().toISOString();
+      });
+      revalidatePath("/app/tasks");
+      return { success: true };
+    } catch (err) {
+      return { success: false, error: err instanceof Error ? err.message : "Snooze failed" };
+    }
+  }
   const supabase = await createClient();
   try {
     await requireUser(supabase);
@@ -401,6 +495,42 @@ export async function testAutomationRule(
   }
 }
 
+export async function runAiAutomationModuleTest(input: {
+  moduleId: AiWorkflowModuleId;
+  leadId?: string;
+}): Promise<ActionResult<ModuleRunOutput>> {
+  const supabase = await createClient();
+  try {
+    const user = await requireUser(supabase);
+    const leadQuery = supabase.from("leads").select("*");
+    const { data: lead, error } = input.leadId
+      ? await leadQuery.eq("id", input.leadId).single()
+      : await leadQuery.order("created_at", { ascending: false }).limit(1).maybeSingle();
+
+    if (error) return { success: false, error: error.message };
+    if (!lead) return { success: false, error: "Create a demo lead before running this workflow." };
+
+    const output = await runAiWorkflowModule(supabase, {
+      moduleId: input.moduleId,
+      lead: lead as Lead,
+      userId: user.id,
+    });
+
+    revalidatePath("/app/automations");
+    revalidatePath("/app/inbox");
+    revalidatePath("/app/tasks");
+    revalidatePath("/app/quote-tool");
+    revalidatePath(`/app/leads/${lead.id}`);
+
+    return { success: true, data: output };
+  } catch (err) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "AI automation test failed",
+    };
+  }
+}
+
 /**
  * Sends a structured lead event to the configured Make/Zapier webhook.
  * Without a configured URL (or in demo mode) the send is simulated and the
@@ -466,6 +596,141 @@ export async function sendLeadToWebhook(
     return { success: true, data: { simulated, payload } };
   } catch (err) {
     return { success: false, error: err instanceof Error ? err.message : "Webhook send failed" };
+  }
+}
+
+export async function sendIntegrationWebhookTest(input: {
+  leadId: string;
+  webhookUrl?: string;
+}): Promise<
+  ActionResult<{
+    status: "dry_run" | "success" | "failed";
+    payload: Record<string, unknown>;
+    responseStatus?: number;
+    responsePreview?: string;
+  }>
+> {
+  const supabase = await createClient();
+  try {
+    const user = await requireUser(supabase);
+    const { data: lead, error } = await supabase
+      .from("leads")
+      .select("*")
+      .eq("id", input.leadId)
+      .single();
+    if (error) return { success: false, error: error.message };
+    if (!lead) return { success: false, error: "Lead not found" };
+
+    const payload = buildWebhookPreview(
+      lead as Lead,
+      analyzeLeadForAutomation(lead as Lead)
+    ) as unknown as Record<string, unknown>;
+    const rawUrl = input.webhookUrl?.trim() ?? "";
+    let status: "dry_run" | "success" | "failed" = "dry_run";
+    let responseStatus: number | undefined;
+    let responsePreview: string | undefined;
+    let errorMessage: string | null = null;
+
+    if (rawUrl) {
+      let url: URL;
+      try {
+        url = new URL(rawUrl);
+      } catch {
+        return { success: false, error: "Enter a valid HTTPS webhook URL, or leave it blank for dry-run." };
+      }
+      if (url.protocol !== "https:") {
+        return {
+          success: false,
+          error: "Use an HTTPS webhook URL for live tests. Leave the field blank for dry-run.",
+        };
+      }
+
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 10_000);
+      try {
+        const response = await fetch(url, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+          signal: controller.signal,
+        });
+        responseStatus = response.status;
+        responsePreview = (await response.text()).slice(0, 1000);
+        status = response.ok ? "success" : "failed";
+        if (!response.ok) {
+          errorMessage = `Webhook responded with ${response.status}`;
+        }
+      } catch (err) {
+        status = "failed";
+        errorMessage = err instanceof Error ? err.message : "Webhook request failed";
+      } finally {
+        clearTimeout(timeout);
+      }
+    }
+
+    await supabase.from("crm_sync_events").insert({
+      provider: "external_webhook",
+      entity_type: "lead",
+      entity_id: lead.id,
+      external_id: rawUrl || "dry-run",
+      direction: "outbound",
+      action: "webhook_test",
+      status,
+      request_payload: payload,
+      response_payload: {
+        response_status: responseStatus ?? null,
+        response_preview: responsePreview ?? null,
+      },
+      error_message: errorMessage,
+    });
+
+    await supabase.from("activities").insert({
+      lead_id: lead.id,
+      user_id: user.id,
+      type: "webhook",
+      title:
+        status === "dry_run"
+          ? "Integration Lab webhook dry-run"
+          : status === "success"
+            ? "Integration Lab webhook test sent"
+            : "Integration Lab webhook test failed",
+      description:
+        status === "dry_run"
+          ? "Payload was generated and logged; no external system was contacted."
+          : errorMessage ?? "Payload was sent to the configured webhook URL.",
+      metadata: {
+        provider: "external_webhook",
+        status,
+        webhook_url: rawUrl || null,
+        response_status: responseStatus ?? null,
+      },
+    });
+
+    revalidatePath("/app/automations");
+    revalidatePath("/app/crm-sync");
+    revalidatePath(`/app/leads/${lead.id}`);
+
+    if (status === "failed") {
+      return {
+        success: false,
+        error: errorMessage ?? "Webhook test failed",
+      };
+    }
+
+    return {
+      success: true,
+      data: {
+        status,
+        payload,
+        responseStatus,
+        responsePreview,
+      },
+    };
+  } catch (err) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "Webhook test failed",
+    };
   }
 }
 

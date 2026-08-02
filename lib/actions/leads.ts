@@ -8,6 +8,8 @@ import { scheduleAppointmentReminders } from "@/lib/communications/reminders";
 import { slotLabel } from "@/lib/integrations/calendar/internalCalendar";
 import { createClient } from "@/lib/supabase/server";
 import { customerServiceLabel } from "@/lib/utils/statuses";
+import { isLocalDemoMode } from "@/lib/demo/mode";
+import { createLocalLead } from "@/lib/demo/localWorkflows";
 import type { Lead } from "@/types/app";
 
 type ActionResult<T = undefined> =
@@ -93,6 +95,18 @@ export async function createLead(input: LeadInput): Promise<ActionResult<{ leadI
   const parsed = leadInputSchema.safeParse(input);
   if (!parsed.success) {
     return { success: false, error: parsed.error.issues[0]?.message ?? "Check the form" };
+  }
+  if (isLocalDemoMode()) {
+    try {
+      const leadId = await createLocalLead(
+        parsed.data,
+        parsed.data.appointment_start_time,
+        parsed.data.source_call_id
+      );
+      return { success: true, data: { leadId } };
+    } catch (err) {
+      return { success: false, error: err instanceof Error ? err.message : "Could not save the demo lead" };
+    }
   }
   const supabase = await createClient();
   try {

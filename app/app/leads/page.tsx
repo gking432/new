@@ -17,6 +17,8 @@ import { getLeads, getProfiles } from "@/lib/db/queries";
 import { createClient } from "@/lib/supabase/server";
 import { formatMoneyRange, formatRelative, fullName } from "@/lib/utils/format";
 import { SERVICE_LABELS, SOURCE_LABELS, labelFor } from "@/lib/utils/statuses";
+import { isLocalDemoMode } from "@/lib/demo/mode";
+import { getLocalLeads, getLocalProfiles } from "@/lib/demo/localData";
 
 export const dynamic = "force-dynamic";
 
@@ -26,9 +28,7 @@ export default async function LeadsPage({
   searchParams: Promise<Record<string, string | undefined>>;
 }) {
   const params = await searchParams;
-  const supabase = await createClient();
-  const [leads, profiles] = await Promise.all([
-    getLeads(supabase, {
+  const filters = {
       search: params.search,
       service_type: params.service_type,
       urgency: params.urgency,
@@ -36,9 +36,13 @@ export default async function LeadsPage({
       stage: params.stage,
       source: params.source,
       assigned_to: params.assigned_to,
-    }),
-    getProfiles(supabase),
-  ]);
+  };
+  const [leads, profiles] = isLocalDemoMode()
+    ? await Promise.all([getLocalLeads(filters), getLocalProfiles()])
+    : await (async () => {
+        const supabase = await createClient();
+        return Promise.all([getLeads(supabase, filters), getProfiles(supabase)]);
+      })();
 
   return (
     <div className="space-y-4">

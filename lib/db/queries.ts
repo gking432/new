@@ -247,10 +247,10 @@ export async function getAutomationRules(supabase: SupabaseClient): Promise<Auto
 export async function getAutomationRuns(supabase: SupabaseClient): Promise<AutomationRun[]> {
   const { data } = await supabase
     .from("automation_runs")
-    .select("*")
+    .select("*, lead:leads(id, first_name, last_name, service_type, stage, urgency)")
     .order("created_at", { ascending: false })
     .limit(50);
-  return (data ?? []) as AutomationRun[];
+  return (data ?? []) as unknown as AutomationRun[];
 }
 
 export async function getSettings(supabase: SupabaseClient): Promise<CompanySettings | null> {

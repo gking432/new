@@ -31,6 +31,8 @@ import {
   labelFor,
 } from "@/lib/utils/statuses";
 import type { Feedback } from "@/types/app";
+import { isLocalDemoMode } from "@/lib/demo/mode";
+import { getLocalTasks } from "@/lib/demo/localData";
 
 export const dynamic = "force-dynamic";
 
@@ -202,8 +204,12 @@ function sourceLabel(source: string | null) {
 }
 
 export default async function FeedbackPage() {
-  const supabase = await createClient();
-  const [databaseFeedback, tasks] = await Promise.all([getFeedbackList(supabase), getTasks(supabase)]);
+  const [databaseFeedback, tasks] = isLocalDemoMode()
+    ? [[], await getLocalTasks()]
+    : await (async () => {
+        const supabase = await createClient();
+        return Promise.all([getFeedbackList(supabase), getTasks(supabase)]);
+      })();
   const sampleMode = databaseFeedback.length === 0;
   const feedback = sampleMode ? SAMPLE_FEEDBACK : databaseFeedback;
 

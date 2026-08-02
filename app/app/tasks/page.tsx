@@ -4,6 +4,8 @@ import { TaskList } from "@/components/app/TaskList";
 import { getTasks } from "@/lib/db/queries";
 import { createClient } from "@/lib/supabase/server";
 import type { TaskWithLead } from "@/types/app";
+import { isLocalDemoMode } from "@/lib/demo/mode";
+import { getLocalTasks } from "@/lib/demo/localData";
 
 export const dynamic = "force-dynamic";
 
@@ -13,8 +15,7 @@ export default async function TasksPage({
   searchParams: Promise<{ task?: string }>;
 }) {
   const { task: highlightTaskId } = await searchParams;
-  const supabase = await createClient();
-  const tasks = await getTasks(supabase);
+  const tasks = isLocalDemoMode() ? await getLocalTasks() : await getTasks(await createClient());
 
   const startOfToday = new Date();
   startOfToday.setHours(0, 0, 0, 0);

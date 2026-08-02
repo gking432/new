@@ -31,6 +31,8 @@ import {
   TIMEFRAME_LABELS,
   labelFor,
 } from "@/lib/utils/statuses";
+import { isLocalDemoMode } from "@/lib/demo/mode";
+import { getLocalLeadDetail, getLocalLeadPhase2, getLocalProfiles } from "@/lib/demo/localData";
 
 export const dynamic = "force-dynamic";
 
@@ -49,12 +51,16 @@ export default async function LeadDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const supabase = await createClient();
-  const [lead, profiles, phase2] = await Promise.all([
-    getLeadDetail(supabase, id),
-    getProfiles(supabase),
-    getLeadPhase2(supabase, id),
-  ]);
+  const [lead, profiles, phase2] = isLocalDemoMode()
+    ? await Promise.all([getLocalLeadDetail(id), getLocalProfiles(), getLocalLeadPhase2(id)])
+    : await (async () => {
+        const supabase = await createClient();
+        return Promise.all([
+          getLeadDetail(supabase, id),
+          getProfiles(supabase),
+          getLeadPhase2(supabase, id),
+        ]);
+      })();
 
   if (!lead) notFound();
   const analysis = lead.analysis;

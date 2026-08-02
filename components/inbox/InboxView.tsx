@@ -665,11 +665,14 @@ export function InboxView({
                   <p className="mb-2 flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-muted-foreground">
                     <Bot className="h-3.5 w-3.5 text-primary" />
                     AI-drafted reply — review before sending
-                    {pendingDraft.subject && selected.channel === "email" && (
-                      <span className="normal-case">· {pendingDraft.subject}</span>
-                    )}
-                  </p>
-                  <Textarea
+	                    {pendingDraft.subject && selected.channel === "email" && (
+	                      <span className="normal-case">· {pendingDraft.subject}</span>
+	                    )}
+	                  </p>
+	                  <p className="mb-3 rounded-md border bg-background px-3 py-2 text-xs text-muted-foreground">
+	                    Draft only — no external message has been sent.
+	                  </p>
+	                  <Textarea
                     value={editedBody ?? pendingDraft.body ?? ""}
                     onChange={(e) => setEditedBody(e.target.value)}
                     rows={selected.channel === "email" ? 7 : 4}

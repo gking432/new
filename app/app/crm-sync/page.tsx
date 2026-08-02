@@ -31,6 +31,9 @@ import { HUBSPOT_FIELD_MAPPING } from "@/lib/integrations/hubspot/client";
 import { getCrmConnection, getCrmSyncEvents } from "@/lib/db/queries-phase2";
 import { createClient } from "@/lib/supabase/server";
 import { formatDateTime, formatRelative } from "@/lib/utils/format";
+import { isLocalDemoMode } from "@/lib/demo/mode";
+import { getLocalLeads } from "@/lib/demo/localData";
+import type { CrmConnection, CrmSyncEvent } from "@/types/app";
 
 export const dynamic = "force-dynamic";
 
@@ -53,14 +56,14 @@ const CONNECTORS = [
   {
     name: "JobNimbus",
     type: "Home services CRM",
-    status: "Ready",
+    status: "Conceptual",
     icon: Database,
     detail: "Lead, job, appointment, production handoff, activity history.",
   },
   {
     name: "ServiceTitan",
     type: "Field operations",
-    status: "Ready",
+    status: "Conceptual",
     icon: Workflow,
     detail: "Customer, job, estimate, dispatch, and service notes.",
   },
@@ -88,42 +91,42 @@ const CONNECTORS = [
   {
     name: "Zapier",
     type: "Automation",
-    status: "Ready",
+    status: "Webhook-ready",
     icon: PlugZap,
     detail: "Fast no-code routing for forms, alerts, Sheets, and CRM updates.",
   },
   {
     name: "Make",
     type: "Automation",
-    status: "Ready",
+    status: "Webhook-ready",
     icon: Workflow,
     detail: "Visual multi-step scenarios for lead routing and summaries.",
   },
   {
     name: "n8n",
     type: "Automation",
-    status: "Ready",
+    status: "Webhook-ready",
     icon: Workflow,
     detail: "Self-hostable workflows for API-heavy or private data flows.",
   },
   {
     name: "Power Automate",
     type: "Microsoft stack",
-    status: "Ready",
+    status: "Conceptual",
     icon: Workflow,
     detail: "Outlook, Teams, SharePoint, Excel, and approval workflows.",
   },
   {
     name: "QuickBooks",
     type: "Finance",
-    status: "Ready",
+    status: "Conceptual",
     icon: Database,
     detail: "Won-job handoff, customer records, invoices, and job-cost checks.",
   },
   {
     name: "CompanyCam",
     type: "Photos",
-    status: "Ready",
+    status: "Conceptual",
     icon: FileJson,
     detail: "Inspection photos, property notes, production documentation.",
   },
@@ -228,21 +231,38 @@ const PAYLOAD_PREVIEWS = [
 
 function statusClass(status: string) {
   if (status === "Dry-run" || status === "Simulated") return "bg-blue-100 text-blue-800";
-  if (status === "Ready") return "bg-amber-100 text-amber-800";
+  if (status === "Webhook-ready") return "bg-amber-100 text-amber-800";
+  if (status === "Conceptual") return "bg-gray-100 text-gray-700";
   return "bg-green-100 text-green-800";
 }
 
 export default async function CrmSyncPage() {
-  const supabase = await createClient();
-  const [connection, events, leadsRes] = await Promise.all([
-    getCrmConnection(supabase),
-    getCrmSyncEvents(supabase),
-    supabase
-      .from("leads")
-      .select("id, first_name, last_name, service_type, stage, urgency")
-      .order("created_at", { ascending: false })
-      .limit(8),
-  ]);
+  let connection: CrmConnection | null;
+  let events: CrmSyncEvent[];
+  let leadsRes: { data: Array<{ id: string; first_name: string; last_name: string; service_type: string; stage: string; urgency: string }> };
+  if (isLocalDemoMode()) {
+    connection = null;
+    events = [];
+    leadsRes = {
+      data: (await getLocalLeads()).slice(0, 8).map(({ id, first_name, last_name, service_type, stage, urgency }) => ({
+        id, first_name, last_name, service_type, stage, urgency,
+      })),
+    };
+  } else {
+    const supabase = await createClient();
+    const [savedConnection, savedEvents, savedLeads] = await Promise.all([
+      getCrmConnection(supabase),
+      getCrmSyncEvents(supabase),
+      supabase
+        .from("leads")
+        .select("id, first_name, last_name, service_type, stage, urgency")
+        .order("created_at", { ascending: false })
+        .limit(8),
+    ]);
+    connection = savedConnection;
+    events = savedEvents;
+    leadsRes = { data: savedLeads.data ?? [] };
+  }
 
   const liveConfigured = process.env.ENABLE_HUBSPOT_LIVE_SYNC === "true" && Boolean(process.env.HUBSPOT_PRIVATE_APP_TOKEN);
   const mode = liveConfigured ? "live" : "dry_run";

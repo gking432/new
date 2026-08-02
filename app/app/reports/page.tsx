@@ -34,6 +34,8 @@ import { createClient } from "@/lib/supabase/server";
 import { estimatedValueMidpoint, formatMoney, formatPercent } from "@/lib/utils/format";
 import { SERVICE_LABELS, SOURCE_LABELS, STAGE_STYLES } from "@/lib/utils/statuses";
 import type { Lead, LeadStage, TaskWithLead } from "@/types/app";
+import { isLocalDemoMode } from "@/lib/demo/mode";
+import { getLocalReportData } from "@/lib/demo/localData";
 
 export const dynamic = "force-dynamic";
 
@@ -344,8 +346,9 @@ const WORKFLOW_HEALTH = [
 ];
 
 export default async function ReportsPage() {
-  const supabase = await createClient();
-  const { leads, tasks } = await getReportData(supabase);
+  const { leads, tasks } = isLocalDemoMode()
+    ? await getLocalReportData()
+    : await getReportData(await createClient());
 
   const now = new Date();
   const startOfToday = new Date(now);

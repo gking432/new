@@ -13,6 +13,15 @@ import {
   sameDemoDay,
 } from "@/lib/utils/demoTime";
 import type { Communication, Lead, Profile } from "@/types/app";
+import { isLocalDemoMode } from "@/lib/demo/mode";
+import {
+  approveAndSendLocalCommunication,
+  discardLocalCommunication,
+  draftLocalSoonerInspectionSms,
+  sendLocalConversationReply,
+  simulateLocalInboundEmail,
+  simulateLocalInboundText,
+} from "@/lib/demo/localInbox";
 
 type ActionResult<T = undefined> =
   | { success: true; data: T }
@@ -334,6 +343,13 @@ export interface InboundResult {
 }
 
 export async function simulateInboundText(): Promise<ActionResult<InboundResult>> {
+  if (isLocalDemoMode()) {
+    try {
+      return { success: true, data: await simulateLocalInboundText() };
+    } catch (err) {
+      return { success: false, error: err instanceof Error ? err.message : "Simulation failed" };
+    }
+  }
   const supabase = await createClient();
   try {
     await requireUser(supabase);
@@ -457,6 +473,13 @@ export async function simulateInboundText(): Promise<ActionResult<InboundResult>
  * conversation for a normal reply in the Inbox.
  */
 export async function simulateInboundEmail(): Promise<ActionResult<InboundResult>> {
+  if (isLocalDemoMode()) {
+    try {
+      return { success: true, data: await simulateLocalInboundEmail() };
+    } catch (err) {
+      return { success: false, error: err instanceof Error ? err.message : "Simulation failed" };
+    }
+  }
   const supabase = await createClient();
   try {
     await requireUser(supabase);
@@ -570,6 +593,14 @@ export async function sendConversationReply({
   replyToId: string;
   body: string;
 }): Promise<ActionResult<undefined>> {
+  if (isLocalDemoMode()) {
+    try {
+      await sendLocalConversationReply(replyToId, body);
+      return { success: true, data: undefined };
+    } catch (err) {
+      return { success: false, error: err instanceof Error ? err.message : "Reply failed" };
+    }
+  }
   const supabase = await createClient();
   try {
     const user = await requireUser(supabase);
@@ -685,6 +716,14 @@ export async function approveCommunication(
 export async function draftSoonerInspectionSms(
   communicationId: string
 ): Promise<ActionResult<undefined>> {
+  if (isLocalDemoMode()) {
+    try {
+      await draftLocalSoonerInspectionSms(communicationId);
+      return { success: true, data: undefined };
+    } catch (err) {
+      return { success: false, error: err instanceof Error ? err.message : "Draft failed" };
+    }
+  }
   const supabase = await createClient();
   try {
     await requireUser(supabase);
@@ -762,6 +801,14 @@ export async function approveAndSimulateCommunication(
   id: string,
   editedBody?: string
 ): Promise<ActionResult<undefined>> {
+  if (isLocalDemoMode()) {
+    try {
+      await approveAndSendLocalCommunication(id, editedBody);
+      return { success: true, data: undefined };
+    } catch (err) {
+      return { success: false, error: err instanceof Error ? err.message : "Send failed" };
+    }
+  }
   const supabase = await createClient();
   try {
     const user = await requireUser(supabase);
@@ -879,6 +926,14 @@ export async function runDueReminderAutomations(): Promise<
 }
 
 export async function discardCommunication(id: string): Promise<ActionResult<undefined>> {
+  if (isLocalDemoMode()) {
+    try {
+      await discardLocalCommunication(id);
+      return { success: true, data: undefined };
+    } catch (err) {
+      return { success: false, error: err instanceof Error ? err.message : "Discard failed" };
+    }
+  }
   const supabase = await createClient();
   try {
     await requireUser(supabase);

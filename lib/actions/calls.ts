@@ -4,6 +4,8 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { completeCall, type CompleteCallResult } from "@/lib/calls/completeCall";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { isLocalDemoMode } from "@/lib/demo/mode";
+import { finishLocalCall } from "@/lib/demo/localWorkflows";
 
 type ActionResult<T = undefined> =
   | { success: true; data: T }
@@ -54,6 +56,11 @@ export async function finishCall(
   if (rateLimited()) return { success: false, error: "Too many call completions right now" };
 
   try {
+    if (isLocalDemoMode()) {
+      const result = await finishLocalCall(parsed.data);
+      revalidatePath("/app", "layout");
+      return { success: true, data: result };
+    }
     const supabase = createAdminClient();
     const result = await completeCall(supabase, parsed.data);
     revalidatePath("/app", "layout");
@@ -73,6 +80,7 @@ export async function markCallMissed(callId: string): Promise<ActionResult<undef
     return { success: false, error: "Invalid call id" };
   }
   try {
+    if (isLocalDemoMode()) return { success: true, data: undefined };
     const supabase = createAdminClient();
     await supabase
       .from("calls")

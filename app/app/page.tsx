@@ -22,6 +22,8 @@ import { getDashboardData } from "@/lib/db/queries";
 import { createClient } from "@/lib/supabase/server";
 import { formatMoney } from "@/lib/utils/format";
 import { STAGE_STYLES, LEAD_STAGES } from "@/lib/utils/statuses";
+import { isLocalDemoMode } from "@/lib/demo/mode";
+import { getLocalDashboardData } from "@/lib/demo/localData";
 
 export const dynamic = "force-dynamic";
 
@@ -33,8 +35,9 @@ const AI_INSIGHTS = [
 ];
 
 export default async function OverviewPage() {
-  const supabase = await createClient();
-  const data = await getDashboardData(supabase);
+  const data = isLocalDemoMode()
+    ? await getLocalDashboardData()
+    : await getDashboardData(await createClient());
 
   return (
     <div className="space-y-6">

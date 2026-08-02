@@ -338,6 +338,11 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
     const startSpeedToLead = (leadId: string, ts: number) => {
       if (handled.has(ts)) return;
       handled.add(ts);
+      try {
+        localStorage.removeItem("northstar-demo-speed-to-lead");
+      } catch {
+        // Storage is only a resilience fallback; the live dashboard path still works without it.
+      }
       startCall({
         scenario: "speed_to_lead_outbound",
         leadId,
@@ -347,6 +352,20 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
         navigateTo: `/app/leads/${leadId}`,
       });
     };
+    try {
+      const pending = localStorage.getItem("northstar-demo-speed-to-lead");
+      if (pending) {
+        const data = JSON.parse(pending) as { leadId?: string; ts?: number };
+        const timestamp = data.ts ?? Date.now();
+        if (data.leadId && Date.now() - timestamp < 2 * 60 * 1000) {
+          startSpeedToLead(data.leadId, timestamp);
+        } else {
+          localStorage.removeItem("northstar-demo-speed-to-lead");
+        }
+      }
+    } catch {
+      localStorage.removeItem("northstar-demo-speed-to-lead");
+    }
     let bc: BroadcastChannel | null = null;
     if (typeof BroadcastChannel !== "undefined") {
       bc = new BroadcastChannel("northstar-demo");

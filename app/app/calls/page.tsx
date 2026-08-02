@@ -14,6 +14,8 @@ import {
 import { getCalls } from "@/lib/db/queries-phase2";
 import { createClient } from "@/lib/supabase/server";
 import { formatDateTime } from "@/lib/utils/format";
+import { isLocalDemoMode } from "@/lib/demo/mode";
+import { getLocalCalls } from "@/lib/demo/localData";
 
 export const dynamic = "force-dynamic";
 
@@ -28,8 +30,7 @@ const STATUS_STYLES: Record<string, string> = {
 };
 
 export default async function CallsPage() {
-  const supabase = await createClient();
-  const calls = await getCalls(supabase);
+  const calls = isLocalDemoMode() ? await getLocalCalls() : await getCalls(await createClient());
 
   return (
     <div className="space-y-6">

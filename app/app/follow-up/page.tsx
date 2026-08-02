@@ -1,12 +1,13 @@
 import { FollowupComposer } from "@/components/app/FollowupComposer";
 import { getLeads } from "@/lib/db/queries";
 import { createClient } from "@/lib/supabase/server";
+import { isLocalDemoMode } from "@/lib/demo/mode";
+import { getLocalLeads } from "@/lib/demo/localData";
 
 export const dynamic = "force-dynamic";
 
 export default async function FollowUpPage() {
-  const supabase = await createClient();
-  const leads = await getLeads(supabase);
+  const leads = isLocalDemoMode() ? await getLocalLeads() : await getLeads(await createClient());
 
   return (
     <div className="space-y-4">

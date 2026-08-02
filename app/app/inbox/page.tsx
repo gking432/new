@@ -3,6 +3,8 @@ import { InboxView } from "@/components/inbox/InboxView";
 import { runDueScheduledReminders } from "@/lib/communications/reminders";
 import { getCommunications } from "@/lib/db/queries-phase2";
 import { createClient } from "@/lib/supabase/server";
+import { isLocalDemoMode } from "@/lib/demo/mode";
+import { getLocalCommunications } from "@/lib/demo/localData";
 
 export const dynamic = "force-dynamic";
 
@@ -12,9 +14,14 @@ export default async function InboxPage({
   searchParams: Promise<{ lead?: string; tab?: string }>;
 }) {
   const { lead, tab } = await searchParams;
-  const supabase = await createClient();
-  await runDueScheduledReminders(supabase);
-  const communications = await getCommunications(supabase);
+  let communications;
+  if (isLocalDemoMode()) {
+    communications = await getLocalCommunications();
+  } else {
+    const supabase = await createClient();
+    await runDueScheduledReminders(supabase);
+    communications = await getCommunications(supabase);
+  }
 
   return (
     <div className="space-y-6">

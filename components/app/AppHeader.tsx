@@ -14,7 +14,7 @@ const PAGE_TITLES: Array<[string, string]> = [
   ["/app/pipeline", "Pipeline"],
   ["/app/tasks", "Tasks"],
   ["/app/feedback", "Customer Feedback"],
-  ["/app/automations", "Automations"],
+  ["/app/automations", "AI Automations"],
   ["/app/reports", "Reports"],
   ["/app/settings", "Settings"],
   ["/app", "Overview"],

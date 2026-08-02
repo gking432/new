@@ -710,7 +710,7 @@ export function LeadIntakeForm() {
       secondary_contact_email: fields.secondary_contact_email || null,
       source: live?.phase === "done" && live.result?.deferredLeadCreation ? "phone_call" : "manual",
       source_call_id:
-        live?.phase === "done" && !live.result?.simulatedOnly
+        live?.phase === "done" && live.result?.callId
           ? (live.result?.callId ?? null)
           : null,
       appointment_start_time:

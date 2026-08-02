@@ -15,6 +15,7 @@ import {
   Phone,
   PhoneIncoming,
   PhoneOutgoing,
+  Workflow,
   Zap,
 } from "lucide-react";
 
@@ -195,6 +196,17 @@ export function DemoCenterClient({
               <PhoneOutgoing className="h-4 w-4" />
             )}
             Submit lead & start AI call
+          </Button>
+        </ScenarioCard>
+
+        <ScenarioCard
+          icon={Workflow}
+          title="Run AI Automation Workflow"
+          tag="Portfolio systems demo"
+          description="Open the AI Automations Center, run a workflow against existing CRM lead data, inspect the run log, and review any approval-gated draft in the Inbox."
+        >
+          <Button variant="outline" asChild>
+            <Link href="/app/automations">Open AI Automations</Link>
           </Button>
         </ScenarioCard>
 

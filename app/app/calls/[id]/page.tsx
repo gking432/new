@@ -8,6 +8,8 @@ import { CallSummaryCard } from "@/components/calls/CallSummaryCard";
 import { CallTranscriptPanel } from "@/components/calls/CallTranscriptPanel";
 import { getCallDetail } from "@/lib/db/queries-phase2";
 import { createClient } from "@/lib/supabase/server";
+import { isLocalDemoMode } from "@/lib/demo/mode";
+import { getLocalCallDetail } from "@/lib/demo/localData";
 import { formatDateTime } from "@/lib/utils/format";
 
 export const dynamic = "force-dynamic";
@@ -18,8 +20,9 @@ export default async function CallDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const supabase = await createClient();
-  const call = await getCallDetail(supabase, id);
+  const call = isLocalDemoMode()
+    ? await getLocalCallDetail(id)
+    : await getCallDetail(await createClient(), id);
   if (!call) notFound();
 
   const name =

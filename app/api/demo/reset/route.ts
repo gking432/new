@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { resetOperationalDemoData } from "@/lib/demo/reset";
+import { isLocalDemoMode } from "@/lib/demo/mode";
+import { resetDemoState } from "@/lib/demo/serverStore";
 
 export const dynamic = "force-dynamic";
 
@@ -18,6 +20,15 @@ export async function POST(request: Request) {
   }
 
   try {
+    if (isLocalDemoMode()) {
+      await resetDemoState();
+      return NextResponse.json({
+        success: true,
+        reset: true,
+        storage: "browser",
+        cleared: ["leads", "calls", "messages", "appointments", "tasks"],
+      });
+    }
     const results = await resetOperationalDemoData();
     const failed = results.filter((r) => !r.ok);
     return NextResponse.json({

@@ -235,6 +235,7 @@ export interface AutomationRun {
   actions_taken: string[];
   error_message: string | null;
   created_at: string;
+  lead?: Pick<Lead, "id" | "first_name" | "last_name" | "service_type" | "stage" | "urgency"> | null;
 }
 
 export interface CompanySettings {

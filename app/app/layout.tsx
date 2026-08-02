@@ -4,6 +4,7 @@ import { CallProvider } from "@/components/calls/CallProvider";
 import { TutorialProvider } from "@/components/tutorial/TutorialProvider";
 import { SetupNotice } from "@/components/app/SetupNotice";
 import { isAppConfigured } from "@/lib/supabase/server";
+import { isLocalDemoMode } from "@/lib/demo/mode";
 import type { Profile } from "@/types/app";
 
 const DEMO_PROFILE: Profile = {
@@ -22,7 +23,7 @@ export default function AppLayout({
 }: Readonly<{ children: React.ReactNode }>) {
   // No-login demo: with no Supabase keys there's no database to read, so show a
   // clear setup notice instead of crashing on a missing client.
-  if (!isAppConfigured()) {
+  if (!isLocalDemoMode() && !isAppConfigured()) {
     return <SetupNotice />;
   }
 

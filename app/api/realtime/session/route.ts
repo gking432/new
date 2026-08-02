@@ -5,6 +5,9 @@ import { getAvailableSlots } from "@/lib/integrations/calendar/internalCalendar"
 import { buildAiCustomerInstructions, buildRealtimeInstructions } from "@/lib/realtime/prompts";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { Lead } from "@/types/app";
+import { isLocalDemoMode } from "@/lib/demo/mode";
+import { createLocalCallSession } from "@/lib/demo/localWorkflows";
+import { getLocalAvailableSlots } from "@/lib/demo/localData";
 
 // Full gpt-realtime = ChatGPT-voice-mode quality. Set REALTIME_MODEL to
 // gpt-realtime-mini for a cheaper (slightly less natural) option.
@@ -230,13 +233,6 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Too many call sessions right now" }, { status: 429 });
   }
 
-  let supabase;
-  try {
-    supabase = createAdminClient();
-  } catch {
-    return NextResponse.json({ error: "Backend is not configured" }, { status: 503 });
-  }
-
   const {
     scenario,
     leadId,
@@ -247,57 +243,58 @@ export async function POST(request: Request) {
     forceScripted,
   } = parsed.data;
 
+  let supabase: ReturnType<typeof createAdminClient> | null = null;
   let lead: Lead | null = null;
-  if (leadId) {
-    const { data } = await supabase.from("leads").select("*").eq("id", leadId).maybeSingle();
-    lead = (data as Lead | null) ?? null;
-  }
+  let call: { id: string };
+  let scripted;
+  let slots;
 
-  const direction = scenario === "speed_to_lead_outbound" ? "outbound" : "inbound";
-  const leadName = lead ? `${lead.first_name} ${lead.last_name}` : null;
-  const { data: call, error: callError } = await supabase
-    .from("calls")
-    .insert({
-      lead_id: lead?.id ?? null,
-      scenario,
-      direction,
-      caller_name:
-        direction === "inbound"
-          ? (callerName ?? leadName ?? "Unknown Caller")
-          : "Northstar AI Assistant",
-      caller_phone: direction === "inbound" ? (callerPhone ?? lead?.phone ?? null) : null,
-      callee_name:
-        direction === "outbound" ? (leadName ?? callerName ?? "Homeowner") : "Northstar AI Assistant",
-      callee_phone: direction === "outbound" ? (lead?.phone ?? callerPhone ?? null) : null,
-      status: "ringing",
-      started_at: new Date().toISOString(),
-    })
-    .select("id")
-    .single();
-
-  if (callError || !call) {
-    console.error("Call record insert failed:", callError);
-    const detail = [callError?.message, callError?.details, callError?.hint]
-      .filter(Boolean)
-      .join(" ");
-    const isConnectionFailure = /fetch failed|ENOTFOUND|ECONNREFUSED|ETIMEDOUT|network/i.test(detail);
-    return NextResponse.json(
-      {
-        error: isConnectionFailure
-          ? "Could not reach Supabase. Check NEXT_PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, and that the Supabase project is active."
-          : "Could not create call record",
-      },
-      { status: isConnectionFailure ? 503 : 500 }
-    );
+  if (isLocalDemoMode()) {
+    const local = await createLocalCallSession({ scenario, leadId, callerName, callerPhone });
+    lead = local.lead;
+    call = { id: local.call.id };
+    scripted = local.scripted;
+    slots = await getLocalAvailableSlots(14, 6);
+  } else {
+    try {
+      supabase = createAdminClient();
+    } catch {
+      return NextResponse.json({ error: "Backend is not configured" }, { status: 503 });
+    }
+    if (leadId) {
+      const { data } = await supabase.from("leads").select("*").eq("id", leadId).maybeSingle();
+      lead = (data as Lead | null) ?? null;
+    }
+    const direction = scenario === "speed_to_lead_outbound" ? "outbound" : "inbound";
+    const leadName = lead ? `${lead.first_name} ${lead.last_name}` : null;
+    const result = await supabase
+      .from("calls")
+      .insert({
+        lead_id: lead?.id ?? null,
+        scenario,
+        direction,
+        caller_name: direction === "inbound" ? callerName ?? leadName ?? "Unknown Caller" : "Northstar AI Assistant",
+        caller_phone: direction === "inbound" ? callerPhone ?? lead?.phone ?? null : null,
+        callee_name: direction === "outbound" ? leadName ?? callerName ?? "Homeowner" : "Northstar AI Assistant",
+        callee_phone: direction === "outbound" ? lead?.phone ?? callerPhone ?? null : null,
+        status: "ringing",
+        started_at: new Date().toISOString(),
+      })
+      .select("id")
+      .single();
+    if (result.error || !result.data) {
+      return NextResponse.json({ error: "Could not create call record" }, { status: 500 });
+    }
+    call = result.data;
+    slots = await getAvailableSlots(supabase, 14, 6);
+    scripted = getScriptedScenario(scenario, lead);
   }
 
   // The soonest few concrete openings, for the "offer the soonest slot" case on
   // urgent calls. General availability (which days/times can be booked) is
   // conveyed to the assistant via the fixed start-time grid in the prompt.
-  const slots = await getAvailableSlots(supabase, 14, 6);
   const slotLabels = slots.map((s) => s.label);
   const maxSeconds = Number(process.env.REALTIME_MAX_CALL_SECONDS || 180);
-  const scripted = getScriptedScenario(scenario, lead);
 
   const base = {
     call_id: call.id,
@@ -343,7 +340,7 @@ export async function POST(request: Request) {
     });
   }
 
-  await supabase.from("calls").update({ ai_model: minted.model }).eq("id", call.id);
+  if (supabase) await supabase.from("calls").update({ ai_model: minted.model }).eq("id", call.id);
 
   return NextResponse.json({
     ...base,
