@@ -68,7 +68,8 @@ async function tryGaMint(
   model: string,
   instructions: string,
   minimal: boolean,
-  voice: string
+  voice: string,
+  interruptResponse: boolean
 ): Promise<MintResult | MintFailure> {
   try {
     const session: Record<string, unknown> = { type: "realtime", model, instructions };
@@ -80,9 +81,11 @@ async function tryGaMint(
           // other person to finish before replying (no barrelling ahead).
           turn_detection: {
             type: "server_vad",
-            threshold: 0.5,
+            threshold: interruptResponse ? 0.5 : 0.65,
             prefix_padding_ms: 300,
-            silence_duration_ms: 800,
+            silence_duration_ms: interruptResponse ? 800 : 950,
+            create_response: true,
+            interrupt_response: interruptResponse,
           },
         },
         output: { voice },
@@ -172,16 +175,32 @@ async function mintRealtimeSecret(args: {
   model: string;
   instructions: string;
   voice?: string;
+  interruptResponse?: boolean;
 }): Promise<MintResult | { ok: false; errors: string[] }> {
   const errors: string[] = [];
   const voice = args.voice ?? "cedar";
+  const interruptResponse = args.interruptResponse ?? true;
 
-  const ga = await tryGaMint(args.apiKey, args.model, args.instructions, false, voice);
+  const ga = await tryGaMint(
+    args.apiKey,
+    args.model,
+    args.instructions,
+    false,
+    voice,
+    interruptResponse
+  );
   if (ga.ok) return ga;
   errors.push(ga.error);
   console.error("Realtime GA mint failed:", ga.error);
 
-  const gaMinimal = await tryGaMint(args.apiKey, args.model, args.instructions, true, voice);
+  const gaMinimal = await tryGaMint(
+    args.apiKey,
+    args.model,
+    args.instructions,
+    true,
+    voice,
+    interruptResponse
+  );
   if (gaMinimal.ok) return gaMinimal;
   errors.push(gaMinimal.error);
 
@@ -331,7 +350,16 @@ export async function POST(request: Request) {
   // most natural (ChatGPT-like) voices; the AI-customer gets a different one.
   const agentVoice = process.env.REALTIME_VOICE || "cedar";
   const voice = persona === "customer" ? "marin" : agentVoice;
-  const minted = await mintRealtimeSecret({ apiKey, model, instructions, voice });
+  const minted = await mintRealtimeSecret({
+    apiKey,
+    model,
+    instructions,
+    voice,
+    // In the rep-assisted demo, speaker echo on phones can look like a user
+    // interruption and truncate the AI homeowner mid-sentence. Let each short
+    // homeowner response finish; the rep can speak immediately afterward.
+    interruptResponse: persona !== "customer",
+  });
   if (!minted.ok) {
     return NextResponse.json({
       ...base,

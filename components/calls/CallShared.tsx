@@ -14,6 +14,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import type { CompleteCallResult } from "@/lib/calls/completeCall";
+import { sanitizeCustomerName } from "@/lib/calls/nameExtraction";
 import { cn } from "@/lib/utils";
 import type { TranscriptTurn } from "@/types/app";
 
@@ -36,29 +37,6 @@ function extractSpokenPhone(text: string) {
   const words = text.toLowerCase().match(/\b(zero|oh|o|one|two|three|four|five|six|seven|eight|nine)\b/g);
   const digits = words?.map((word) => SPOKEN_DIGITS[word]).join("") ?? "";
   return digits.length >= 10 ? digits.slice(-10).replace(/(\d{3})(\d{3})(\d{4})/, "($1) $2-$3") : null;
-}
-
-function formatNameCandidate(value: string | null | undefined) {
-  if (!value) return null;
-  const cleaned = value
-    .replace(/^(?:sure|yeah|yes|yep|okay|ok|hi|hello|hey)[,.\s]+/i, "")
-    .replace(/^(?:my name(?:\s+is|'?s|s)?|names?|name(?:\s+is|'?s)?|it'?s|this is|i'?m|i am)\s+/i, "")
-    .split(/[,.]/)[0]
-    .replace(/\b(?:speaking|here|calling)\b.*$/i, "")
-    .replace(/\b(?:my|the)?\s*(?:phone|number|cell|email|address)\b.*$/i, "")
-    .trim();
-  const words = cleaned.match(/[a-z]+(?:['-][a-z]+)?/gi) ?? [];
-  const filtered = words.filter(
-    (word) =>
-      !/^(the|a|an|and|my|name|names|phone|number|cell|email|address|storm|damage|roof|leak|water|lakeview|court|street|avenue|drive|road|wisconsin|pewaukee)$/i.test(
-        word
-      )
-  );
-  if (filtered.length < 1 || filtered.length > 3) return null;
-  return filtered
-    .slice(0, 2)
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
-    .join(" ");
 }
 
 export function TranscriptBubble({ turn, live = false }: { turn: TranscriptTurn; live?: boolean }) {
@@ -114,7 +92,7 @@ export function extractLiveFields(
   );
   // Avoid false positives like "this is getting worse".
   if (nameMatch) {
-    const candidate = formatNameCandidate(nameMatch[1]);
+    const candidate = sanitizeCustomerName(nameMatch[1]);
     if (
       candidate &&
       !/\b(getting|going|happening|really|so|just|the|a|an|hoping|calling|checking|looking)\b/i.test(candidate)
@@ -144,7 +122,7 @@ export function extractLiveFields(
           previous?.speaker !== customerSpeaker &&
           /\b(name|who am i speaking|who is this|who'?s calling)\b/i.test(previous?.text ?? "")
         ) {
-          return formatNameCandidate(turn.text);
+          return sanitizeCustomerName(turn.text);
         }
         return null;
       })
@@ -154,7 +132,7 @@ export function extractLiveFields(
   if (!out["Name"]) {
     const standaloneName = customerLines
       .map((line) =>
-        formatNameCandidate(
+        sanitizeCustomerName(
           line.match(
             /^(?:sure,?\s*|yeah,?\s*|yes,?\s*)?([a-z]+(?:\s+[a-z]+){1,2})(?:\s+(?:speaking|here))?[,.!?\s]*$/i
           )?.[1]

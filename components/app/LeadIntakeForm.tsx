@@ -19,6 +19,7 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { useLiveCall } from "@/components/calls/CallProvider";
 import { createLead, type LeadInput } from "@/lib/actions/leads";
+import { sanitizeCustomerName } from "@/lib/calls/nameExtraction";
 import { cn } from "@/lib/utils";
 import {
   demoDatePlusDays,
@@ -81,6 +82,18 @@ const SERVICES: [LeadInput["service_type"], string][] = [
   ["storm_damage", "Storm Damage"],
   ["not_sure", "Not Sure"],
 ];
+
+const LIVE_INTAKE_FIELDS = new Set<keyof Fields>([
+  "first_name",
+  "last_name",
+  "phone",
+  "email",
+  "street_address",
+  "city",
+  "zip_code",
+  "service_type",
+  "description",
+]);
 
 function mapService(s?: string): Fields["service_type"] {
   if (!s) return "";
@@ -574,9 +587,7 @@ export function LeadIntakeForm() {
     const summaryName = [summaryFields?.first_name, summaryFields?.last_name]
       .filter(Boolean)
       .join(" ");
-    const safeSummaryName = /^(name'?s|names|name|new|unknown|caller)\b/i.test(summaryName)
-      ? ""
-      : summaryName;
+    const safeSummaryName = sanitizeCustomerName(summaryName) ?? "";
     const extractedFields: Record<string, string> = {
       ...(safeSummaryName ? { Name: safeSummaryName } : {}),
       ...(summaryFields?.phone ? { Phone: summaryFields.phone } : {}),
@@ -605,8 +616,9 @@ export function LeadIntakeForm() {
           (next as Record<string, string>)[key] = value;
           filled.add(key);
         };
-        if (extractedFields["Name"]) {
-          const [f, ...r] = extractedFields["Name"].split(/\s+/);
+        const credibleName = sanitizeCustomerName(extractedFields["Name"]);
+        if (credibleName) {
+          const [f, ...r] = credibleName.split(/\s+/);
           set("first_name", f);
           if (r.length) set("last_name", r.join(" "));
         }
@@ -676,6 +688,13 @@ export function LeadIntakeForm() {
     const req: (keyof Fields)[] = ["first_name", "phone"];
     return req.filter((k) => !fields[k]);
   }, [fields]);
+  const missingDuringCall = useMemo(
+    () =>
+      callActive
+        ? Array.from(LIVE_INTAKE_FIELDS).filter((key) => !String(fields[key] ?? "").trim())
+        : [],
+    [callActive, fields]
+  );
 
   function save() {
     if (live?.phase === "done" && live.result?.leadId) {
@@ -738,6 +757,10 @@ export function LeadIntakeForm() {
     return cn(
       "transition-colors",
       aiFilled.has(key) && "border-status-success bg-green-50/60",
+      callActive &&
+        missingDuringCall.includes(key) &&
+        !missingRequired.includes(key) &&
+        "border-amber-400 bg-amber-50 ring-1 ring-amber-200",
       callActive && missingRequired.includes(key) && "border-red-400 bg-red-50"
     );
   }
@@ -775,33 +798,33 @@ export function LeadIntakeForm() {
           </div>
         )}
         <div className="grid gap-3 sm:grid-cols-2">
-          <Field label="First name" required filled={aiFilled.has("first_name")}>
+          <Field label="First name" required filled={aiFilled.has("first_name")} missing={missingDuringCall.includes("first_name")}>
             <Input value={fields.first_name} onChange={(e) => update("first_name", e.target.value)} className={fieldCls("first_name")} />
           </Field>
-          <Field label="Last name" filled={aiFilled.has("last_name")}>
+          <Field label="Last name" filled={aiFilled.has("last_name")} missing={missingDuringCall.includes("last_name")}>
             <Input value={fields.last_name} onChange={(e) => update("last_name", e.target.value)} className={fieldCls("last_name")} />
           </Field>
-          <Field label="Phone" required filled={aiFilled.has("phone")}>
+          <Field label="Phone" required filled={aiFilled.has("phone")} missing={missingDuringCall.includes("phone")}>
             <Input value={fields.phone} onChange={(e) => update("phone", e.target.value)} className={fieldCls("phone")} />
           </Field>
-          <Field label="Email" filled={aiFilled.has("email")}>
+          <Field label="Email" filled={aiFilled.has("email")} missing={missingDuringCall.includes("email")}>
             <Input value={fields.email} onChange={(e) => update("email", e.target.value)} className={fieldCls("email")} />
           </Field>
-          <Field label="Street address" filled={aiFilled.has("street_address")}>
+          <Field label="Street address" filled={aiFilled.has("street_address")} missing={missingDuringCall.includes("street_address")}>
             <Input value={fields.street_address} onChange={(e) => update("street_address", e.target.value)} className={fieldCls("street_address")} />
           </Field>
           <div className="grid grid-cols-3 gap-2">
-            <Field label="City" filled={aiFilled.has("city")}>
+            <Field label="City" filled={aiFilled.has("city")} missing={missingDuringCall.includes("city")}>
               <Input value={fields.city} onChange={(e) => update("city", e.target.value)} className={fieldCls("city")} />
             </Field>
             <Field label="State" filled={aiFilled.has("state")}>
               <Input value={fields.state} onChange={(e) => update("state", e.target.value)} className={fieldCls("state")} />
             </Field>
-            <Field label="ZIP" filled={aiFilled.has("zip_code")}>
+            <Field label="ZIP" filled={aiFilled.has("zip_code")} missing={missingDuringCall.includes("zip_code")}>
               <Input value={fields.zip_code} onChange={(e) => update("zip_code", e.target.value)} className={fieldCls("zip_code")} />
             </Field>
           </div>
-          <Field label="Service" filled={aiFilled.has("service_type")}>
+          <Field label="Service" filled={aiFilled.has("service_type")} missing={missingDuringCall.includes("service_type")}>
             <Select value={fields.service_type} onValueChange={(v) => update("service_type", v)}>
               <SelectTrigger className={fieldCls("service_type")}>
                 <SelectValue placeholder="Select…" />
@@ -867,7 +890,7 @@ export function LeadIntakeForm() {
           </div>
         </div>
 
-        <Field label="Notes / what's going on" filled={aiFilled.has("description")}>
+        <Field label="Notes / what's going on" filled={aiFilled.has("description")} missing={missingDuringCall.includes("description")}>
           <Textarea
             rows={3}
             value={fields.description}
@@ -905,11 +928,13 @@ function Field({
   label,
   required,
   filled,
+  missing,
   children,
 }: {
   label: string;
   required?: boolean;
   filled?: boolean;
+  missing?: boolean;
   children: React.ReactNode;
 }) {
   return (
@@ -921,6 +946,9 @@ function Field({
           <span className="ml-1 inline-flex items-center gap-0.5 text-[10px] font-medium text-status-success">
             <Check className="h-3 w-3" /> AI
           </span>
+        )}
+        {missing && !filled && (
+          <span className="ml-1 text-[10px] font-semibold text-amber-700">Ask customer</span>
         )}
       </Label>
       {children}
@@ -986,7 +1014,7 @@ function SchedulingAssistantPopup({
 
   return (
     <div
-      className="fixed bottom-6 right-6 z-50 w-[min(440px,calc(100vw-2rem))] overflow-hidden rounded-2xl border border-border bg-card shadow-2xl"
+      className="fixed bottom-4 right-4 z-50 max-h-[calc(100dvh-2rem)] w-[min(440px,calc(100vw-2rem))] overflow-y-auto rounded-2xl border border-border bg-card shadow-2xl sm:bottom-6 sm:right-6"
       data-tour="rep-assisted-slot-picker"
     >
       <div className="flex items-start justify-between gap-3 border-b bg-brand-dark px-4 py-3 text-white">
@@ -1073,6 +1101,10 @@ function SchedulingAssistantPopup({
                       const selected = Boolean(
                         assist.selected && sameMinute(slot.start, new Date(assist.selected.start))
                       );
+                      const hasPreference = assist.preferences.length > 0;
+                      const fitsPreference = slotFitsPreferences(slot.start, assist.preferences);
+                      const preferenceMatch = hasPreference && fitsPreference && slot.status === "open";
+                      const preferenceConflict = hasPreference && !fitsPreference;
                       return (
                         <div
                           key={slot.start.toISOString()}
@@ -1081,6 +1113,10 @@ function SchedulingAssistantPopup({
                             slot.status === "open"
                               ? "border-emerald-200 bg-emerald-50 text-emerald-900"
                               : "border-muted bg-muted/55 text-muted-foreground line-through",
+                            preferenceMatch &&
+                              "border-brand-gold bg-brand-gold/20 text-brand-dark no-underline",
+                            preferenceConflict &&
+                              "border-muted bg-muted/45 text-muted-foreground opacity-45 no-underline",
                             requested && "border-red-300 bg-red-50 text-red-800 line-through",
                             suggested && "border-brand-gold bg-brand-gold/20 text-brand-dark no-underline",
                             selected && "border-brand-dark bg-brand-dark text-white no-underline"
@@ -1088,6 +1124,9 @@ function SchedulingAssistantPopup({
                         >
                           <span className="block">{formatDemoTime(slot.start)}</span>
                           {requested && <span className="block text-[10px]">asked</span>}
+                          {preferenceMatch && !requested && !suggested && !selected && (
+                            <span className="block text-[10px]">matches</span>
+                          )}
                           {suggested && <span className="block text-[10px]">try this</span>}
                           {selected && <span className="block text-[10px]">selected</span>}
                         </div>

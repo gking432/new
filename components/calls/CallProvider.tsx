@@ -134,13 +134,23 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
       },
       {
         speaker: "customer",
-        text: `We can inspect it ${appointmentLabel}. Does that work?`,
+        text: "What days and times are easiest for you?",
+        at: 17,
+      },
+      {
+        speaker: "ai",
+        text: "I work until 5 on weekdays, so evenings work best for me.",
         at: 20,
+      },
+      {
+        speaker: "customer",
+        text: `We can inspect it ${appointmentLabel}. Does that work?`,
+        at: 24,
       },
       {
         speaker: "ai",
         text: "Yes, that works. Thank you.",
-        at: 24,
+        at: 28,
       },
     ];
     const result: CompleteCallResult = {
@@ -538,7 +548,7 @@ function ActiveCallWindow({
 
   return (
     <div className="fixed left-1/2 top-4 z-50 w-[min(620px,calc(100vw-32px))] -translate-x-1/2">
-      <audio ref={audioRef} autoPlay className="hidden" />
+      <audio ref={audioRef} autoPlay playsInline className="hidden" />
       {options.crmContext && options.crmContext.length > 0 && phase === "incoming" && (
         <div className="mb-2 rounded-2xl border border-brand-gold/50 bg-amber-50 p-3 text-sm shadow-xl">
           <p className="text-xs font-semibold uppercase tracking-wide text-brand-dark">

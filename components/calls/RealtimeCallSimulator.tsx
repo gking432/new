@@ -101,7 +101,7 @@ export function RealtimeCallSimulator({
 
   return (
     <div className="flex flex-col gap-6 lg:flex-row lg:items-start">
-      <audio ref={audioRef} autoPlay className="hidden" />
+      <audio ref={audioRef} autoPlay playsInline className="hidden" />
 
       {showPhone && (
         <div className="shrink-0">
