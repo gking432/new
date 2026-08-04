@@ -106,9 +106,9 @@ export function SettingsForm({ settings }: { settings: CompanySettings }) {
         <CardHeader>
           <CardTitle>AI settings</CardTitle>
           <CardDescription>
-            All AI calls run server-side. Drafts are always editable and labeled before use — the
-            AI never contacts customers directly or makes commitments about insurance, pricing, or
-            outcomes.
+            All AI calls run server-side. Outbound calls and messages follow the approval and
+            automation rules below. Drafts stay editable and labeled, and the AI never makes
+            unsupported commitments about insurance, pricing, or outcomes.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
