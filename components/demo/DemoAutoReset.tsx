@@ -24,11 +24,17 @@ function shouldResetOnPath(pathname: string) {
 export function DemoAutoReset() {
   const pathname = usePathname();
   const router = useRouter();
-  const [resetting, setResetting] = useState(false);
+  const [resetting, setResetting] = useState(true);
 
   useEffect(() => {
-    if (!shouldResetOnPath(pathname)) return;
-    if (sessionStorage.getItem(RESET_KEY) === "1") return;
+    if (!shouldResetOnPath(pathname)) {
+      setResetting(false);
+      return;
+    }
+    if (sessionStorage.getItem(RESET_KEY) === "1") {
+      setResetting(false);
+      return;
+    }
 
     let cancelled = false;
     sessionStorage.setItem(RESET_KEY, "1");
@@ -62,7 +68,7 @@ export function DemoAutoReset() {
   if (!resetting) return null;
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-background/90 backdrop-blur-sm">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-background">
       <div className="rounded-lg border bg-card px-5 py-4 text-center shadow-xl">
         <Loader2 className="mx-auto h-5 w-5 animate-spin text-primary" />
         <p className="mt-2 text-sm font-medium">Preparing a fresh demo…</p>

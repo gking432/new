@@ -18,6 +18,7 @@ import type { Lead, TaskPriority, TaskType } from "@/types/app";
 import { isLocalDemoMode } from "@/lib/demo/mode";
 import { submitLocalWebLead } from "@/lib/demo/localWorkflows";
 import { demoId, mutateDemoState } from "@/lib/demo/serverStore";
+import { runLocalAutomationModule } from "@/lib/demo/localAutomation";
 
 type ActionResult<T = undefined> =
   | { success: true; data?: T }
@@ -499,6 +500,19 @@ export async function runAiAutomationModuleTest(input: {
   moduleId: AiWorkflowModuleId;
   leadId?: string;
 }): Promise<ActionResult<ModuleRunOutput>> {
+  if (isLocalDemoMode()) {
+    try {
+      const output = await runLocalAutomationModule(input.moduleId, input.leadId);
+      revalidatePath("/app", "layout");
+      return { success: true, data: output };
+    } catch (err) {
+      return {
+        success: false,
+        error: err instanceof Error ? err.message : "AI automation test failed",
+      };
+    }
+  }
+
   const supabase = await createClient();
   try {
     const user = await requireUser(supabase);
@@ -610,6 +624,109 @@ export async function sendIntegrationWebhookTest(input: {
     responsePreview?: string;
   }>
 > {
+  if (isLocalDemoMode()) {
+    try {
+      const rawUrl = input.webhookUrl?.trim() ?? "";
+      let parsedUrl: URL | null = null;
+      if (rawUrl) {
+        try {
+          parsedUrl = new URL(rawUrl);
+        } catch {
+          return { success: false, error: "Enter a valid HTTPS webhook URL, or leave it blank for dry-run." };
+        }
+        if (parsedUrl.protocol !== "https:") {
+          return {
+            success: false,
+            error: "Use an HTTPS webhook URL for live tests. Leave the field blank for dry-run.",
+          };
+        }
+      }
+
+      const result = await mutateDemoState(async (state) => {
+        const lead = state.leads.find((item) => item.id === input.leadId);
+        if (!lead) throw new Error("Lead not found");
+        const payload = buildWebhookPreview(
+          lead,
+          analyzeLeadForAutomation(lead)
+        ) as unknown as Record<string, unknown>;
+        let status: "dry_run" | "success" | "failed" = "dry_run";
+        let responseStatus: number | undefined;
+        let responsePreview: string | undefined;
+        let errorMessage: string | null = null;
+
+        if (parsedUrl) {
+          const controller = new AbortController();
+          const timeout = setTimeout(() => controller.abort(), 10_000);
+          try {
+            const response = await fetch(parsedUrl, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(payload),
+              signal: controller.signal,
+            });
+            responseStatus = response.status;
+            responsePreview = (await response.text()).slice(0, 1000);
+            status = response.ok ? "success" : "failed";
+            if (!response.ok) errorMessage = `Webhook responded with ${response.status}`;
+          } catch (err) {
+            status = "failed";
+            errorMessage = err instanceof Error ? err.message : "Webhook request failed";
+          } finally {
+            clearTimeout(timeout);
+          }
+        }
+
+        const createdAt = new Date().toISOString();
+        state.crmSyncEvents.unshift({
+          id: demoId(),
+          connection_id: null,
+          provider: "external_webhook",
+          entity_type: "lead",
+          entity_id: lead.id,
+          external_id: rawUrl || "dry-run",
+          direction: "outbound",
+          action: "webhook_test",
+          status,
+          request_payload: payload,
+          response_payload: {
+            response_status: responseStatus ?? null,
+            response_preview: responsePreview ?? null,
+          },
+          error_message: errorMessage,
+          created_at: createdAt,
+        });
+        state.activities.unshift({
+          id: demoId(),
+          lead_id: lead.id,
+          user_id: null,
+          type: "webhook",
+          title: status === "dry_run" ? "Integration Lab webhook dry-run" : `Integration Lab webhook test ${status}`,
+          description: status === "dry_run"
+            ? "Payload was generated and logged; no external system was contacted."
+            : errorMessage ?? "Payload was sent to the configured webhook URL.",
+          metadata: { provider: "external_webhook", status, webhook_url: rawUrl || null },
+          created_at: createdAt,
+        });
+        return { status, payload, responseStatus, responsePreview, errorMessage };
+      });
+      revalidatePath("/app", "layout");
+      if (result.status === "failed") {
+        return { success: false, error: result.errorMessage ?? "Webhook test failed" };
+      }
+      return {
+        success: true,
+        data: {
+          status: result.status,
+          payload: result.payload,
+          responseStatus: result.responseStatus,
+          responsePreview: result.responsePreview,
+        },
+      };
+    } catch (err) {
+      return { success: false, error: err instanceof Error ? err.message : "Webhook test failed" };
+    }
+  }
+
   const supabase = await createClient();
   try {
     const user = await requireUser(supabase);
@@ -746,6 +863,27 @@ export async function updateCompanySettings(input: {
   default_ai_model?: string;
   default_tone?: string;
 }): Promise<ActionResult> {
+  if (isLocalDemoMode()) {
+    try {
+      await mutateDemoState((state) => {
+        const { id, ...updates } = input;
+        if (state.settings.id !== id) throw new Error("Settings not found");
+        state.settings = {
+          ...state.settings,
+          ...updates,
+          updated_at: new Date().toISOString(),
+        };
+      });
+      revalidatePath("/app/settings");
+      return { success: true };
+    } catch (err) {
+      return {
+        success: false,
+        error: err instanceof Error ? err.message : "Failed to save settings",
+      };
+    }
+  }
+
   const supabase = await createClient();
   try {
     await requireUser(supabase);

@@ -8,6 +8,8 @@ import { scheduleAppointmentReminders } from "@/lib/communications/reminders";
 import { getAvailableSlots } from "@/lib/integrations/calendar/internalCalendar";
 import { createClient } from "@/lib/supabase/server";
 import { customerServiceLabel } from "@/lib/utils/statuses";
+import { isLocalDemoMode } from "@/lib/demo/mode";
+import { getLocalAvailableSlots } from "@/lib/demo/localData";
 
 type ActionResult<T = undefined> =
   | { success: true; data: T }
@@ -118,6 +120,18 @@ export async function getDemoInspectionSlots(
   days = 10,
   limit = 12
 ): Promise<ActionResult<Array<{ start: string; end: string; label: string }>>> {
+  if (isLocalDemoMode()) {
+    const slots = await getLocalAvailableSlots(days, limit);
+    return {
+      success: true,
+      data: slots.map((slot) => ({
+        start: slot.start.toISOString(),
+        end: slot.end.toISOString(),
+        label: slot.label,
+      })),
+    };
+  }
+
   const supabase = await createClient();
   try {
     await requireUser(supabase);

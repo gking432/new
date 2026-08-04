@@ -11,11 +11,19 @@ import { Card, CardContent } from "@/components/ui/card";
  * so the AI call starts there automatically, then tells the user to switch
  * back (and tries to close this tab).
  */
-export function SpeedToLeadHandoff({ leadId, name }: { leadId: string; name: string }) {
+export function SpeedToLeadHandoff({
+  leadId,
+  name,
+  serviceType,
+}: {
+  leadId: string;
+  name: string;
+  serviceType?: string;
+}) {
   const [closed, setClosed] = useState(false);
 
   useEffect(() => {
-    const payload = { type: "speed_to_lead", leadId, ts: Date.now() };
+    const payload = { type: "speed_to_lead", leadId, serviceType, ts: Date.now() };
     try {
       if (typeof BroadcastChannel !== "undefined") {
         const bc = new BroadcastChannel("northstar-demo");
@@ -37,7 +45,7 @@ export function SpeedToLeadHandoff({ leadId, name }: { leadId: string; name: str
       setClosed(true);
     }, 3500);
     return () => clearTimeout(t);
-  }, [leadId]);
+  }, [leadId, serviceType]);
 
   return (
     <Card className="mt-8 border-primary/30">

@@ -11,11 +11,17 @@ import type { Profile } from "@/types/app";
 const PAGE_TITLES: Array<[string, string]> = [
   ["/app/leads/", "Lead Detail"],
   ["/app/leads", "Leads"],
+  ["/app/inbox", "Inbox"],
+  ["/app/calls", "Calls"],
   ["/app/pipeline", "Pipeline"],
   ["/app/tasks", "Tasks"],
+  ["/app/appointments", "Appointments"],
+  ["/app/quote-tool", "Quote Tool"],
   ["/app/feedback", "Customer Feedback"],
   ["/app/automations", "AI Automations"],
   ["/app/reports", "Reports"],
+  ["/app/crm-sync", "CRM Sync"],
+  ["/app/demo-center", "Demo Center"],
   ["/app/settings", "Settings"],
   ["/app", "Overview"],
 ];

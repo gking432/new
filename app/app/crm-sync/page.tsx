@@ -32,7 +32,7 @@ import { getCrmConnection, getCrmSyncEvents } from "@/lib/db/queries-phase2";
 import { createClient } from "@/lib/supabase/server";
 import { formatDateTime, formatRelative } from "@/lib/utils/format";
 import { isLocalDemoMode } from "@/lib/demo/mode";
-import { getLocalLeads } from "@/lib/demo/localData";
+import { getLocalCrmSyncEvents, getLocalLeads } from "@/lib/demo/localData";
 import type { CrmConnection, CrmSyncEvent } from "@/types/app";
 
 export const dynamic = "force-dynamic";
@@ -186,7 +186,7 @@ const PAYLOAD_PREVIEWS = [
       stage: "Appointment scheduled",
       urgency: "High",
       estimatedValue: "$14,000 - $32,000",
-      appointment: "Today at 5:30 PM",
+      appointment: "Calendar-verified opening",
     },
   },
   {
@@ -194,7 +194,7 @@ const PAYLOAD_PREVIEWS = [
     icon: Bot,
     payload: {
       summary: "Homeowner reports worsening roof leak after storm. Inspection moved earlier.",
-      nextAction: "Send updated confirmation SMS.",
+      nextAction: "Keep the estimator brief and CRM timeline in sync.",
       transcriptStored: true,
       confidence: "High",
     },
@@ -203,7 +203,7 @@ const PAYLOAD_PREVIEWS = [
     name: "Task",
     icon: CheckCircle2,
     payload: {
-      title: "Review and send appointment confirmation",
+      title: "Review the next customer-facing action",
       priority: "High",
       dueDate: "Today",
       linkedLead: "Jordan Avery",
@@ -215,7 +215,7 @@ const PAYLOAD_PREVIEWS = [
     payload: {
       channel: "SMS",
       status: "Needs approval or auto-send eligible",
-      body: "Your appointment is confirmed for today at 5:30 PM.",
+      body: "Your appointment is confirmed for the agreed date and time.",
     },
   },
   {
@@ -242,7 +242,7 @@ export default async function CrmSyncPage() {
   let leadsRes: { data: Array<{ id: string; first_name: string; last_name: string; service_type: string; stage: string; urgency: string }> };
   if (isLocalDemoMode()) {
     connection = null;
-    events = [];
+    events = await getLocalCrmSyncEvents();
     leadsRes = {
       data: (await getLocalLeads()).slice(0, 8).map(({ id, first_name, last_name, service_type, stage, urgency }) => ({
         id, first_name, last_name, service_type, stage, urgency,

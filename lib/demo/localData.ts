@@ -25,6 +25,24 @@ export async function getLocalProfiles() {
   return (await readDemoState()).profiles;
 }
 
+export async function getLocalSettings() {
+  return (await readDemoState()).settings;
+}
+
+export async function getLocalCrmSyncEvents() {
+  return (await readDemoState()).crmSyncEvents
+    .slice()
+    .sort((a, b) => b.created_at.localeCompare(a.created_at));
+}
+
+export async function getLocalAutomationRuns() {
+  const state = await readDemoState();
+  return state.automationRuns
+    .slice()
+    .sort((a, b) => b.created_at.localeCompare(a.created_at))
+    .map((run) => ({ ...run, lead: relationLead(state, run.lead_id) }));
+}
+
 export async function getLocalAvailabilityWindows() {
   return (await readDemoState()).availability.filter((window) => window.active);
 }
@@ -158,8 +176,13 @@ export async function getLocalLeadPhase2(leadId: string) {
     calls,
     communications: state.communications.filter((communication) => communication.lead_id === leadId),
     appointments: state.appointments.filter((appointment) => appointment.lead_id === leadId),
-    quote: null,
-    syncEvents: [],
+    quote:
+      state.quotes
+        .filter((quote) => quote.lead_id === leadId)
+        .sort((a, b) => b.created_at.localeCompare(a.created_at))[0] ?? null,
+    syncEvents: state.crmSyncEvents
+      .filter((event) => event.entity_id === leadId)
+      .sort((a, b) => b.created_at.localeCompare(a.created_at)),
   };
 }
 

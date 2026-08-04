@@ -9,6 +9,8 @@ import {
   type HubSpotSyncPayload,
 } from "@/lib/integrations/hubspot/client";
 import { createClient } from "@/lib/supabase/server";
+import { isLocalDemoMode } from "@/lib/demo/mode";
+import { demoId, mutateDemoState } from "@/lib/demo/serverStore";
 import type { Lead, LeadAnalysis } from "@/types/app";
 
 type ActionResult<T = undefined> =
@@ -39,6 +41,58 @@ export interface SyncResult {
  * HubSpot API.
  */
 export async function syncLeadToHubSpot(leadId: string): Promise<ActionResult<SyncResult>> {
+  if (isLocalDemoMode()) {
+    try {
+      const result = await mutateDemoState((state) => {
+        const lead = state.leads.find((item) => item.id === leadId);
+        if (!lead) throw new Error("Lead not found");
+        const analysis = state.analyses
+          .filter((item) => item.lead_id === leadId)
+          .sort((a, b) => b.created_at.localeCompare(a.created_at))[0] ?? null;
+        const payload = buildHubSpotPayload(lead, analysis);
+        const ids = mockHubSpotIds();
+        const createdAt = new Date().toISOString();
+        const entries = [
+          { entityType: "contact", externalId: ids.contactId, action: "create_or_update_contact", request: payload.contact },
+          { entityType: "deal", externalId: ids.dealId, action: "create_deal", request: payload.deal },
+          { entityType: "note", externalId: ids.noteId, action: "create_note", request: payload.note },
+        ];
+        state.crmSyncEvents.unshift(
+          ...entries.map((entry) => ({
+            id: demoId(),
+            connection_id: null,
+            provider: "hubspot",
+            entity_type: entry.entityType,
+            entity_id: leadId,
+            external_id: entry.externalId,
+            direction: "outbound" as const,
+            action: entry.action,
+            status: "dry_run" as const,
+            request_payload: entry.request as unknown as Record<string, unknown>,
+            response_payload: { id: entry.externalId, simulated: true },
+            error_message: null,
+            created_at: createdAt,
+          }))
+        );
+        state.activities.unshift({
+          id: demoId(),
+          lead_id: leadId,
+          user_id: null,
+          type: "crm_sync",
+          title: "HubSpot dry-run sync completed - no external CRM was updated",
+          description: "Contact, deal, and AI note payloads were generated and logged for inspection.",
+          metadata: { mode: "dry_run", contact_id: ids.contactId, deal_id: ids.dealId },
+          created_at: createdAt,
+        });
+        return { mode: "dry_run" as const, payload, ...ids };
+      });
+      revalidatePath("/app", "layout");
+      return { success: true, data: result };
+    } catch (err) {
+      return { success: false, error: err instanceof Error ? err.message : "Sync failed" };
+    }
+  }
+
   const supabase = await createClient();
   try {
     await requireUser(supabase);

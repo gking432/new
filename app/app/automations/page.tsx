@@ -4,14 +4,23 @@ import { getAutomationRules, getAutomationRuns } from "@/lib/db/queries";
 import { getCrmSyncEvents } from "@/lib/db/queries-phase2";
 import { createClient } from "@/lib/supabase/server";
 import { isLocalDemoMode } from "@/lib/demo/mode";
-import { getLocalLeads } from "@/lib/demo/localData";
+import {
+  getLocalAutomationRuns,
+  getLocalCrmSyncEvents,
+  getLocalLeads,
+} from "@/lib/demo/localData";
 import { readDemoState } from "@/lib/demo/serverStore";
 
 export const dynamic = "force-dynamic";
 
 export default async function AutomationsPage() {
   if (isLocalDemoMode()) {
-    const [state, localLeads] = await Promise.all([readDemoState(), getLocalLeads()]);
+    const [state, localLeads, localRuns, localSyncEvents] = await Promise.all([
+      readDemoState(),
+      getLocalLeads(),
+      getLocalAutomationRuns(),
+      getLocalCrmSyncEvents(),
+    ]);
     return (
       <AiAutomationsCenter
         modules={AI_WORKFLOW_MODULES}
@@ -19,12 +28,12 @@ export default async function AutomationsPage() {
           id, first_name, last_name, service_type, stage, urgency, lead_quality,
         }))}
         rules={[]}
-        runs={[]}
+        runs={localRuns}
         scheduledReminderCount={state.communications.filter((communication) => communication.status === "approved" && Boolean(communication.scheduled_send_at)).length}
         dueReminderCount={state.communications.filter((communication) => communication.status === "approved" && Boolean(communication.scheduled_send_at) && new Date(communication.scheduled_send_at!).getTime() <= Date.now()).length}
         pendingApprovalCount={state.communications.filter((communication) => communication.status === "draft").length}
-        dryRunSyncCount={0}
-        syncEvents={[]}
+        dryRunSyncCount={localSyncEvents.filter((event) => event.status === "dry_run").length}
+        syncEvents={localSyncEvents}
       />
     );
   }

@@ -5,7 +5,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { CallLauncher } from "@/components/calls/CallLauncher";
 import { SyncLeadButton } from "@/components/crm-sync/SyncLeadButton";
-import { formatDateTime, formatRelative } from "@/lib/utils/format";
+import { formatRelative } from "@/lib/utils/format";
+import { formatDemoDateTime } from "@/lib/utils/demoTime";
 import type {
   Appointment,
   CallWithRelations,
@@ -109,7 +110,13 @@ export function LeadPhase2Cards({
               <div key={appt.id} className="rounded-md border p-2.5 text-sm">
                 <p className="font-medium capitalize">{appt.title}</p>
                 <p className="mt-0.5 text-xs text-muted-foreground">
-                  {formatDateTime(appt.start_time)} · {appt.status}
+                  {formatDemoDateTime(new Date(appt.start_time), {
+                    month: "short",
+                    day: "numeric",
+                    year: "numeric",
+                    hour: "numeric",
+                    minute: "2-digit",
+                  })} · {appt.status}
                   {appt.source === "ai_call" ? " · booked by AI call" : ""}
                 </p>
               </div>

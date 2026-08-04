@@ -26,6 +26,7 @@ import { finishCall } from "@/lib/actions/calls";
 import { appendDemoEvent } from "@/lib/demo-log";
 import { slotLabel } from "@/lib/integrations/calendar/internalCalendar";
 import { demoDatePlusDays } from "@/lib/utils/demoTime";
+import { customerServiceLabel } from "@/lib/utils/statuses";
 import { useRingtone } from "@/lib/ringtone";
 import type { CallScenario } from "@/types/app";
 import { extractLiveFields } from "./CallShared";
@@ -73,6 +74,21 @@ export interface LiveCallState {
 
 const CallContext = createContext<CallContextValue | null>(null);
 const LiveCallContext = createContext<LiveCallState | null>(null);
+
+function simulatedProjectStatement(serviceType: string) {
+  const label = customerServiceLabel(serviceType).toLowerCase();
+  const details: Record<string, string> = {
+    roofing: "Our roof is getting old and we want an inspection before small problems get worse.",
+    siding: "Our siding is faded and damaged in a few places, and we want to understand replacement options.",
+    windows: "We want to replace our old drafty windows before winter and get an estimate for the project.",
+    doors: "We want to replace an old exterior door that is drafty and difficult to close.",
+    bath: "We are planning a bathroom remodel and want to understand the options, timing, and cost range.",
+    gutters: "Our gutters are aging and overflowing, and we want an estimate for replacement.",
+    leaf_protection: "We want to add leaf protection so the gutters stop clogging every season.",
+    storm_damage: "A recent storm damaged the roof and we are seeing a fresh water stain upstairs.",
+  };
+  return details[serviceType] ?? `We are looking for help with a ${label} project and would like an estimate.`;
+}
 
 export function useCall(): CallContextValue {
   const ctx = useContext(CallContext);
@@ -247,8 +263,14 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
     }
     const session = (await res.json()) as { call_id: string };
     const slotResult = await getDemoInspectionSlots(10, 6);
-    const simulatedSlot = slotResult.success ? slotResult.data[0] : null;
-    const simulatedSlotLabel = simulatedSlot?.label ?? "tomorrow at 12 noon";
+    const tomorrowStart = demoDatePlusDays(1, 0, 0).getTime();
+    const simulatedSlot = slotResult.success
+      ? slotResult.data.find((slot) => new Date(slot.start).getTime() >= tomorrowStart) ?? null
+      : null;
+    const fallbackSlot = demoDatePlusDays(1, 17, 30);
+    const simulatedSlotLabel = simulatedSlot?.label ?? slotLabel(fallbackSlot);
+    const serviceType = activeCall.seedFields?.service_type ?? "not_sure";
+    const projectStatement = simulatedProjectStatement(serviceType);
     const turns: TranscriptTurn[] = [
       {
         speaker: "ai",
@@ -267,7 +289,7 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
       },
       {
         speaker: "customer",
-        text: "We are flipping a house and it needs new windows, new doors, siding, and a new roof. The roof has holes in it, so that is the top priority.",
+        text: projectStatement,
         at: 14,
       },
       {
@@ -319,6 +341,13 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
       durationSeconds: 58,
       mode: "scripted_fallback",
       aiRole: "agent",
+      seedFields: {
+        ...activeCall.seedFields,
+        service_type: serviceType,
+        urgency: serviceType === "storm_damage" ? "emergency" : "medium",
+        appointment_time: simulatedSlot?.start ?? fallbackSlot.toISOString(),
+        summary_hint: `asked about a ${customerServiceLabel(serviceType).toLowerCase()} project`,
+      },
     });
     if (!completed.success) {
       toast.error(completed.error);
@@ -345,7 +374,7 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
   // the dashboard automatically — no manual step back.
   useEffect(() => {
     const handled = new Set<number>();
-    const startSpeedToLead = (leadId: string, ts: number) => {
+    const startSpeedToLead = (leadId: string, ts: number, serviceType?: string) => {
       if (handled.has(ts)) return;
       handled.add(ts);
       try {
@@ -359,16 +388,17 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
         callerName: "Northstar Exterior & Home",
         subtitle: "AI Scheduling Assistant",
         direction: "inbound",
+        seedFields: serviceType ? { service_type: serviceType } : undefined,
         navigateTo: `/app/leads/${leadId}`,
       });
     };
     try {
       const pending = localStorage.getItem("northstar-demo-speed-to-lead");
       if (pending) {
-        const data = JSON.parse(pending) as { leadId?: string; ts?: number };
+        const data = JSON.parse(pending) as { leadId?: string; ts?: number; serviceType?: string };
         const timestamp = data.ts ?? Date.now();
         if (data.leadId && Date.now() - timestamp < 2 * 60 * 1000) {
-          startSpeedToLead(data.leadId, timestamp);
+          startSpeedToLead(data.leadId, timestamp, data.serviceType);
         } else {
           localStorage.removeItem("northstar-demo-speed-to-lead");
         }
@@ -381,7 +411,7 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
       bc = new BroadcastChannel("northstar-demo");
       bc.onmessage = (e) => {
         if (e.data?.type === "speed_to_lead" && e.data.leadId) {
-          startSpeedToLead(e.data.leadId, e.data.ts ?? Date.now());
+          startSpeedToLead(e.data.leadId, e.data.ts ?? Date.now(), e.data.serviceType);
         }
       };
     }
@@ -389,7 +419,7 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
       if (e.key === "northstar-demo-speed-to-lead" && e.newValue) {
         try {
           const d = JSON.parse(e.newValue);
-          if (d.leadId) startSpeedToLead(d.leadId, d.ts ?? Date.now());
+          if (d.leadId) startSpeedToLead(d.leadId, d.ts ?? Date.now(), d.serviceType);
         } catch {
           // ignore malformed
         }

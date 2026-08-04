@@ -62,7 +62,11 @@ export default async function RequestSuccessPage({
         )}
 
         {dashboardHandoff ? (
-          <SpeedToLeadHandoff leadId={params.lead!} name={name ?? ""} />
+          <SpeedToLeadHandoff
+            leadId={params.lead!}
+            name={name ?? ""}
+            serviceType={params.service}
+          />
         ) : params.lead ? (
           <SpeedToLeadDemo leadId={params.lead} name={name ?? ""} />
         ) : null}

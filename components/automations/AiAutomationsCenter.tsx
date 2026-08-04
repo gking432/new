@@ -44,6 +44,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { AutomationLibrary } from "@/components/app/AutomationLibrary";
 import { AutomationRuleCard } from "@/components/app/AutomationRuleCard";
 import { ReminderAutomationCard } from "@/components/app/ReminderAutomationCard";
 import { runAiAutomationModuleTest, sendIntegrationWebhookTest } from "@/lib/actions";
@@ -135,7 +136,7 @@ function payloadExample() {
 }
 
 function curlExample() {
-  return `curl -X POST http://localhost:3000/api/demo/webhook/lead-created \\
+  return `curl -X POST https://your-domain.example/api/demo/webhook/lead-created \\
   -H "Content-Type: application/json" \\
   -d '${payloadExample().replace(/\n/g, " ")}'`;
 }
@@ -299,13 +300,18 @@ export function AiAutomationsCenter({
         })}
       </div>
 
-      <Tabs defaultValue="integrations" className="space-y-4">
+      <Tabs defaultValue="library" className="space-y-4">
         <TabsList className="flex h-auto flex-wrap justify-start">
+          <TabsTrigger value="library">Workflow library</TabsTrigger>
           <TabsTrigger value="integrations">Integration Lab</TabsTrigger>
           <TabsTrigger value="modules">Workflow modules</TabsTrigger>
           <TabsTrigger value="logs">Run log</TabsTrigger>
           <TabsTrigger value="rules">Internal rules</TabsTrigger>
         </TabsList>
+
+        <TabsContent value="library">
+          <AutomationLibrary />
+        </TabsContent>
 
         <TabsContent value="integrations">
           <IntegrationGuide
@@ -438,7 +444,8 @@ export function AiAutomationsCenter({
             {rules.length === 0 ? (
               <Card>
                 <CardContent className="py-12 text-center text-sm text-muted-foreground">
-                  No automation rules found. Run the seed migration to install the default rules.
+                  No additional stateful rules have been activated in this demo session. Browse the
+                  Workflow library to review the available business automations.
                 </CardContent>
               </Card>
             ) : (

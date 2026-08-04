@@ -11,9 +11,12 @@ import type {
   CallSummary,
   CallTranscript,
   Communication,
+  CompanySettings,
   Contact,
+  CrmSyncEvent,
   Lead,
   LeadAnalysis,
+  AutomationRun,
   Profile,
   PropertyResearch,
   QuoteEstimate,
@@ -42,6 +45,9 @@ export interface DemoState {
   callTranscripts: CallTranscript[];
   properties: PropertyResearch[];
   quotes: QuoteEstimate[];
+  crmSyncEvents: CrmSyncEvent[];
+  automationRuns: AutomationRun[];
+  settings: CompanySettings;
 }
 
 const DEMO_PROFILE_IDS = {
@@ -110,6 +116,27 @@ export function createBlankDemoState(): DemoState {
     callTranscripts: [],
     properties: [],
     quotes: [],
+    crmSyncEvents: [],
+    automationRuns: [],
+    settings: {
+      id: "00000000-0000-4000-8000-000000000010",
+      company_name: "Northstar Exterior & Home",
+      phone: "(262) 555-0100",
+      email: "hello@northstarexterior.example",
+      service_area: "Southeastern Wisconsin",
+      timezone: "America/Chicago",
+      business_hours: {
+        monday_friday: "8:00 AM-6:00 PM",
+        saturday: "9:00 AM-3:00 PM",
+        sunday: "Closed",
+      },
+      ai_enabled: true,
+      automations_enabled: true,
+      default_ai_model: "gpt-4.1-mini",
+      default_tone: "friendly",
+      created_at: createdAt,
+      updated_at: createdAt,
+    },
   };
 }
 
@@ -120,7 +147,15 @@ function encodeState(state: DemoState) {
 function decodeState(value: string): DemoState | null {
   try {
     const parsed = JSON.parse(inflateRawSync(Buffer.from(value, "base64url")).toString("utf8"));
-    return parsed?.version === 1 ? (parsed as DemoState) : null;
+    if (parsed?.version !== 1) return null;
+    const defaults = createBlankDemoState();
+    return {
+      ...defaults,
+      ...parsed,
+      crmSyncEvents: parsed.crmSyncEvents ?? [],
+      automationRuns: parsed.automationRuns ?? [],
+      settings: parsed.settings ?? defaults.settings,
+    } as DemoState;
   } catch {
     return null;
   }
