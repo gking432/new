@@ -2,6 +2,7 @@ import "server-only";
 
 import { revalidatePath } from "next/cache";
 import { formatDemoDate, formatDemoTime, sameDemoDay, demoDatePlusDays } from "@/lib/utils/demoTime";
+import { customerServiceLabel } from "@/lib/utils/statuses";
 import { getLocalAvailableSlots } from "@/lib/demo/localData";
 import { submitLocalWebLead } from "@/lib/demo/localWorkflows";
 import { demoAdminId, demoEstimatorId, demoId, mutateDemoState, readDemoState } from "@/lib/demo/serverStore";
@@ -303,6 +304,57 @@ function applyLocalRescheduleAcceptance(state: Awaited<ReturnType<typeof readDem
     appointment.assigned_to = typeof record.metadata.estimator_id === "string" ? record.metadata.estimator_id : demoEstimatorId(state);
     appointment.status = "rescheduled";
     appointment.updated_at = nowIso(1200);
+  }
+  const lead = state.leads.find((candidate) => candidate.id === record.lead_id);
+  if (lead) {
+    lead.updated_at = nowIso(1200);
+    const analysis = state.analyses
+      .filter((candidate) => candidate.lead_id === record.lead_id)
+      .sort((a, b) => b.created_at.localeCompare(a.created_at))[0];
+    if (analysis) {
+      analysis.summary = `${lead.first_name}'s inspection was moved to ${label} after the customer reported that the issue was getting worse.`;
+      analysis.recommended_next_action = `Inspection is rescheduled for ${label}. Jess Romero has been notified and the estimator calendar is blocked.`;
+      analysis.recommended_contact_window = "Appointment confirmed";
+    }
+    const callSummary = state.callSummaries
+      .filter((candidate) => candidate.lead_id === record.lead_id)
+      .sort((a, b) => b.created_at.localeCompare(a.created_at))[0];
+    if (callSummary) {
+      callSummary.next_action = `Inspection is rescheduled for ${label}. Jess Romero has been notified and the estimator calendar is blocked.`;
+    }
+  }
+  if (appointment && lead) {
+    state.communications = state.communications.filter(
+      (communication) =>
+        communication.metadata.appointment_id !== appointment.id ||
+        communication.metadata.automation !== "appointment_reminder"
+    );
+    const start = new Date(startIso);
+    const service = customerServiceLabel(lead.service_type).toLowerCase();
+    const reminders = [
+      {
+        kind: "24h",
+        offset: 24 * 60 * 60_000,
+        body: `Hi ${lead.first_name}, remember your ${service} inspection with Northstar Exterior & Home is scheduled for ${label}. Reply here if anything changes.`,
+      },
+      {
+        kind: "1h",
+        offset: 60 * 60_000,
+        body: `Hi ${lead.first_name}, quick reminder: your ${service} inspection with Northstar Exterior & Home starts in about an hour, at ${label}.`,
+      },
+    ];
+    reminders.forEach((reminder) => {
+      const sendAt = start.getTime() - reminder.offset;
+      if (sendAt <= Date.now()) return;
+      state.communications.push({
+        id: demoId(), lead_id: lead.id, contact_id: null, call_id: record.call_id, channel: "sms", direction: "outbound", status: "approved",
+        from_value: "Northstar Exterior & Home", to_value: lead.phone, subject: "Appointment reminder", body: reminder.body,
+        ai_summary: "Automatic appointment reminder.", suggested_next_action: "Auto-send at the scheduled time unless the appointment changes.",
+        ai_generated: true, human_approved: true, scheduled_send_at: new Date(sendAt).toISOString(),
+        automation_key: `appointment:${appointment.id}:${reminder.kind}`,
+        metadata: { automation: "appointment_reminder", appointment_id: appointment.id }, created_at: nowIso(1500), updated_at: nowIso(1500),
+      });
+    });
   }
   state.activities.push(activity(record.lead_id, "appointment", `Inspection moved after urgent text: ${label}`, "The AI updated the estimator calendar and customer timeline.", 1300));
   state.tasks.forEach((task) => {

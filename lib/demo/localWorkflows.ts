@@ -161,7 +161,9 @@ function addAppointmentWorkflow(
       "appointment",
       source === "ai_call"
         ? `Inspection booked by AI scheduling assistant: ${label}`
-        : `Inspection booked from rep-assisted call: ${label}`,
+        : source === "manual"
+          ? `Inspection booked manually: ${label}`
+          : `Inspection booked from rep-assisted call: ${label}`,
       "The agreed time was checked against real estimator availability before it was saved.",
       200
     )
@@ -236,6 +238,43 @@ function addAppointmentWorkflow(
     });
   }
   return appointment;
+}
+
+export async function createLocalAppointment(input: {
+  lead_id: string;
+  start_time: string;
+  end_time: string;
+  title?: string;
+  location?: string;
+}) {
+  let appointmentId = "";
+  await mutateDemoState((state) => {
+    const lead = state.leads.find((candidate) => candidate.id === input.lead_id);
+    if (!lead) throw new Error("Lead not found");
+    const appointment = addAppointmentWorkflow(state, lead, input.start_time, "manual");
+    appointment.end_time = new Date(input.end_time).toISOString();
+    if (input.title?.trim()) appointment.title = input.title.trim();
+    if (input.location?.trim()) appointment.location = input.location.trim();
+    appointmentId = appointment.id;
+    const analysis = analysisFor(lead, appointment);
+    state.analyses = state.analyses.filter((candidate) => candidate.lead_id !== lead.id);
+    state.analyses.push(analysis);
+  });
+  revalidatePath("/app", "layout");
+  return appointmentId;
+}
+
+export async function updateLocalAppointmentStatus(
+  id: string,
+  status: "confirmed" | "cancelled" | "completed" | "rescheduled"
+) {
+  await mutateDemoState((state) => {
+    const appointment = state.appointments.find((candidate) => candidate.id === id);
+    if (!appointment) throw new Error("Appointment not found");
+    appointment.status = status;
+    appointment.updated_at = nowIso();
+  });
+  revalidatePath("/app", "layout");
 }
 
 function baseLead(input: LocalLeadInput): Lead {

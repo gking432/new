@@ -1,4 +1,5 @@
 import type { Lead, TranscriptTurn } from "@/types/app";
+import { formatDemoDateTime } from "@/lib/utils/demoTime";
 import { customerServiceLabel } from "@/lib/utils/statuses";
 import { callStructuredAI, isAIConfigured } from "./client";
 import {
@@ -102,11 +103,23 @@ export function heuristicCallSummary(args: SummarizeCallArgs): CallSummaryOutput
     seed.summary_hint ??
     (mentionsStorm
       ? "reported recent storm damage"
-      : `asked about a ${customerServiceLabel(serviceType).toLowerCase()} project`);
+      : serviceType === "not_sure"
+        ? "asked about a home project"
+        : `asked about ${customerServiceLabel(serviceType).toLowerCase()}`);
+
+  const appointmentLabel = appointmentTime
+    ? formatDemoDateTime(new Date(appointmentTime), {
+        weekday: "short",
+        month: "short",
+        day: "numeric",
+        hour: "numeric",
+        minute: "2-digit",
+      })
+    : null;
 
   const summary = `${callerName} ${issue}${mentionsLeak ? " with active water intrusion" : ""}.${
-    appointmentTime
-      ? ` An inspection was tentatively set for ${appointmentTime}.`
+    appointmentLabel
+      ? ` An inspection was confirmed for ${appointmentLabel}.`
       : wantsAppointment
         ? " They are open to scheduling an inspection."
         : ""
@@ -172,8 +185,8 @@ export function heuristicCallSummary(args: SummarizeCallArgs): CallSummaryOutput
       },
     ],
     confirmation_message_draft: `Hi${firstName ? ` ${firstName}` : ""}, this is Northstar Exterior & Home.${
-      appointmentTime
-        ? ` Your appointment is confirmed for ${appointmentTime}. If you need to reschedule, reply to this message.`
+      appointmentLabel
+        ? ` Your appointment is confirmed for ${appointmentLabel}. If you need to reschedule, reply to this message.`
         : " We have your request on file. Reply here if anything changes."
     }`,
   };

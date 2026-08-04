@@ -346,7 +346,10 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
         service_type: serviceType,
         urgency: serviceType === "storm_damage" ? "emergency" : "medium",
         appointment_time: simulatedSlot?.start ?? fallbackSlot.toISOString(),
-        summary_hint: `asked about a ${customerServiceLabel(serviceType).toLowerCase()} project`,
+        summary_hint:
+          serviceType === "not_sure"
+            ? "asked about a home project"
+            : `asked about ${customerServiceLabel(serviceType).toLowerCase()}`,
       },
     });
     if (!completed.success) {

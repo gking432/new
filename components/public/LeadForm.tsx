@@ -197,7 +197,12 @@ export function LeadForm({
 }: {
   dashboardDemo?: boolean;
   showDemoFill?: boolean;
-  onDashboardSubmit?: (lead: { leadId: string; name: string; phone: string }) => void;
+  onDashboardSubmit?: (lead: {
+    leadId: string;
+    name: string;
+    phone: string;
+    serviceType: LeadFormValues["service_type"];
+  }) => void;
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -253,6 +258,7 @@ export function LeadForm({
           leadId,
           name: `${values.first_name} ${values.last_name}`.trim(),
           phone: values.phone,
+          serviceType: values.service_type,
         });
         setSubmitting(false);
         return;

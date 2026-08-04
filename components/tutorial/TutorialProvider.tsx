@@ -711,7 +711,7 @@ export function TutorialProvider() {
     window.addEventListener(ev, handler);
     return () => window.removeEventListener(ev, handler);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [active, index]);
+  }, [active, index, pathname]);
 
   async function runAction() {
     if (!step.action) return;
@@ -788,6 +788,7 @@ export function TutorialProvider() {
           callerPhone: lead.phone,
           subtitle: "AI Scheduling Assistant",
           direction: "inbound",
+          seedFields: { service_type: lead.serviceType },
           navigateTo: `/app/leads/${lead.leadId}`,
         });
       }}
@@ -997,7 +998,12 @@ function RequestFormOverlay({
   onSubmit,
 }: {
   onClose: () => void;
-  onSubmit: (lead: { leadId: string; name: string; phone: string }) => void;
+  onSubmit: (lead: {
+    leadId: string;
+    name: string;
+    phone: string;
+    serviceType: string;
+  }) => void;
 }) {
   return (
     <div className="fixed inset-y-0 left-0 right-0 z-30 overflow-y-auto bg-zinc-950/70 p-4 backdrop-blur-sm lg:right-[340px]">

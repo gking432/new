@@ -10,6 +10,7 @@ import { createClient } from "@/lib/supabase/server";
 import { customerServiceLabel } from "@/lib/utils/statuses";
 import { isLocalDemoMode } from "@/lib/demo/mode";
 import { getLocalAvailableSlots } from "@/lib/demo/localData";
+import { createLocalAppointment, updateLocalAppointmentStatus } from "@/lib/demo/localWorkflows";
 
 type ActionResult<T = undefined> =
   | { success: true; data: T }
@@ -36,6 +37,15 @@ export async function createAppointment(input: {
   title?: string;
   location?: string;
 }): Promise<ActionResult<{ id: string }>> {
+  if (isLocalDemoMode()) {
+    try {
+      const id = await createLocalAppointment(input);
+      return { success: true, data: { id } };
+    } catch (err) {
+      return { success: false, error: err instanceof Error ? err.message : "Booking failed" };
+    }
+  }
+
   const supabase = await createClient();
   try {
     const user = await requireUser(supabase);
@@ -153,6 +163,15 @@ export async function updateAppointmentStatus(
   id: string,
   status: "confirmed" | "cancelled" | "completed" | "rescheduled"
 ): Promise<ActionResult<undefined>> {
+  if (isLocalDemoMode()) {
+    try {
+      await updateLocalAppointmentStatus(id, status);
+      return { success: true, data: undefined };
+    } catch (err) {
+      return { success: false, error: err instanceof Error ? err.message : "Update failed" };
+    }
+  }
+
   const supabase = await createClient();
   try {
     await requireUser(supabase);
