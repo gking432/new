@@ -103,30 +103,14 @@ export function TutorialProvider() {
   const [confirmSimulationOpen, setConfirmSimulationOpen] = useState(false);
   const [showManualNext, setShowManualNext] = useState(true);
   const [pulseNext, setPulseNext] = useState(false);
-  const [reportEmailConfigured, setReportEmailConfigured] = useState(false);
   const welcomeHandledRef = useRef<string | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    fetch("/api/demo/report-email", { cache: "no-store" })
-      .then((response) => response.json())
-      .then((data: { configured?: boolean }) => {
-        if (!cancelled) setReportEmailConfigured(Boolean(data.configured));
-      })
-      .catch(() => {
-        if (!cancelled) setReportEmailConfigured(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   // ── Step definitions ──────────────────────────────────────────────────────
   const fullSteps: Step[] = [
     {
       id: "welcome",
       title: "Welcome. This is an AI-assisted CRM demo.",
-      body: "This tour walks through the parts of the system that matter most: AI-assisted calls, live note taking, lead follow-up, message drafting, scheduling, tasks, reports, and automations.\n\nThe demo happens inside this CRM so you can see the work clearly. The same AI tools could also sit on top of an existing CRM, phone system, calendar, inbox, or workflow.\n\nReal demo records are created as you go. Customer-facing calls, texts, and emails are simulated, so nothing is sent to real customers. The optional report demo can send one clearly labeled proof email to you.",
+      body: "This tour walks through the parts of the system that matter most: AI-assisted calls, live note taking, lead follow-up, message drafting, scheduling, tasks, reports, and automations.\n\nThe demo happens inside this CRM so you can see the work clearly. The same AI tools could also sit on top of an existing CRM, phone system, calendar, inbox, or workflow.\n\nReal demo records are created as you go. Customer-facing calls, texts, and emails are simulated, so nothing is sent to real customers.",
       advance: { kind: "manual" },
     },
     {
@@ -495,14 +479,6 @@ export function TutorialProvider() {
       advance: { kind: "manual" },
     },
     {
-      id: "report-email-demo",
-      title: "Build an automated management report.",
-      body: "The AI insights do not have to stay inside this dashboard.\n\nChoose any weekday, time, time zone, and combination of business topics. The system builds the exact management brief that could be delivered automatically.\n\nUse Preview email to inspect it. Live delivery sends one clearly labeled proof email only. It does not subscribe you or create a recurring schedule.",
-      spotlight: "scheduled-report-demo",
-      spotlightHint: "Configure and preview the report",
-      advance: { kind: "manual" },
-    },
-    {
       id: "settings",
       title: "Open Settings.",
       body: "Finally, open Settings.",
@@ -605,25 +581,12 @@ export function TutorialProvider() {
     fullStep("reports"),
     {
       ...fullStep("reports-view"),
-      body: "Reports turn workflow activity into management decisions. Leaders can track response time, booking rate, source quality, pipeline movement, follow-up health, and operational bottlenecks.\n\nThe scheduled email report shows how this intelligence can leave the CRM. Choose any day, time, and combination of business topics, then preview the exact brief a manager could receive automatically. Live delivery sends one proof email only; it never creates a subscription.\n\nThe AI layer summarizes changes, explains risks, and points managers toward the actions that matter most.",
-    },
-    {
-      ...fullStep("report-email-demo"),
-      title: reportEmailConfigured
-        ? "Send yourself the AI management brief."
-        : "Preview the AI management brief.",
-      body: reportEmailConfigured
-        ? "Choose any weekday, time, time zone, and combination of business topics. Then enter your email and click Send one-time demo.\n\nThe email restates the schedule you chose, includes the selected operating data and AI-recommended actions, and makes clear that this is a one-time proof. No recurring schedule or subscription is created."
-        : "Choose any weekday, time, time zone, and combination of business topics, then click Preview email.\n\nThe preview shows the exact outside-the-CRM report a manager could receive. Live delivery is not connected in this environment yet, so click Next after reviewing it.",
-      spotlightHint: reportEmailConfigured ? "Configure and send one proof email" : "Configure and preview the report",
-      advance: reportEmailConfigured
-        ? { kind: "event", event: "northstar-demo-report-sent" }
-        : { kind: "manual" },
+      body: "Reports turn workflow activity into management decisions. Leaders can track response time, booking rate, source quality, pipeline movement, follow-up health, and operational bottlenecks.\n\nThe AI layer summarizes changes, explains risks, and points managers toward the actions that matter most.",
     },
     {
       id: "executive-done",
       title: "That is the five-minute executive tour.",
-      body: "You saw AI voice, live qualification, scheduling, human approval controls, email understanding, calendar booking, workflow automation, management reporting, and an outside-the-CRM report.\n\nThe CRM is the demo surface. The product being demonstrated is the AI workflow layer: it listens, reasons over business rules, completes work, records what happened, and delivers useful information where the team needs it.",
+      body: "You saw AI voice, live qualification, scheduling, human approval controls, email understanding, calendar booking, workflow automation, and management reporting.\n\nThe CRM is the demo surface. The product being demonstrated is the AI workflow layer: it listens, reasons over business rules, completes work, records what happened, and delivers useful information where the team needs it.",
       advance: { kind: "manual" },
     },
   ];
@@ -689,7 +652,6 @@ export function TutorialProvider() {
     "jess-booked-after-reschedule",
     "executive-open-email",
     "executive-appointment-view",
-    "report-email-demo",
   ]);
   const showSpotlightOverlay = Boolean(
     step?.spotlight && (requiredOverlayStepIds.has(step.id) || tabClickStepIds.has(step.id))
@@ -1139,8 +1101,8 @@ function WelcomeTourModal({
           </div>
           <p className="mt-3 text-sm leading-6 text-muted-foreground">
             See how AI voice, scheduling, messaging, automation, and management reporting work
-            together. Customer-facing calls and sends are simulated; the report demo can send one
-            clearly labeled proof email to you.
+            together. Customer-facing calls and sends are simulated, so nothing reaches a real
+            customer.
           </p>
           <div className="mt-5 grid gap-3 sm:grid-cols-2">
             <button
@@ -1157,8 +1119,8 @@ function WelcomeTourModal({
                 About 5 minutes
               </span>
               <span className="mt-2 block text-sm leading-5 text-muted-foreground">
-                The strongest AI workflows: phone scheduling, email booking, automation, reports,
-                and a one-time management brief delivered outside the CRM.
+                The strongest AI workflows: phone scheduling, email booking, automation, and
+                management reporting.
               </span>
               <span className="mt-4 flex items-center gap-1 text-sm font-semibold text-primary">
                 Start executive tour <ChevronRight className="h-4 w-4" />

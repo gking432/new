@@ -36,7 +36,6 @@ import { SERVICE_LABELS, SOURCE_LABELS, STAGE_STYLES } from "@/lib/utils/statuse
 import type { Lead, LeadStage, TaskWithLead } from "@/types/app";
 import { isLocalDemoMode } from "@/lib/demo/mode";
 import { getLocalReportData } from "@/lib/demo/localData";
-import { ScheduledReportDemo } from "@/components/reports/ScheduledReportDemo";
 
 export const dynamic = "force-dynamic";
 
@@ -500,8 +499,6 @@ export default async function ReportsPage() {
           {sampleMode ? "Sample operating data" : "Current demo records"}
         </Badge>
       </div>
-
-      <ScheduledReportDemo />
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
         <MetricCard label="Total Leads" value={totalLeads} icon={Inbox} />

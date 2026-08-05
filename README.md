@@ -141,20 +141,7 @@ HUBSPOT_PRIVATE_APP_TOKEN=pat-...
 ENABLE_HUBSPOT_LIVE_SYNC=true
 ```
 
-### 6. One-time report email demo (optional)
-
-The Reports page can send a visitor one real proof email that reflects their
-chosen report sections, weekday, time, and time zone. It never creates a
-recurring schedule and does not store the recipient address.
-
-1. Create a Resend account and verify a sender domain.
-2. Set `RESEND_API_KEY` and `REPORT_EMAIL_FROM` in `.env.local` and Vercel.
-3. Optionally set `REPORT_EMAIL_REPLY_TO`.
-
-Without these variables, the complete email remains available through Preview
-and the live-send button stays disabled instead of failing in front of a visitor.
-
-### 7. Run
+### 6. Run
 
 ```bash
 npm run dev
@@ -212,16 +199,14 @@ npm run dev
 See `.env.example` for the full list with comments: Supabase keys, OpenAI
 (`AI_MODEL`, `REALTIME_MODEL`, `REALTIME_MAX_CALL_SECONDS`,
 `ENABLE_REALTIME_CALLS`), HubSpot (`HUBSPOT_PRIVATE_APP_TOKEN`,
-`ENABLE_HUBSPOT_LIVE_SYNC`), report email delivery (`RESEND_API_KEY`,
-`REPORT_EMAIL_FROM`), webhook placeholders, and demo flags including
+`ENABLE_HUBSPOT_LIVE_SYNC`), webhook placeholders, and demo flags including
 `DEMO_AUTO_RESET_ON_LOAD`.
 
 ## Deployment
 
 1. Push to GitHub and import the repo in [Vercel](https://vercel.com).
 2. Add the environment variables from `.env.local`.
-3. Deploy. Supabase hosts the database/auth. Resend is only required for the
-   optional one-time report email demo.
+3. Deploy. Supabase hosts the database/auth; no other services are required.
 
 ## What I'd build next in production
 
