@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { runDueScheduledReminders } from "@/lib/communications/reminders";
+import { getAvailableSlots } from "@/lib/integrations/calendar/internalCalendar";
 import { createClient } from "@/lib/supabase/server";
 import {
   demoDatePlusDays,
@@ -472,10 +473,12 @@ export async function simulateInboundText(): Promise<ActionResult<InboundResult>
  * Demo Center: simulates a new-prospect email, creates the lead, and flags the
  * conversation for a normal reply in the Inbox.
  */
-export async function simulateInboundEmail(): Promise<ActionResult<InboundResult>> {
+export async function simulateInboundEmail(options?: {
+  executiveScheduling?: boolean;
+}): Promise<ActionResult<InboundResult>> {
   if (isLocalDemoMode()) {
     try {
-      return { success: true, data: await simulateLocalInboundEmail() };
+      return { success: true, data: await simulateLocalInboundEmail(options) };
     } catch (err) {
       return { success: false, error: err instanceof Error ? err.message : "Simulation failed" };
     }
@@ -484,11 +487,26 @@ export async function simulateInboundEmail(): Promise<ActionResult<InboundResult
   try {
     await requireUser(supabase);
     const events: string[] = [];
+    const allSlots = options?.executiveScheduling
+      ? await getAvailableSlots(supabase, 21, 160)
+      : [];
+    const nextMondayOffset = ((8 - demoDayOfWeek(new Date())) % 7) || 7;
+    const nextWeekStart = demoDatePlusDays(nextMondayOffset, 0, 0).getTime();
+    const schedulingSlots = allSlots
+      .filter(
+        (slot) =>
+          slot.start.getTime() >= nextWeekStart && demoWallClockParts(slot.start).hour >= 15
+      )
+      .slice(0, 3);
+    if (options?.executiveScheduling && schedulingSlots.length < 3) {
+      return { success: false, error: "Could not find three afternoon openings" };
+    }
 
     const fromEmail = "greg.tomlinson@example.com";
     const subject = "Window estimate";
-    const body =
-      "Hi, we are looking to replace 12 windows before winter. The house was built in 1988 and most of the windows are original. We'd like to understand the process and rough timing.";
+    const body = options?.executiveScheduling
+      ? "Hi, we are looking to replace 12 windows before winter. Most are original to our 1988 home. Weekdays after 3 PM work best for us. Do you have any openings next week for a measurement visit?"
+      : "Hi, we are looking to replace 12 windows before winter. The house was built in 1988 and most of the windows are original. We'd like to understand the process and rough timing.";
 
     let lead: Lead | null = null;
     const { data: existing } = await supabase
@@ -541,14 +559,40 @@ export async function simulateInboundEmail(): Promise<ActionResult<InboundResult
         to_value: "hello@northstar-demo.com",
         subject,
         body,
-        ai_summary:
-          "New prospect wants 12 original (1988) windows replaced before winter and is asking about process and timing. Classified as Windows / warm / medium urgency.",
-        suggested_next_action:
-          "Reply with the process overview and offer an in-home measurement appointment.",
+        ai_summary: options?.executiveScheduling
+          ? "New prospect wants 12 original windows replaced before winter. Scheduling constraints extracted: next week, weekdays, after 3 PM."
+          : "New prospect wants 12 original (1988) windows replaced before winter and is asking about process and timing. Classified as Windows / warm / medium urgency.",
+        suggested_next_action: options?.executiveScheduling
+          ? "Offer the calendar-verified afternoon openings and book the selected measurement visit."
+          : "Reply with the process overview and offer an in-home measurement appointment.",
         metadata: {
           needs_attention: true,
-          demo_action: "inbound_window_email",
-          suggested_reply: `Hi Greg,
+          demo_action: options?.executiveScheduling
+            ? "executive_inbound_window_email"
+            : "inbound_window_email",
+          executive_scheduling_demo: Boolean(options?.executiveScheduling),
+          scheduling_constraints: options?.executiveScheduling
+            ? ["Next week", "Weekdays", "After 3:00 PM"]
+            : undefined,
+          suggested_slots: options?.executiveScheduling
+            ? schedulingSlots.map((slot) => ({
+                start: slot.start.toISOString(),
+                end: slot.end.toISOString(),
+                label: slot.label,
+              }))
+            : undefined,
+          suggested_reply: options?.executiveScheduling
+            ? `Hi Greg,
+
+Thanks for reaching out. We can start with a free in-home measurement visit for the 12 windows. I checked our estimator calendar for next week after 3 PM, and these times are open:
+
+${schedulingSlots.map((slot) => `- ${slot.label}`).join("\n")}
+
+Would one of those work for you?
+
+Best,
+Northstar Exterior & Home`
+            : `Hi Greg,
 
 Thanks for reaching out — replacing original 1988 windows before winter is a very common project for us, and 12 windows is typically a 1–2 day installation.
 
@@ -660,6 +704,98 @@ export async function sendConversationReply({
             automated: true,
           },
           created_at: now,
+        });
+      }
+      if (channel === "email" && recordMeta.demo_action === "executive_inbound_window_email") {
+        const rawSlots = Array.isArray(recordMeta.suggested_slots)
+          ? recordMeta.suggested_slots
+          : [];
+        const selected = rawSlots.find(
+          (slot): slot is { start: string; end: string; label: string } =>
+            Boolean(
+              slot &&
+                typeof slot === "object" &&
+                "start" in slot &&
+                "end" in slot &&
+                "label" in slot &&
+                typeof slot.start === "string" &&
+                typeof slot.end === "string" &&
+                typeof slot.label === "string"
+            )
+        );
+        if (!selected) return { success: false, error: "No verified appointment opening found" };
+        const [{ data: estimator }, { data: lead }] = await Promise.all([
+          supabase
+            .from("profiles")
+            .select("id")
+            .eq("role", "sales_rep")
+            .limit(1)
+            .maybeSingle(),
+          supabase
+            .from("leads")
+            .select("street_address")
+            .eq("id", record.lead_id)
+            .single(),
+        ]);
+        const customerReplyAt = new Date(Date.now() + 800).toISOString();
+        await supabase.from("communications").insert({
+          lead_id: record.lead_id,
+          contact_id: record.contact_id,
+          channel: "email",
+          direction: "inbound",
+          status: "received",
+          from_value: record.from_value,
+          to_value: record.to_value,
+          subject: record.subject?.toLowerCase().startsWith("re:")
+            ? record.subject
+            : `Re: ${record.subject ?? "Window estimate"}`,
+          body: `The first option, ${selected.label}, works for us. Thank you.`,
+          ai_summary: "Customer selected the first calendar-verified measurement appointment.",
+          suggested_next_action: "Appointment booked automatically; estimator calendar and CRM updated.",
+          metadata: {
+            demo_action: "executive_email_slot_selected",
+            selected_start: selected.start,
+            selected_end: selected.end,
+          },
+          created_at: customerReplyAt,
+          updated_at: customerReplyAt,
+        });
+        await supabase.from("appointments").insert({
+          lead_id: record.lead_id,
+          title: "Window measurement visit",
+          appointment_type: "inspection",
+          start_time: selected.start,
+          end_time: selected.end,
+          status: "confirmed",
+          location: lead?.street_address ?? null,
+          assigned_to: estimator?.id ?? null,
+          source: "internal",
+        });
+        await supabase
+          .from("leads")
+          .update({ stage: "appointment_scheduled", updated_at: customerReplyAt })
+          .eq("id", record.lead_id);
+        await supabase
+          .from("lead_ai_analyses")
+          .update({
+            summary: `Greg requested a 12-window replacement before winter. The AI extracted his weekday-after-3 PM constraint and booked a measurement visit for ${selected.label}.`,
+            recommended_next_action:
+              "Prepare the estimator with the email summary and measurement-visit details.",
+            recommended_contact_window: "Appointment confirmed",
+            lead_quality_reasoning:
+              "The customer provided clear scope, scheduling constraints, and committed to a measurement visit.",
+            tags: ["windows", "email_scheduling", "appointment_scheduled"],
+          })
+          .eq("lead_id", record.lead_id);
+        await supabase.from("activities").insert({
+          lead_id: record.lead_id,
+          user_id: user.id,
+          type: "appointment",
+          title: `Measurement visit booked from AI email workflow: ${selected.label}`,
+          description:
+            "AI extracted the scheduling rules, offered only open times, recorded the customer's selection, and blocked the estimator calendar.",
+          metadata: { automated: true, source: "email", start_time: selected.start },
+          created_at: customerReplyAt,
         });
       }
       await supabase

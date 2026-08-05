@@ -48,9 +48,26 @@ interface Step {
   advance: Advance;
 }
 
+type TourMode = "full" | "executive";
+
 const INDEX_KEY = "northstar-tutorial-index";
 const ACTIVE_KEY = "northstar-tutorial-active";
 const COMPLETED_KEY = "northstar-tutorial-completed";
+const EXECUTIVE_INDEX_KEY = "northstar-executive-tour-index";
+const EXECUTIVE_ACTIVE_KEY = "northstar-executive-tour-active";
+const EXECUTIVE_COMPLETED_KEY = "northstar-executive-tour-completed";
+const SELECTED_MODE_KEY = "northstar-selected-tour-mode";
+const CHOOSER_DISMISSED_KEY = "northstar-tour-chooser-dismissed";
+
+function storageKeys(mode: TourMode) {
+  return mode === "executive"
+    ? {
+        index: EXECUTIVE_INDEX_KEY,
+        active: EXECUTIVE_ACTIVE_KEY,
+        completed: EXECUTIVE_COMPLETED_KEY,
+      }
+    : { index: INDEX_KEY, active: ACTIVE_KEY, completed: COMPLETED_KEY };
+}
 
 function readTourStorage(key: string) {
   if (typeof window === "undefined" || !window.sessionStorage) return null;
@@ -79,6 +96,7 @@ export function TutorialProvider() {
 
   const [active, setActive] = useState(false);
   const [index, setIndex] = useState(0);
+  const [tourMode, setTourMode] = useState<TourMode | null>(null);
   const [running, setRunning] = useState(false);
   const [requestFormOpen, setRequestFormOpen] = useState(false);
   const [welcomeMorphing, setWelcomeMorphing] = useState(false);
@@ -88,7 +106,7 @@ export function TutorialProvider() {
   const welcomeHandledRef = useRef<string | null>(null);
 
   // ── Step definitions ──────────────────────────────────────────────────────
-  const steps: Step[] = [
+  const fullSteps: Step[] = [
     {
       id: "welcome",
       title: "Welcome. This is an AI-assisted CRM demo.",
@@ -496,6 +514,108 @@ export function TutorialProvider() {
     },
   ];
 
+  const fullStep = (id: string) => fullSteps.find((candidate) => candidate.id === id)!;
+  const executiveSteps: Step[] = [
+    {
+      ...fullStep("speed-to-lead"),
+      title: "See the AI phone scheduler in action.",
+      body: "A homeowner submits a request, and the AI calls back while the lead is still fresh.\n\nYou can answer and act as the homeowner, or simulate the call for a faster walkthrough. The AI gathers project details, checks real openings, books the inspection, writes the CRM note, and prepares the follow-up work.",
+    },
+    fullStep("answer-call"),
+    fullStep("follow-form-notifications"),
+    fullStep("open-form-confirmation-task"),
+    fullStep("open-form-approval-queue"),
+    {
+      ...fullStep("approve-form-confirmation"),
+      body: "Review the appointment details, then approve and send the confirmation.\n\nThis approval is a configurable guardrail. A company can require human review, or allow routine confirmations and reminders to send automatically.",
+    },
+    {
+      id: "executive-email",
+      title: "Now watch AI handle an email lead.",
+      body: "Greg Tomlinson emails about replacing 12 windows. He says weekdays after 3 PM work best and asks for openings next week.\n\nThe AI will create the lead, understand the scheduling limits, check the estimator calendar, and prepare a reply with real open times.",
+      action: {
+        label: "Receive scheduling email",
+        icon: Mail,
+        run: async (ctx) => {
+          const r = await simulateInboundEmail({ executiveScheduling: true });
+          if (!r.success) {
+            toast.error(r.error);
+            throw new Error(r.error);
+          }
+          r.data.events.forEach(appendDemoEvent);
+          toast("New scheduling email", {
+            description: r.data.headline,
+            position: "top-center",
+            duration: 12000,
+            action: { label: "Open Inbox", onClick: () => ctx.router.push("/app/inbox") },
+          });
+        },
+      },
+      advance: { kind: "action" },
+    },
+    {
+      id: "executive-open-email",
+      title: "Open Greg's email conversation.",
+      body: "The AI matched the email to a new CRM lead and pulled valid appointment options from the shared calendar.\n\nOpen Conversations to see the original request, the extracted scheduling rules, and the openings the AI found.",
+      spotlight: "inbox-conversations",
+      spotlightHint: "Open Conversations",
+      advance: { kind: "event", event: "northstar-inbox-conversations-opened" },
+    },
+    {
+      ...fullStep("reply-email"),
+      id: "executive-reply-email",
+      body: "The AI has already read Greg's request and checked the calendar. Below the email, you can see the scheduling rules it extracted and the three openings it verified.\n\nClick Reply, then choose Draft a response. The reply will use those real openings instead of inventing a time.",
+    },
+    {
+      ...fullStep("send-email-reply"),
+      id: "executive-send-email-reply",
+      body: "Review the AI-written reply with the verified appointment options, then click Send reply.\n\nFor this executive demo, Greg selects the first opening. The AI records his response, books the measurement visit, blocks the calendar, and updates the CRM automatically.",
+    },
+    {
+      id: "executive-open-appointments",
+      title: "See the email become a booked appointment.",
+      body: "The customer accepted one of the offered times. Open Appointments to verify that the AI completed the operational handoff.",
+      spotlight: "nav-appointments",
+      spotlightHint: "Open Appointments",
+      advance: { kind: "navigate", pathname: "/app/appointments" },
+    },
+    {
+      id: "executive-appointment-view",
+      title: "The calendar and CRM agree.",
+      body: "Greg's measurement visit is now booked against a real estimator opening. That slot is no longer available to another customer.\n\nThe email, customer reply, appointment, lead stage, and audit trail all stay connected. This is the same scheduling layer that can work during phone calls, texts, or inside an existing CRM.",
+      spotlight: "appointments-estimator-calendar",
+      spotlightHint: "Review the booked visit",
+      advance: { kind: "manual" },
+    },
+    fullStep("automations"),
+    {
+      ...fullStep("automations-view"),
+      body: "This library shows how the same foundation expands across sales, marketing, customer service, operations, administration, and IT.\n\nExamples include missed-call rescue, review-risk triage, estimator prep, weather-aware rescheduling, data cleanup, and integration monitoring. Each workflow can run inside this custom CRM or through tools such as Zapier, Make, Power Automate, n8n, and native CRM APIs.",
+    },
+    fullStep("reports"),
+    {
+      ...fullStep("reports-view"),
+      body: "Reports turn workflow activity into management decisions. Leaders can track response time, booking rate, source quality, pipeline movement, follow-up health, and operational bottlenecks.\n\nThe AI layer summarizes changes, explains risks, and points managers toward the actions that matter most.",
+    },
+    fullStep("crm-sync"),
+    {
+      id: "executive-crm-sync-run",
+      title: "Run a real CRM payload dry run.",
+      body: "The workflows you saw do not depend on this demo CRM. They can write contacts, deals, notes, tasks, appointments, summaries, and audit events into the system a company already uses.\n\nClick Sync to HubSpot on any lead. The dry run builds and logs the exact contact, deal, and AI-note payload without changing an external account.",
+      spotlight: "crm-sync-button",
+      spotlightHint: "Run the HubSpot dry run",
+      advance: { kind: "event", event: "northstar-crm-sync-completed" },
+    },
+    {
+      id: "executive-done",
+      title: "That is the five-minute executive tour.",
+      body: "You saw AI voice, live qualification, scheduling, human approval controls, email understanding, calendar booking, workflow automation, management reporting, and CRM integration.\n\nThe CRM is the demo surface. The product being demonstrated is the AI workflow layer: it listens, reasons over business rules, completes work, records what happened, and connects to the tools a company already trusts.",
+      advance: { kind: "manual" },
+    },
+  ];
+
+  const steps = tourMode === "executive" ? executiveSteps : fullSteps;
+
   const total = steps.length;
   const step = steps[index];
   // Don't allow Back into a phone-call step: the call already happened and the
@@ -521,6 +641,7 @@ export function TutorialProvider() {
     "reports",
     "crm-sync",
     "settings",
+    "executive-open-appointments",
   ]);
   const requiredOverlayStepIds = new Set([
     "save-first-lead",
@@ -554,6 +675,9 @@ export function TutorialProvider() {
     "approve-reschedule-offer",
     "go-appointments-after-reschedule",
     "jess-booked-after-reschedule",
+    "executive-open-email",
+    "executive-appointment-view",
+    "executive-crm-sync-run",
   ]);
   const showSpotlightOverlay = Boolean(
     step?.spotlight && (requiredOverlayStepIds.has(step.id) || tabClickStepIds.has(step.id))
@@ -572,23 +696,37 @@ export function TutorialProvider() {
       welcomeHandledRef.current = typeof window !== "undefined" ? window.location.href : "initial";
       setActive(true);
       setIndex(0);
-      writeTourStorage(COMPLETED_KEY, "0");
-      writeTourStorage(ACTIVE_KEY, "1");
-      writeTourStorage(INDEX_KEY, "0");
+      setTourMode(null);
+      writeTourStorage(CHOOSER_DISMISSED_KEY, "0");
       router.replace("/app");
       return;
     }
+
+    const selected = readTourStorage(SELECTED_MODE_KEY);
+    const savedMode: TourMode | null =
+      selected === "executive" || selected === "full" ? selected : null;
+    if (savedMode && readTourStorage(storageKeys(savedMode).active) === "1") {
+      const keys = storageKeys(savedMode);
+      setTourMode(savedMode);
+      setActive(true);
+      setIndex(Number(readTourStorage(keys.index) ?? 0));
+      return;
+    }
+    // Preserve sessions created before the executive tour existed.
     if (readTourStorage(ACTIVE_KEY) === "1") {
+      setTourMode("full");
+      writeTourStorage(SELECTED_MODE_KEY, "full");
       setActive(true);
       setIndex(Number(readTourStorage(INDEX_KEY) ?? 0));
       return;
     }
     if (pathname.startsWith("/app")) {
-      if (readTourStorage(COMPLETED_KEY) === "1") return;
+      const completedSelected =
+        savedMode && readTourStorage(storageKeys(savedMode).completed) === "1";
+      if (completedSelected || readTourStorage(CHOOSER_DISMISSED_KEY) === "1") return;
       setActive(true);
       setIndex(0);
-      writeTourStorage(ACTIVE_KEY, "1");
-      writeTourStorage(INDEX_KEY, "0");
+      setTourMode(null);
     }
   }, [pathname, router, searchParams]);
 
@@ -600,25 +738,26 @@ export function TutorialProvider() {
     welcomeHandledRef.current = href;
     setActive(true);
     setIndex(0);
+    setTourMode(null);
     setWelcomeMorphing(false);
-    writeTourStorage(COMPLETED_KEY, "0");
-    writeTourStorage(ACTIVE_KEY, "1");
-    writeTourStorage(INDEX_KEY, "0");
+    writeTourStorage(CHOOSER_DISMISSED_KEY, "0");
     router.replace("/app");
   }, [pathname, router, searchParams]);
 
   useEffect(() => {
     document.body.classList.toggle(
       "tutorial-open",
-      active && !compactSpotlight && (step?.id !== "welcome" || welcomeMorphing)
+      active && !compactSpotlight && Boolean(tourMode) && (step?.id !== "welcome" || welcomeMorphing)
     );
-    writeTourStorage(ACTIVE_KEY, active ? "1" : "0");
+    if (tourMode) {
+      writeTourStorage(storageKeys(tourMode).active, active ? "1" : "0");
+    }
     return () => document.body.classList.remove("tutorial-open");
-  }, [active, compactSpotlight, step?.id, welcomeMorphing]);
+  }, [active, compactSpotlight, step?.id, tourMode, welcomeMorphing]);
 
   useEffect(() => {
-    writeTourStorage(INDEX_KEY, String(index));
-  }, [index]);
+    if (tourMode) writeTourStorage(storageKeys(tourMode).index, String(index));
+  }, [index, tourMode]);
 
   const go = useCallback(
     (next: number) => {
@@ -629,28 +768,49 @@ export function TutorialProvider() {
   );
 
   const start = useCallback(() => {
-    const saved = Number(readTourStorage(INDEX_KEY) ?? index);
+    const selected = readTourStorage(SELECTED_MODE_KEY);
+    const savedMode: TourMode | null =
+      selected === "executive" || selected === "full" ? selected : null;
     setActive(true);
-    writeTourStorage(COMPLETED_KEY, "0");
-    setIndex(Math.max(0, Math.min(total - 1, Number.isFinite(saved) ? saved : 0)));
+    writeTourStorage(CHOOSER_DISMISSED_KEY, "0");
+    if (!savedMode || readTourStorage(storageKeys(savedMode).completed) === "1") {
+      setTourMode(null);
+      setIndex(0);
+    } else {
+      const saved = Number(readTourStorage(storageKeys(savedMode).index) ?? 0);
+      setTourMode(savedMode);
+      setIndex(Math.max(0, Number.isFinite(saved) ? saved : 0));
+      writeTourStorage(storageKeys(savedMode).active, "1");
+    }
     router.push("/app");
-  }, [index, router, total]);
+  }, [router]);
 
   const stop = useCallback(() => {
-    writeTourStorage(COMPLETED_KEY, "1");
-    writeTourStorage(ACTIVE_KEY, "0");
-    writeTourStorage(INDEX_KEY, String(index >= total - 1 ? total - 1 : index));
+    if (tourMode) {
+      const keys = storageKeys(tourMode);
+      writeTourStorage(keys.completed, index >= total - 1 ? "1" : "0");
+      writeTourStorage(keys.active, "0");
+      writeTourStorage(keys.index, String(index >= total - 1 ? total - 1 : index));
+    } else {
+      writeTourStorage(CHOOSER_DISMISSED_KEY, "1");
+    }
     setActive(false);
     setWelcomeMorphing(false);
     setRequestFormOpen(false);
-  }, [index, total]);
+  }, [index, tourMode, total]);
 
-  function startTourFromWelcome() {
+  function startTourFromWelcome(mode: TourMode) {
     setWelcomeMorphing(true);
-    writeTourStorage(COMPLETED_KEY, "0");
+    const keys = storageKeys(mode);
+    writeTourStorage(SELECTED_MODE_KEY, mode);
+    writeTourStorage(CHOOSER_DISMISSED_KEY, "0");
+    writeTourStorage(keys.completed, "0");
+    writeTourStorage(keys.active, "1");
+    writeTourStorage(keys.index, mode === "full" ? "1" : "0");
     window.setTimeout(() => {
+      setTourMode(mode);
       setWelcomeMorphing(false);
-      go(1);
+      setIndex(mode === "full" ? 1 : 0);
     }, 520);
   }
 
@@ -684,7 +844,7 @@ export function TutorialProvider() {
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pathname, active, index]);
+  }, [pathname, active, index, tourMode]);
 
   // Advance steps that wait for a real interaction (a call finishing, a message
   // being sent) — never via a button.
@@ -711,7 +871,7 @@ export function TutorialProvider() {
     window.addEventListener(ev, handler);
     return () => window.removeEventListener(ev, handler);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [active, index, pathname]);
+  }, [active, index, pathname, tourMode]);
 
   async function runAction() {
     if (!step.action) return;
@@ -801,13 +961,13 @@ export function TutorialProvider() {
     />
   ) : null;
 
-  if (step.id === "welcome") {
+  if (!tourMode || step.id === "welcome") {
     return (
       <>
         {requestFormOverlay}
         {simulationConfirm}
         <WelcomeTourModal
-          step={step}
+          step={fullSteps[0]}
           morphing={welcomeMorphing}
           onStart={startTourFromWelcome}
           onStop={stop}
@@ -825,6 +985,7 @@ export function TutorialProvider() {
           step={step}
           index={index}
           total={total}
+          mode={tourMode}
           running={running}
           role={callRole()}
           onRunAction={runAction}
@@ -858,6 +1019,7 @@ export function TutorialProvider() {
         step={step}
         index={index}
         total={total}
+        mode={tourMode}
         running={running}
         role={callRole()}
         onRunAction={runAction}
@@ -929,7 +1091,7 @@ function WelcomeTourModal({
 }: {
   step: Step;
   morphing: boolean;
-  onStart: () => void;
+  onStart: (mode: TourMode) => void;
   onStop: () => void;
 }) {
   return (
@@ -950,7 +1112,7 @@ function WelcomeTourModal({
             <div>
               <p className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-brand-gold">
                 <GraduationCap className="h-4 w-4" />
-                Guided tour
+                Choose your tour
               </p>
               <h2 className="mt-2 text-xl font-semibold tracking-tight">{step.title}</h2>
             </div>
@@ -963,14 +1125,50 @@ function WelcomeTourModal({
               <X className="h-4 w-4" />
             </button>
           </div>
-          <p className="mt-4 whitespace-pre-line text-sm leading-6 text-muted-foreground">
-            {step.body}
+          <p className="mt-3 text-sm leading-6 text-muted-foreground">
+            See how AI voice, scheduling, messaging, automation, reporting, and CRM integration
+            work together. Calls and sends are simulated, so nothing reaches a real customer.
           </p>
-          <div className="mt-6 flex justify-end">
-            <Button onClick={onStart} disabled={morphing}>
-              Start Tour
-              <ChevronRight className="h-4 w-4" />
-            </Button>
+          <div className="mt-5 grid gap-3 sm:grid-cols-2">
+            <button
+              type="button"
+              onClick={() => onStart("executive")}
+              disabled={morphing}
+              className="rounded-lg border-2 border-brand-gold bg-brand-gold/10 p-4 text-left transition-colors hover:bg-brand-gold/15 disabled:opacity-60"
+            >
+              <span className="flex items-center justify-between gap-3">
+                <span className="font-semibold">Executive Tour</span>
+                <Badge className="bg-brand-gold text-brand-dark">Recommended</Badge>
+              </span>
+              <span className="mt-2 block text-xs font-medium uppercase tracking-wide text-brand-dark/70">
+                About 5 minutes
+              </span>
+              <span className="mt-2 block text-sm leading-5 text-muted-foreground">
+                The strongest AI workflows: phone scheduling, email booking, automation, reports,
+                and a CRM sync dry run.
+              </span>
+              <span className="mt-4 flex items-center gap-1 text-sm font-semibold text-primary">
+                Start executive tour <ChevronRight className="h-4 w-4" />
+              </span>
+            </button>
+            <button
+              type="button"
+              onClick={() => onStart("full")}
+              disabled={morphing}
+              className="rounded-lg border bg-background p-4 text-left transition-colors hover:bg-secondary/50 disabled:opacity-60"
+            >
+              <span className="font-semibold">Full Guided Tour</span>
+              <span className="mt-2 block text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                Complete 46-step walkthrough
+              </span>
+              <span className="mt-2 block text-sm leading-5 text-muted-foreground">
+                Explore every scenario, including rep-assisted calls, rescheduling, quoting,
+                feedback, settings, and the full CRM workflow.
+              </span>
+              <span className="mt-4 flex items-center gap-1 text-sm font-semibold text-primary">
+                Start full tour <ChevronRight className="h-4 w-4" />
+              </span>
+            </button>
           </div>
         </div>
         <div
@@ -1100,6 +1298,7 @@ function TutorialSidebar({
   step,
   index,
   total,
+  mode,
   running,
   role,
   onRunAction,
@@ -1114,6 +1313,7 @@ function TutorialSidebar({
   step: Step;
   index: number;
   total: number;
+  mode: TourMode;
   running: boolean;
   role: string | null;
   onRunAction: () => void;
@@ -1132,7 +1332,7 @@ function TutorialSidebar({
       <div className="flex items-center justify-between gap-2 border-b bg-brand-dark px-4 py-3 text-white">
         <span className="flex items-center gap-2 text-sm font-semibold">
           <GraduationCap className="h-4 w-4 text-brand-gold" />
-          Guided tour
+          {mode === "executive" ? "Executive tour" : "Guided tour"}
         </span>
         <div className="flex items-center gap-2">
           <Badge variant="secondary" className="bg-white/15 text-[10px] text-white">

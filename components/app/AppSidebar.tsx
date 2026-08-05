@@ -108,6 +108,11 @@ export function AppSidebar({
       sessionStorage.removeItem("northstar-tutorial-completed");
       sessionStorage.removeItem("northstar-tutorial-index");
       sessionStorage.removeItem("northstar-tutorial-active");
+      sessionStorage.removeItem("northstar-executive-tour-completed");
+      sessionStorage.removeItem("northstar-executive-tour-index");
+      sessionStorage.removeItem("northstar-executive-tour-active");
+      sessionStorage.removeItem("northstar-selected-tour-mode");
+      sessionStorage.removeItem("northstar-tour-chooser-dismissed");
     } catch {
       // sessionStorage can be unavailable in embedded browsers; ignore.
     }

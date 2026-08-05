@@ -582,34 +582,36 @@ export function InboxView({
                   : selected.messages
                       .filter((m) => m.status !== "draft")
                       .map((msg) => (
-                        <div
-                          key={msg.id}
-                          className={cn(
-                            "overflow-hidden rounded-lg border bg-background",
-                            msg.direction === "inbound" && needsAttention(msg) && "border-red-200 bg-red-50/30"
-                          )}
-                        >
-                          <div className="border-b bg-secondary/35 px-3 py-2 text-xs text-muted-foreground">
-                            <div className="flex flex-wrap items-center gap-2">
-                              <span className="font-medium text-foreground">
-                                {msg.direction === "inbound" ? "From" : "To"}:{" "}
-                                {msg.direction === "inbound" ? msg.from_value : msg.to_value}
-                              </span>
-                              {needsAttention(msg) && (
-                                <Badge className="bg-red-100 text-red-800" variant="secondary">
-                                  new
-                                </Badge>
-                              )}
-                              <span className="ml-auto">{formatRelative(msg.created_at)}</span>
-                            </div>
-                            {msg.direction === "outbound" && (
-                              <p className="mt-1">Status: {statusLabel(msg)}</p>
+                        <div key={msg.id} className="space-y-2">
+                          <div
+                            className={cn(
+                              "overflow-hidden rounded-lg border bg-background",
+                              msg.direction === "inbound" && needsAttention(msg) && "border-red-200 bg-red-50/30"
                             )}
+                          >
+                            <div className="border-b bg-secondary/35 px-3 py-2 text-xs text-muted-foreground">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <span className="font-medium text-foreground">
+                                  {msg.direction === "inbound" ? "From" : "To"}:{" "}
+                                  {msg.direction === "inbound" ? msg.from_value : msg.to_value}
+                                </span>
+                                {needsAttention(msg) && (
+                                  <Badge className="bg-red-100 text-red-800" variant="secondary">
+                                    new
+                                  </Badge>
+                                )}
+                                <span className="ml-auto">{formatRelative(msg.created_at)}</span>
+                              </div>
+                              {msg.direction === "outbound" && (
+                                <p className="mt-1">Status: {statusLabel(msg)}</p>
+                              )}
+                            </div>
+                            <div className="px-3 py-3">
+                              {msg.subject && <p className="text-sm font-semibold">{msg.subject}</p>}
+                              <p className="mt-2 whitespace-pre-wrap text-sm leading-6">{msg.body}</p>
+                            </div>
                           </div>
-                          <div className="px-3 py-3">
-                            {msg.subject && <p className="text-sm font-semibold">{msg.subject}</p>}
-                            <p className="mt-2 whitespace-pre-wrap text-sm leading-6">{msg.body}</p>
-                          </div>
+                          <EmailSchedulingInsight message={msg} />
                         </div>
                       ))}
                 {selected.messages.filter((m) => m.status !== "draft").length === 0 && (
@@ -715,6 +717,53 @@ export function InboxView({
           )}
         </Card>
       </div>
+    </div>
+  );
+}
+
+function EmailSchedulingInsight({ message }: { message: CommunicationWithLead }) {
+  if (message.direction !== "inbound") return null;
+  const meta = (message.metadata ?? {}) as Record<string, unknown>;
+  if (meta.demo_action !== "executive_inbound_window_email") return null;
+  const constraints = Array.isArray(meta.scheduling_constraints)
+    ? meta.scheduling_constraints.filter((value): value is string => typeof value === "string")
+    : [];
+  const slots = Array.isArray(meta.suggested_slots)
+    ? meta.suggested_slots.filter(
+        (slot): slot is { label: string } =>
+          Boolean(slot && typeof slot === "object" && "label" in slot && typeof slot.label === "string")
+      )
+    : [];
+
+  return (
+    <div
+      className="ml-4 max-w-[92%] rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm shadow-sm"
+      data-tour="executive-email-scheduling"
+    >
+      <p className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-amber-800">
+        <Bot className="h-3.5 w-3.5" />
+        AI calendar check
+      </p>
+      <p className="mt-1 text-amber-950">
+        The AI extracted Greg&apos;s scheduling limits and checked open estimator time.
+      </p>
+      <div className="mt-2 flex flex-wrap gap-1.5">
+        {constraints.map((constraint) => (
+          <Badge key={constraint} variant="outline" className="border-amber-300 bg-white text-amber-900">
+            {constraint}
+          </Badge>
+        ))}
+      </div>
+      <div className="mt-3 grid gap-1.5 sm:grid-cols-3">
+        {slots.map((slot) => (
+          <div key={slot.label} className="rounded-md border border-amber-200 bg-white px-2.5 py-2 text-xs font-medium text-amber-950">
+            {slot.label}
+          </div>
+        ))}
+      </div>
+      <p className="mt-2 text-xs text-amber-800">
+        These slots are open now and will be included in the AI draft.
+      </p>
     </div>
   );
 }

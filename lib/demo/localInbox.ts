@@ -1,7 +1,14 @@
 import "server-only";
 
 import { revalidatePath } from "next/cache";
-import { formatDemoDate, formatDemoTime, sameDemoDay, demoDatePlusDays } from "@/lib/utils/demoTime";
+import {
+  demoDatePlusDays,
+  demoDayOfWeek,
+  demoWallClockParts,
+  formatDemoDate,
+  formatDemoTime,
+  sameDemoDay,
+} from "@/lib/utils/demoTime";
 import { customerServiceLabel } from "@/lib/utils/statuses";
 import { getLocalAvailableSlots } from "@/lib/demo/localData";
 import { submitLocalWebLead } from "@/lib/demo/localWorkflows";
@@ -125,8 +132,22 @@ export async function simulateLocalInboundText() {
   };
 }
 
-export async function simulateLocalInboundEmail() {
+export async function simulateLocalInboundEmail(options?: { executiveScheduling?: boolean }) {
   const state = await readDemoState();
+  const availableSlots = options?.executiveScheduling
+    ? await getLocalAvailableSlots(21, 160)
+    : [];
+  const nextMondayOffset = ((8 - demoDayOfWeek(new Date())) % 7) || 7;
+  const nextWeekStart = demoDatePlusDays(nextMondayOffset, 0, 0).getTime();
+  const schedulingSlots = availableSlots
+    .filter(
+      (slot) =>
+        slot.start.getTime() >= nextWeekStart && demoWallClockParts(slot.start).hour >= 15
+    )
+    .slice(0, 3);
+  if (options?.executiveScheduling && schedulingSlots.length < 3) {
+    throw new Error("Could not find three afternoon openings for the executive demo");
+  }
   let lead = state.leads.find((candidate) => candidate.email === "greg.tomlinson@example.com");
   if (!lead) {
     const leadId = await submitLocalWebLead({
@@ -135,7 +156,9 @@ export async function simulateLocalInboundEmail() {
       email: "greg.tomlinson@example.com",
       phone: "(262) 555-0198",
       service_type: "windows",
-      description: "We are looking to replace 12 original windows before winter and want to understand the process and timing.",
+      description: options?.executiveScheduling
+        ? "We are looking to replace 12 original windows before winter. Weekdays after 3 PM work best, and we want to know what is open next week."
+        : "We are looking to replace 12 original windows before winter and want to understand the process and timing.",
       timeframe: "1_3_months",
       source: "email",
     });
@@ -159,17 +182,38 @@ export async function simulateLocalInboundEmail() {
       from_value: "greg.tomlinson@example.com",
       to_value: "hello@northstar-demo.com",
       subject: "Window estimate",
-      body: "Hi, we are looking to replace 12 windows before winter. The house was built in 1988 and most of the windows are original. We'd like to understand the process and rough timing.",
-      ai_summary: "New prospect wants 12 original windows replaced before winter and is asking about process and timing.",
-      suggested_next_action: "Reply with the process overview and offer an in-home measurement appointment.",
+      body: options?.executiveScheduling
+        ? "Hi, we are looking to replace 12 windows before winter. Most are original to our 1988 home. Weekdays after 3 PM work best for us. Do you have any openings next week for a measurement visit?"
+        : "Hi, we are looking to replace 12 windows before winter. The house was built in 1988 and most of the windows are original. We'd like to understand the process and rough timing.",
+      ai_summary: options?.executiveScheduling
+        ? "New prospect wants 12 original windows replaced before winter. Scheduling constraints extracted: next week, weekdays, after 3 PM."
+        : "New prospect wants 12 original windows replaced before winter and is asking about process and timing.",
+      suggested_next_action: options?.executiveScheduling
+        ? "Offer the calendar-verified afternoon openings and book the selected measurement visit."
+        : "Reply with the process overview and offer an in-home measurement appointment.",
       ai_generated: false,
       human_approved: false,
       scheduled_send_at: null,
       automation_key: null,
       metadata: {
         needs_attention: true,
-        demo_action: "inbound_window_email",
-        suggested_reply: "Hi Greg,\n\nThanks for reaching out. We can start with a free in-home visit to measure the 12 windows, review options, and provide a written quote. Would a measurement visit this week or next work for you?\n\nBest,\nNorthstar Exterior & Home",
+        demo_action: options?.executiveScheduling
+          ? "executive_inbound_window_email"
+          : "inbound_window_email",
+        executive_scheduling_demo: Boolean(options?.executiveScheduling),
+        scheduling_constraints: options?.executiveScheduling
+          ? ["Next week", "Weekdays", "After 3:00 PM"]
+          : undefined,
+        suggested_slots: options?.executiveScheduling
+          ? schedulingSlots.map((slot) => ({
+              start: slot.start.toISOString(),
+              end: slot.end.toISOString(),
+              label: slot.label,
+            }))
+          : undefined,
+        suggested_reply: options?.executiveScheduling
+          ? `Hi Greg,\n\nThanks for reaching out. We can start with a free in-home measurement visit for the 12 windows. I checked our estimator calendar for next week after 3 PM, and these times are open:\n\n${schedulingSlots.map((slot) => `- ${slot.label}`).join("\n")}\n\nWould one of those work for you?\n\nBest,\nNorthstar Exterior & Home`
+          : "Hi Greg,\n\nThanks for reaching out. We can start with a free in-home visit to measure the 12 windows, review options, and provide a written quote. Would a measurement visit this week or next work for you?\n\nBest,\nNorthstar Exterior & Home",
       },
       created_at: nowIso(),
       updated_at: nowIso(),
@@ -215,8 +259,91 @@ export async function sendLocalConversationReply(replyToId: string, body: string
     source.updated_at = nowIso();
     if (source.lead_id) {
       const lead = state.leads.find((candidate) => candidate.id === source.lead_id);
+      const executiveScheduling = source.metadata.demo_action === "executive_inbound_window_email";
       if (lead && source.metadata.demo_action === "inbound_window_email") lead.stage = "contacted";
       state.activities.push(activity(source.lead_id, channel, `${channel === "email" ? "Email" : "Text"} reply sent (simulated)`, trimmed));
+      if (lead && executiveScheduling) {
+        const rawSlots = Array.isArray(source.metadata.suggested_slots)
+          ? source.metadata.suggested_slots
+          : [];
+        const selected = rawSlots.find(
+          (slot): slot is { start: string; end: string; label: string } =>
+            Boolean(
+              slot &&
+                typeof slot === "object" &&
+                "start" in slot &&
+                "end" in slot &&
+                "label" in slot &&
+                typeof slot.start === "string" &&
+                typeof slot.end === "string" &&
+                typeof slot.label === "string"
+            )
+        );
+        if (!selected) throw new Error("The scheduling email has no verified opening");
+
+        state.communications.push({
+          ...source,
+          id: demoId(),
+          direction: "inbound",
+          status: "received",
+          from_value: source.from_value,
+          to_value: source.to_value,
+          subject: source.subject?.toLowerCase().startsWith("re:")
+            ? source.subject
+            : `Re: ${source.subject ?? "Window estimate"}`,
+          body: `The first option, ${selected.label}, works for us. Thank you.`,
+          ai_summary: "Customer selected the first calendar-verified measurement appointment.",
+          suggested_next_action: "Appointment booked automatically; estimator calendar and CRM updated.",
+          ai_generated: false,
+          human_approved: false,
+          metadata: {
+            demo_action: "executive_email_slot_selected",
+            selected_start: selected.start,
+            selected_end: selected.end,
+          },
+          created_at: nowIso(800),
+          updated_at: nowIso(800),
+        });
+        state.appointments.push({
+          id: demoId(),
+          lead_id: lead.id,
+          contact_id: null,
+          title: "Window measurement visit",
+          appointment_type: "inspection",
+          start_time: selected.start,
+          end_time: selected.end,
+          status: "confirmed",
+          location: lead.street_address,
+          assigned_to: demoEstimatorId(state),
+          source: "internal",
+          external_calendar_id: null,
+          created_at: nowIso(900),
+          updated_at: nowIso(900),
+        });
+        lead.stage = "appointment_scheduled";
+        lead.updated_at = nowIso(900);
+        const analysis = state.analyses
+          .filter((candidate) => candidate.lead_id === lead.id)
+          .sort((a, b) => b.created_at.localeCompare(a.created_at))[0];
+        if (analysis) {
+          analysis.summary = `Greg requested a 12-window replacement before winter. The AI extracted his weekday-after-3 PM constraint and booked a measurement visit for ${selected.label}.`;
+          analysis.recommended_next_action =
+            "Prepare the estimator with the email summary and measurement-visit details.";
+          analysis.recommended_contact_window = "Appointment confirmed";
+          analysis.lead_quality_reasoning =
+            "The customer provided clear scope, scheduling constraints, and committed to a measurement visit.";
+          analysis.tags = ["windows", "email_scheduling", "appointment_scheduled"];
+        }
+        state.activities.push(
+          activity(
+            lead.id,
+            "appointment",
+            `Measurement visit booked from AI email workflow: ${selected.label}`,
+            "AI extracted the scheduling rules, offered only open times, recorded the customer's selection, and blocked the estimator calendar.",
+            900
+          )
+        );
+      }
     }
   });
   revalidatePath("/app", "layout");

@@ -39,6 +39,11 @@ export function LeadSyncPanel({ leads }: { leads: SyncableLead[] }) {
       setBusyId(null);
       if (response.success) {
         setResult(response.data);
+        window.dispatchEvent(
+          new CustomEvent("northstar-crm-sync-completed", {
+            detail: { leadId, mode: response.data.mode },
+          })
+        );
         toast.success(
           response.data.mode === "dry_run"
             ? "Dry run successful — no external CRM was updated"
@@ -76,6 +81,7 @@ export function LeadSyncPanel({ leads }: { leads: SyncableLead[] }) {
               <Button
                 size="sm"
                 variant="outline"
+                data-tour="crm-sync-button"
                 disabled={pending}
                 onClick={() => sync(lead.id)}
               >
