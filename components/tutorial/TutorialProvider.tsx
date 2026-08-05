@@ -595,7 +595,7 @@ export function TutorialProvider() {
     fullStep("reports"),
     {
       ...fullStep("reports-view"),
-      body: "Reports turn workflow activity into management decisions. Leaders can track response time, booking rate, source quality, pipeline movement, follow-up health, and operational bottlenecks.\n\nThe AI layer summarizes changes, explains risks, and points managers toward the actions that matter most.",
+      body: "Reports turn workflow activity into management decisions. Leaders can track response time, booking rate, source quality, pipeline movement, follow-up health, and operational bottlenecks.\n\nThe scheduled email report shows how this intelligence can leave the CRM. Choose any day, time, and combination of business topics, then preview the exact brief a manager could receive automatically. Live delivery sends one proof email only; it never creates a subscription.\n\nThe AI layer summarizes changes, explains risks, and points managers toward the actions that matter most.",
     },
     fullStep("crm-sync"),
     {
