@@ -14,6 +14,7 @@ import type {
   CompanySettings,
   Contact,
   CrmSyncEvent,
+  Feedback,
   Lead,
   LeadAnalysis,
   AutomationRun,
@@ -37,6 +38,7 @@ export interface DemoState {
   analyses: LeadAnalysis[];
   activities: Activity[];
   tasks: Task[];
+  feedback: Feedback[];
   communications: Communication[];
   appointments: Appointment[];
   availability: AvailabilityWindow[];
@@ -108,6 +110,7 @@ export function createBlankDemoState(): DemoState {
     analyses: [],
     activities: [],
     tasks: [],
+    feedback: [],
     communications: [],
     appointments: [],
     availability,
@@ -154,6 +157,7 @@ function decodeState(value: string): DemoState | null {
       ...parsed,
       crmSyncEvents: parsed.crmSyncEvents ?? [],
       automationRuns: parsed.automationRuns ?? [],
+      feedback: parsed.feedback ?? [],
       settings: parsed.settings ?? defaults.settings,
     } as DemoState;
   } catch {

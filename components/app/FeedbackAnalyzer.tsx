@@ -60,7 +60,9 @@ export function FeedbackAnalyzer() {
         analysis: response.data.feedback.raw_output as FeedbackAnalysisOutput,
         aiUsed: response.data.aiUsed,
       });
-      toast.success("Feedback analyzed and saved");
+      window.dispatchEvent(new CustomEvent("northstar-feedback-analyzed"));
+      window.dispatchEvent(new CustomEvent("northstar-task-created"));
+      toast.success("Review analyzed - manager action and response draft prepared");
     } else if (!response.success) {
       toast.error(response.error);
     }
@@ -68,9 +70,20 @@ export function FeedbackAnalyzer() {
 
   const analysis = result?.analysis;
 
+  function loadDemoReview() {
+    setSource("google_review");
+    setCustomerName("Melissa Grant");
+    setRating("2");
+    setText(
+      "The roof repair looks fine, but our appointment was moved twice and nobody called us back. I had to leave three messages before I got an answer. I would like a manager to explain what happened."
+    );
+    setResult(null);
+    window.dispatchEvent(new CustomEvent("northstar-feedback-loaded"));
+  }
+
   return (
     <div className="grid gap-6 lg:grid-cols-2">
-      <Card>
+      <Card data-tour="feedback-analyzer">
         <CardHeader>
           <CardTitle>Analyze feedback</CardTitle>
           <CardDescription>
@@ -79,6 +92,16 @@ export function FeedbackAnalyzer() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
+          <Button
+            type="button"
+            variant="outline"
+            className="w-full"
+            onClick={loadDemoReview}
+            data-tour="feedback-load-demo"
+          >
+            <Sparkles className="h-4 w-4" />
+            Load a new 2-star review
+          </Button>
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-1.5">
               <Label>Source</Label>
@@ -130,14 +153,19 @@ export function FeedbackAnalyzer() {
               placeholder="The crew was professional, but I had to call twice to confirm the appointment…"
             />
           </div>
-          <Button onClick={analyze} disabled={analyzing || text.trim().length < 10} className="w-full">
+          <Button
+            onClick={analyze}
+            disabled={analyzing || text.trim().length < 10}
+            className="w-full"
+            data-tour="feedback-analyze"
+          >
             {analyzing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
             Analyze Feedback
           </Button>
         </CardContent>
       </Card>
 
-      <Card>
+      <Card data-tour="feedback-analysis-result">
         <CardHeader>
           <div className="flex items-center justify-between">
             <CardTitle>Analysis</CardTitle>

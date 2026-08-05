@@ -19,6 +19,8 @@ import {
   approveAndSendLocalCommunication,
   discardLocalCommunication,
   draftLocalSoonerInspectionSms,
+  completeLocalExecutiveEmailScheduling,
+  refreshLocalExecutiveEmailOpenings,
   sendLocalConversationReply,
   simulateLocalInboundEmail,
   simulateLocalInboundText,
@@ -706,98 +708,6 @@ export async function sendConversationReply({
           created_at: now,
         });
       }
-      if (channel === "email" && recordMeta.demo_action === "executive_inbound_window_email") {
-        const rawSlots = Array.isArray(recordMeta.suggested_slots)
-          ? recordMeta.suggested_slots
-          : [];
-        const selected = rawSlots.find(
-          (slot): slot is { start: string; end: string; label: string } =>
-            Boolean(
-              slot &&
-                typeof slot === "object" &&
-                "start" in slot &&
-                "end" in slot &&
-                "label" in slot &&
-                typeof slot.start === "string" &&
-                typeof slot.end === "string" &&
-                typeof slot.label === "string"
-            )
-        );
-        if (!selected) return { success: false, error: "No verified appointment opening found" };
-        const [{ data: estimator }, { data: lead }] = await Promise.all([
-          supabase
-            .from("profiles")
-            .select("id")
-            .eq("role", "sales_rep")
-            .limit(1)
-            .maybeSingle(),
-          supabase
-            .from("leads")
-            .select("street_address")
-            .eq("id", record.lead_id)
-            .single(),
-        ]);
-        const customerReplyAt = new Date(Date.now() + 800).toISOString();
-        await supabase.from("communications").insert({
-          lead_id: record.lead_id,
-          contact_id: record.contact_id,
-          channel: "email",
-          direction: "inbound",
-          status: "received",
-          from_value: record.from_value,
-          to_value: record.to_value,
-          subject: record.subject?.toLowerCase().startsWith("re:")
-            ? record.subject
-            : `Re: ${record.subject ?? "Window estimate"}`,
-          body: `The first option, ${selected.label}, works for us. Thank you.`,
-          ai_summary: "Customer selected the first calendar-verified measurement appointment.",
-          suggested_next_action: "Appointment booked automatically; estimator calendar and CRM updated.",
-          metadata: {
-            demo_action: "executive_email_slot_selected",
-            selected_start: selected.start,
-            selected_end: selected.end,
-          },
-          created_at: customerReplyAt,
-          updated_at: customerReplyAt,
-        });
-        await supabase.from("appointments").insert({
-          lead_id: record.lead_id,
-          title: "Window measurement visit",
-          appointment_type: "inspection",
-          start_time: selected.start,
-          end_time: selected.end,
-          status: "confirmed",
-          location: lead?.street_address ?? null,
-          assigned_to: estimator?.id ?? null,
-          source: "internal",
-        });
-        await supabase
-          .from("leads")
-          .update({ stage: "appointment_scheduled", updated_at: customerReplyAt })
-          .eq("id", record.lead_id);
-        await supabase
-          .from("lead_ai_analyses")
-          .update({
-            summary: `Greg requested a 12-window replacement before winter. The AI extracted his weekday-after-3 PM constraint and booked a measurement visit for ${selected.label}.`,
-            recommended_next_action:
-              "Prepare the estimator with the email summary and measurement-visit details.",
-            recommended_contact_window: "Appointment confirmed",
-            lead_quality_reasoning:
-              "The customer provided clear scope, scheduling constraints, and committed to a measurement visit.",
-            tags: ["windows", "email_scheduling", "appointment_scheduled"],
-          })
-          .eq("lead_id", record.lead_id);
-        await supabase.from("activities").insert({
-          lead_id: record.lead_id,
-          user_id: user.id,
-          type: "appointment",
-          title: `Measurement visit booked from AI email workflow: ${selected.label}`,
-          description:
-            "AI extracted the scheduling rules, offered only open times, recorded the customer's selection, and blocked the estimator calendar.",
-          metadata: { automated: true, source: "email", start_time: selected.start },
-          created_at: customerReplyAt,
-        });
-      }
       await supabase
         .from("communications")
         .update({
@@ -824,6 +734,186 @@ export async function sendConversationReply({
     return { success: true, data: undefined };
   } catch (err) {
     return { success: false, error: err instanceof Error ? err.message : "Reply failed" };
+  }
+}
+
+export async function refreshExecutiveEmailOpenings(
+  communicationId: string
+): Promise<ActionResult<{ labels: string[] }>> {
+  if (isLocalDemoMode()) {
+    try {
+      return { success: true, data: await refreshLocalExecutiveEmailOpenings(communicationId) };
+    } catch (err) {
+      return {
+        success: false,
+        error: err instanceof Error ? err.message : "Could not refresh openings",
+      };
+    }
+  }
+  const supabase = await createClient();
+  try {
+    await requireUser(supabase);
+    const { data: comm } = await supabase
+      .from("communications")
+      .select("*")
+      .eq("id", communicationId)
+      .single();
+    if (!comm) return { success: false, error: "Scheduling email not found" };
+    const record = comm as Communication;
+    const meta = metadataOf(record);
+    if (meta.demo_action !== "executive_inbound_window_email") {
+      return { success: false, error: "Scheduling email not found" };
+    }
+    const allSlots = await getAvailableSlots(supabase, 21, 160);
+    const nextMondayOffset = ((8 - demoDayOfWeek(new Date())) % 7) || 7;
+    const nextWeekStart = demoDatePlusDays(nextMondayOffset, 0, 0).getTime();
+    const slots = allSlots
+      .filter(
+        (slot) =>
+          slot.start.getTime() >= nextWeekStart && demoWallClockParts(slot.start).hour >= 15
+      )
+      .slice(0, 3);
+    if (slots.length < 3) return { success: false, error: "Could not find three new openings" };
+    const suggestedSlots = slots.map((slot) => ({
+      start: slot.start.toISOString(),
+      end: slot.end.toISOString(),
+      label: slot.label,
+    }));
+    const { error } = await supabase
+      .from("communications")
+      .update({
+        metadata: {
+          ...meta,
+          suggested_slots: suggestedSlots,
+          suggested_reply: `Hi Greg,\n\nThanks for reaching out. We can start with a free in-home measurement visit for the 12 windows. I refreshed our estimator calendar for next week after 3 PM, and these times are open:\n\n${slots.map((slot) => `- ${slot.label}`).join("\n")}\n\nWould one of those work for you?\n\nBest,\nNorthstar Exterior & Home`,
+          availability_refreshed_at: new Date().toISOString(),
+        },
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", communicationId);
+    if (error) return { success: false, error: error.message };
+    revalidatePath("/app", "layout");
+    return { success: true, data: { labels: slots.map((slot) => slot.label) } };
+  } catch (err) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "Could not refresh openings",
+    };
+  }
+}
+
+export async function completeExecutiveEmailScheduling(
+  replyToId: string
+): Promise<ActionResult<{ label: string; leadId: string }>> {
+  if (isLocalDemoMode()) {
+    try {
+      return { success: true, data: await completeLocalExecutiveEmailScheduling(replyToId) };
+    } catch (err) {
+      return {
+        success: false,
+        error: err instanceof Error ? err.message : "Could not complete scheduling",
+      };
+    }
+  }
+  const supabase = await createClient();
+  try {
+    const user = await requireUser(supabase);
+    const { data: comm } = await supabase
+      .from("communications")
+      .select("*")
+      .eq("id", replyToId)
+      .single();
+    if (!comm) return { success: false, error: "Scheduling email not found" };
+    const record = comm as Communication;
+    const recordMeta = metadataOf(record);
+    if (!record.lead_id || recordMeta.demo_action !== "executive_inbound_window_email") {
+      return { success: false, error: "Scheduling email not found" };
+    }
+    const rawSlots = Array.isArray(recordMeta.suggested_slots) ? recordMeta.suggested_slots : [];
+    const selected = rawSlots.find(
+      (slot): slot is { start: string; end: string; label: string } =>
+        Boolean(
+          slot &&
+            typeof slot === "object" &&
+            "start" in slot &&
+            "end" in slot &&
+            "label" in slot &&
+            typeof slot.start === "string" &&
+            typeof slot.end === "string" &&
+            typeof slot.label === "string"
+        )
+    );
+    if (!selected) return { success: false, error: "No verified appointment opening found" };
+    const { data: existing } = await supabase
+      .from("communications")
+      .select("id")
+      .eq("lead_id", record.lead_id)
+      .eq("metadata->>demo_action", "executive_email_slot_selected")
+      .eq("metadata->>source_communication_id", record.id)
+      .maybeSingle();
+    if (existing) return { success: true, data: { label: selected.label, leadId: record.lead_id } };
+
+    const [{ data: estimator }, { data: lead }] = await Promise.all([
+      supabase.from("profiles").select("id").eq("role", "sales_rep").limit(1).maybeSingle(),
+      supabase.from("leads").select("street_address").eq("id", record.lead_id).single(),
+    ]);
+    const confirmedAt = new Date().toISOString();
+    await supabase.from("communications").insert({
+      lead_id: record.lead_id,
+      contact_id: record.contact_id,
+      channel: "email",
+      direction: "inbound",
+      status: "received",
+      from_value: record.from_value,
+      to_value: record.to_value,
+      subject: record.subject?.toLowerCase().startsWith("re:")
+        ? record.subject
+        : `Re: ${record.subject ?? "Window estimate"}`,
+      body: `The first option, ${selected.label}, works for us. Thank you.`,
+      ai_summary: "Customer selected the first calendar-verified measurement appointment.",
+      suggested_next_action: "Appointment booked automatically; estimator calendar and CRM updated.",
+      metadata: {
+        demo_action: "executive_email_slot_selected",
+        source_communication_id: record.id,
+        selected_start: selected.start,
+        selected_end: selected.end,
+        needs_attention: false,
+      },
+      created_at: confirmedAt,
+      updated_at: confirmedAt,
+    });
+    await supabase.from("appointments").insert({
+      lead_id: record.lead_id,
+      title: "Window measurement visit",
+      appointment_type: "inspection",
+      start_time: selected.start,
+      end_time: selected.end,
+      status: "confirmed",
+      location: lead?.street_address ?? null,
+      assigned_to: estimator?.id ?? null,
+      source: "internal",
+    });
+    await supabase
+      .from("leads")
+      .update({ stage: "appointment_scheduled", updated_at: confirmedAt })
+      .eq("id", record.lead_id);
+    await supabase.from("activities").insert({
+      lead_id: record.lead_id,
+      user_id: user.id,
+      type: "appointment",
+      title: `Measurement visit booked after customer confirmation: ${selected.label}`,
+      description:
+        "Greg selected an offered opening. The AI recorded his reply, booked the visit, and blocked the estimator calendar.",
+      metadata: { automated: true, source: "email", start_time: selected.start },
+      created_at: confirmedAt,
+    });
+    revalidatePath("/app", "layout");
+    return { success: true, data: { label: selected.label, leadId: record.lead_id } };
+  } catch (err) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "Could not complete scheduling",
+    };
   }
 }
 

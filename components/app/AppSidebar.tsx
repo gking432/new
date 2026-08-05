@@ -82,8 +82,10 @@ export function AppSidebar({
     const events = [
       "northstar-call-done",
       "northstar-comm-sent",
+      "northstar-inbox-updated",
       "northstar-lead-saved",
       "northstar-task-completed",
+      "northstar-task-created",
     ];
     events.forEach((event) => window.addEventListener(event, refreshBadges));
 

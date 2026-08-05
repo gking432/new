@@ -328,7 +328,7 @@ export function LeadForm({
       <Card>
         <CardHeader>
           <CardTitle>What do you need help with?</CardTitle>
-          <CardDescription>Tell us what is going on. Pick a service if you know it.</CardDescription>
+          <CardDescription>Choose the home project, then tell us what is going on.</CardDescription>
         </CardHeader>
         <CardContent className="grid gap-4 sm:grid-cols-2">
           <Controller
@@ -336,12 +336,12 @@ export function LeadForm({
             name="service_type"
             render={({ field }) => (
               <SelectField
-                label="Service"
+                label="Home project"
                 value={field.value}
                 onChange={field.onChange}
                 error={errors.service_type?.message}
                 options={SERVICE_OPTIONS}
-                placeholder="Optional"
+                placeholder="Choose a home project"
               />
             )}
           />

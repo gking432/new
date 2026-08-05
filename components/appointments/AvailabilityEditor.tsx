@@ -25,6 +25,7 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import {
   addAvailabilityWindow,
+  blockDemoCalendarSlot,
   deleteAvailabilityWindow,
   setAvailabilityFromText,
 } from "@/lib/actions/appointments";
@@ -146,6 +147,19 @@ export function AvailabilityEditor({
   const nameById = new Map(profiles.map((p) => [p.id, p.full_name]));
   const selectedEstimatorName = nameById.get(estimatorId) ?? "selected estimator";
   const highlightedSlot = highlightedSlotStart ? new Date(highlightedSlotStart) : null;
+  const highlightedSlotEnd = highlightedSlot
+    ? new Date(highlightedSlot.getTime() + 60 * 60_000)
+    : null;
+  const highlightedSlotBooked = Boolean(
+    highlightedSlot &&
+      highlightedSlotEnd &&
+      appointments.some(
+        (appointment) =>
+          appointment.status !== "cancelled" &&
+          new Date(appointment.start_time).getTime() < highlightedSlotEnd.getTime() &&
+          new Date(appointment.end_time).getTime() > highlightedSlot.getTime()
+      )
+  );
   const selectedDate = selectedDateKey ? dateFromDemoDateKey(selectedDateKey, 12, 0) : null;
   const selectedDayOfWeek = selectedDate ? demoDayOfWeek(selectedDate) : null;
   const estimatorAppointments = appointments
@@ -237,6 +251,23 @@ export function AvailabilityEditor({
     });
   }
 
+  function blockHighlightedSlot() {
+    if (!highlightedSlot || !highlightedSlotEnd) return;
+    startTransition(async () => {
+      const result = await blockDemoCalendarSlot({
+        start_time: highlightedSlot.toISOString(),
+        end_time: highlightedSlotEnd.toISOString(),
+      });
+      if (result.success) {
+        window.dispatchEvent(new CustomEvent("northstar-executive-slot-blocked"));
+        toast.success("Calendar changed - that opening is no longer available");
+        router.refresh();
+      } else {
+        toast.error(result.error);
+      }
+    });
+  }
+
   // Group windows by estimator for display. The selected estimator also acts
   // as the quick filter the tour uses when checking Jess Romero.
   const grouped = new Map<string, AvailabilityWindow[]>();
@@ -261,6 +292,33 @@ export function AvailabilityEditor({
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-5">
+        {highlightedSlot ? (
+          <div
+            className="flex flex-wrap items-center gap-3 rounded-lg border-2 border-brand-gold bg-brand-gold/10 p-4"
+            data-tour="appointments-email-slot-check"
+          >
+            <CalendarRange className="h-5 w-5 text-brand-gold" />
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-semibold">Opening suggested for Greg</p>
+              <p className="text-xs text-muted-foreground">
+                {formatDemoDate(highlightedSlot, {
+                  weekday: "long",
+                  month: "short",
+                  day: "numeric",
+                })}{" "}
+                at {formatDemoTime(highlightedSlot)}
+              </p>
+            </div>
+            {highlightedSlotBooked ? (
+              <Badge variant="secondary">Now unavailable</Badge>
+            ) : (
+              <Button size="sm" onClick={blockHighlightedSlot} disabled={pending}>
+                {pending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+                Block this time
+              </Button>
+            )}
+          </div>
+        ) : null}
         {/* Manual add */}
         <div className="grid items-end gap-3 sm:grid-cols-2 lg:grid-cols-6">
           <div className="space-y-1.5 lg:col-span-2">

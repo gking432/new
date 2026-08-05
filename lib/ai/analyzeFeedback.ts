@@ -13,14 +13,7 @@ export interface AnalyzeFeedbackResult {
   aiUsed: boolean;
 }
 
-/**
- * Analyzes customer feedback, saves the record with its analysis, creates a
- * manager review task for high-risk feedback, and runs feedback automations.
- */
-export async function analyzeAndSaveFeedback(
-  supabase: SupabaseClient,
-  input: FeedbackFormValues
-): Promise<AnalyzeFeedbackResult> {
+export async function analyzeFeedbackContent(input: FeedbackFormValues) {
   let analysis: FeedbackAnalysisOutput;
   let aiUsed = false;
 
@@ -50,6 +43,19 @@ export async function analyzeAndSaveFeedback(
   } else {
     analysis = heuristicFeedbackAnalysis(input);
   }
+
+  return { analysis, aiUsed };
+}
+
+/**
+ * Analyzes customer feedback, saves the record with its analysis, creates a
+ * manager review task for high-risk feedback, and runs feedback automations.
+ */
+export async function analyzeAndSaveFeedback(
+  supabase: SupabaseClient,
+  input: FeedbackFormValues
+): Promise<AnalyzeFeedbackResult> {
+  const { analysis, aiUsed } = await analyzeFeedbackContent(input);
 
   const { data: saved, error } = await supabase
     .from("feedback")

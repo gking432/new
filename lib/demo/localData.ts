@@ -111,6 +111,10 @@ export async function getLocalTasks(): Promise<TaskWithLead[]> {
     }));
 }
 
+export async function getLocalFeedback() {
+  return (await readDemoState()).feedback;
+}
+
 export async function getLocalCommunications(): Promise<CommunicationWithLead[]> {
   const state = await readDemoState();
   return state.communications
@@ -252,7 +256,7 @@ export async function getLocalAvailableSlots(days = 14, limit = 24): Promise<App
 
 export async function getLocalReportData(): Promise<ReportData> {
   const state = await readDemoState();
-  return { leads: state.leads, tasks: await getLocalTasks(), feedback: [], profiles: state.profiles };
+  return { leads: state.leads, tasks: await getLocalTasks(), feedback: state.feedback, profiles: state.profiles };
 }
 
 export async function getLocalPropertyResearch(leadId: string) {

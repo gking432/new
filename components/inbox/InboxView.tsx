@@ -7,11 +7,13 @@ import {
   ArrowDownLeft,
   ArrowUpRight,
   Bot,
+  CalendarRange,
   Clock,
   Loader2,
   Mail,
   MessageSquareText,
   Reply,
+  RefreshCw,
   Send,
   Trash2,
   Wand2,
@@ -32,6 +34,8 @@ import {
   approveAndSimulateCommunication,
   draftSoonerInspectionSms,
   discardCommunication,
+  completeExecutiveEmailScheduling,
+  refreshExecutiveEmailOpenings,
   sendConversationReply,
 } from "@/lib/actions/inbox";
 import { cn } from "@/lib/utils";
@@ -222,6 +226,23 @@ export function InboxView({
   const pendingDraft = selected?.messages.find(
     (m) => m.direction === "outbound" && m.status === "draft"
   );
+  const executiveEmailSource = selected?.messages.find((message) => {
+    const meta = (message.metadata ?? {}) as Record<string, unknown>;
+    return meta.demo_action === "executive_inbound_window_email";
+  });
+  const executiveEmailSlots = Array.isArray(executiveEmailSource?.metadata?.suggested_slots)
+    ? executiveEmailSource.metadata.suggested_slots.filter(
+        (slot): slot is { start: string; label: string } =>
+          Boolean(
+            slot &&
+              typeof slot === "object" &&
+              "start" in slot &&
+              "label" in slot &&
+              typeof slot.start === "string" &&
+              typeof slot.label === "string"
+          )
+      )
+    : [];
   const approvalsCount = approvalConversations.length;
   const scheduledCount = automatedMessages.length;
   const attentionCount = conversations.reduce(
@@ -258,8 +279,8 @@ export function InboxView({
     if (isScheduled(msg)) {
       const due = new Date(msg.scheduled_send_at!).getTime() <= Date.now();
       return due
-        ? "automated reminder · due now"
-        : `automated reminder · ${formatRelative(msg.scheduled_send_at!)}`;
+        ? "scheduled reminder · due now"
+        : `scheduled reminder · ${formatRelative(msg.scheduled_send_at!)}`;
     }
     if (msg.status === "simulated_sent") return "sent (simulated)";
     if (msg.status === "approved") return "approved";
@@ -302,6 +323,20 @@ export function InboxView({
     });
   }
 
+  function refreshEmailOpenings() {
+    if (!executiveEmailSource) return;
+    startTransition(async () => {
+      const result = await refreshExecutiveEmailOpenings(executiveEmailSource.id);
+      if (result.success) {
+        window.dispatchEvent(new CustomEvent("northstar-executive-openings-refreshed"));
+        toast.success(`AI refreshed the calendar - next option: ${result.data.labels[0]}`);
+        router.refresh();
+      } else {
+        toast.error(result.error ?? "Could not refresh the calendar");
+      }
+    });
+  }
+
   function discard(draftId: string) {
     startTransition(async () => {
       const result = await discardCommunication(draftId);
@@ -329,14 +364,44 @@ export function InboxView({
 
   function sendReply() {
     if (!replyToId) return;
+    const sourceId = replyToId;
+    const source = selected?.messages.find((message) => message.id === sourceId);
+    const sourceMeta = (source?.metadata ?? {}) as Record<string, unknown>;
+    const completesExecutiveScheduling =
+      sourceMeta.demo_action === "executive_inbound_window_email";
     startTransition(async () => {
-      const sent = await sendConversationReply({ replyToId, body: replyBody });
+      const sent = await sendConversationReply({ replyToId: sourceId, body: replyBody });
       if (sent.success) {
         setReplyOpen(false);
         setReplyBody("");
         setReplyToId(null);
         window.dispatchEvent(new CustomEvent("northstar-comm-sent"));
         router.refresh();
+        if (completesExecutiveScheduling) {
+          toast("Options sent to Greg", {
+            description: "Waiting for the customer to choose an appointment time.",
+            position: "top-center",
+          });
+          window.setTimeout(async () => {
+            const confirmation = await completeExecutiveEmailScheduling(sourceId);
+            if (!confirmation.success) {
+              toast.error(confirmation.error ?? "Could not complete the email scheduling demo");
+              return;
+            }
+            window.dispatchEvent(new CustomEvent("northstar-inbox-updated"));
+            window.dispatchEvent(new CustomEvent("northstar-executive-email-booked"));
+            toast("Greg confirmed an appointment", {
+              description: `Greg selected ${confirmation.data.label}. The AI booked the visit and blocked the estimator calendar.`,
+              position: "top-center",
+              duration: 10000,
+              action: {
+                label: "Open Appointments",
+                onClick: () => router.push("/app/appointments"),
+              },
+            });
+            router.refresh();
+          }, 1500);
+        }
       } else {
         toast.error(sent.error ?? "Reply failed");
       }
@@ -372,7 +437,7 @@ export function InboxView({
             [
               ["conversations", "Conversations", attentionCount, "bg-red-500", "inbox-conversations"],
               ["approvals", "Approval queue", approvalsCount, "bg-red-500", "inbox-approvals"],
-              ["automated", "Automated", scheduledCount, "bg-blue-500", "inbox-scheduled"],
+              ["automated", "Scheduled", scheduledCount, "bg-blue-500", "inbox-scheduled"],
             ] as Array<[InboxTab, string, number, string, string]>
           ).map(([value, label, count, badgeClass, tour]) => (
             <button
@@ -425,7 +490,7 @@ export function InboxView({
             {filtered.length === 0 ? (
               <p className="px-3 py-10 text-center text-sm text-muted-foreground">
                 {tab === "automated"
-                  ? "No automated reminders yet."
+                  ? "No scheduled reminders yet."
                   : "No conversations yet. Use the demo guide to simulate an inbound text or email."}
               </p>
             ) : (
@@ -467,7 +532,7 @@ export function InboxView({
                       )}
                       {!convo.needsApproval && convo.messages.some(isScheduled) && (
                         <Badge className="bg-blue-100 text-blue-800 text-[10px]" variant="secondary">
-                          automated
+                          scheduled
                         </Badge>
                       )}
                     </div>
@@ -497,29 +562,53 @@ export function InboxView({
                 {tab === "automated" && (
                   <Badge variant="outline" className="gap-1 border-blue-200 bg-blue-50 text-blue-800">
                     <Clock className="h-3 w-3" />
-                    automated reminders
+                    scheduled reminders
                   </Badge>
                 )}
                 <span className="flex-1" />
                 {selected.channel === "email" && tab === "conversations" && (
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button size="sm" data-tour="inbox-email-reply">
-                        <Reply className="h-3.5 w-3.5" />
-                        Reply
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                      <DropdownMenuItem onClick={() => openReply("draft")}>
-                        <Wand2 className="h-3.5 w-3.5" />
-                        Draft a response
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => openReply("blank")}>
-                        <Reply className="h-3.5 w-3.5" />
-                        Type a response
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
+                  <>
+                    {executiveEmailSlots[0] ? (
+                      <>
+                        <Button size="sm" variant="outline" asChild data-tour="inbox-email-calendar">
+                          <Link
+                            href={`/app/appointments?slot=${encodeURIComponent(executiveEmailSlots[0].start)}`}
+                          >
+                            <CalendarRange className="h-3.5 w-3.5" />
+                            View {executiveEmailSlots.length} openings
+                          </Link>
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={refreshEmailOpenings}
+                          disabled={pending}
+                          data-tour="inbox-email-refresh"
+                        >
+                          <RefreshCw className={cn("h-3.5 w-3.5", pending && "animate-spin")} />
+                          Refresh openings
+                        </Button>
+                      </>
+                    ) : null}
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button size="sm" data-tour="inbox-email-reply">
+                          <Reply className="h-3.5 w-3.5" />
+                          Reply
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem onClick={() => openReply("draft")}>
+                          <Wand2 className="h-3.5 w-3.5" />
+                          Draft a response
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => openReply("blank")}>
+                          <Reply className="h-3.5 w-3.5" />
+                          Type a response
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </>
                 )}
                 {selected.lead && (
                   <Button size="sm" variant="outline" asChild>
@@ -611,7 +700,6 @@ export function InboxView({
                               <p className="mt-2 whitespace-pre-wrap text-sm leading-6">{msg.body}</p>
                             </div>
                           </div>
-                          <EmailSchedulingInsight message={msg} />
                         </div>
                       ))}
                 {selected.messages.filter((m) => m.status !== "draft").length === 0 && (
@@ -717,53 +805,6 @@ export function InboxView({
           )}
         </Card>
       </div>
-    </div>
-  );
-}
-
-function EmailSchedulingInsight({ message }: { message: CommunicationWithLead }) {
-  if (message.direction !== "inbound") return null;
-  const meta = (message.metadata ?? {}) as Record<string, unknown>;
-  if (meta.demo_action !== "executive_inbound_window_email") return null;
-  const constraints = Array.isArray(meta.scheduling_constraints)
-    ? meta.scheduling_constraints.filter((value): value is string => typeof value === "string")
-    : [];
-  const slots = Array.isArray(meta.suggested_slots)
-    ? meta.suggested_slots.filter(
-        (slot): slot is { label: string } =>
-          Boolean(slot && typeof slot === "object" && "label" in slot && typeof slot.label === "string")
-      )
-    : [];
-
-  return (
-    <div
-      className="ml-4 max-w-[92%] rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm shadow-sm"
-      data-tour="executive-email-scheduling"
-    >
-      <p className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-amber-800">
-        <Bot className="h-3.5 w-3.5" />
-        AI calendar check
-      </p>
-      <p className="mt-1 text-amber-950">
-        The AI extracted Greg&apos;s scheduling limits and checked open estimator time.
-      </p>
-      <div className="mt-2 flex flex-wrap gap-1.5">
-        {constraints.map((constraint) => (
-          <Badge key={constraint} variant="outline" className="border-amber-300 bg-white text-amber-900">
-            {constraint}
-          </Badge>
-        ))}
-      </div>
-      <div className="mt-3 grid gap-1.5 sm:grid-cols-3">
-        {slots.map((slot) => (
-          <div key={slot.label} className="rounded-md border border-amber-200 bg-white px-2.5 py-2 text-xs font-medium text-amber-950">
-            {slot.label}
-          </div>
-        ))}
-      </div>
-      <p className="mt-2 text-xs text-amber-800">
-        These slots are open now and will be included in the AI draft.
-      </p>
     </div>
   );
 }

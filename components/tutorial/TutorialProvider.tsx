@@ -374,6 +374,7 @@ export function TutorialProvider() {
             throw new Error(r.error);
           }
           r.data.events.forEach(appendDemoEvent);
+          window.dispatchEvent(new CustomEvent("northstar-inbox-updated"));
           toast("New email", {
             description: r.data.headline,
             position: "top-center",
@@ -529,6 +530,7 @@ export function TutorialProvider() {
             throw new Error(r.error);
           }
           r.data.events.forEach(appendDemoEvent);
+          window.dispatchEvent(new CustomEvent("northstar-inbox-updated"));
           toast("New scheduling email", {
             description: r.data.headline,
             position: "top-center",
@@ -542,20 +544,53 @@ export function TutorialProvider() {
     {
       id: "executive-open-email",
       title: "Open Greg's email conversation.",
-      body: "The AI matched the email to a new CRM lead and pulled valid appointment options from the shared calendar.\n\nOpen Conversations to see the original request, the extracted scheduling rules, and the openings the AI found.",
+      body: "The AI matched the email to a new CRM lead, understood that Greg needs a weekday after 3 PM, and checked the shared estimator calendar.\n\nOpen Conversations to read the original request.",
       spotlight: "inbox-conversations",
       spotlightHint: "Open Conversations",
       advance: { kind: "event", event: "northstar-inbox-conversations-opened" },
     },
     {
+      id: "executive-check-email-openings",
+      title: "Verify what the AI saw.",
+      body: "The AI found three openings that fit Greg's request. Instead of trusting a hidden recommendation, open the calendar and inspect the first available slot yourself.\n\nClick View openings. These are live openings from the same schedule the phone and email assistants use.",
+      spotlight: "inbox-email-calendar",
+      spotlightHint: "View the calendar openings",
+      advance: { kind: "navigate", pathname: "/app/appointments" },
+    },
+    {
+      id: "executive-email-openings-view",
+      title: "Change the schedule under the AI.",
+      body: "This is the first opening the AI found after applying Greg's weekday and after-3 PM limits. Existing appointments were excluded before it was suggested.\n\nNow create a conflict yourself. Click Block this time. The slot will become unavailable, and the AI will have to react to the changed calendar.",
+      spotlight: "appointments-email-slot-check",
+      spotlightHint: "Block the suggested time",
+      advance: { kind: "event", event: "northstar-executive-slot-blocked" },
+    },
+    {
+      id: "executive-back-to-email",
+      title: "Return to Greg's email.",
+      body: "Now return to Inbox. The AI draft will use the same verified openings you just saw on the estimator calendar.",
+      spotlight: "nav-inbox",
+      spotlightHint: "Return to Inbox",
+      advance: { kind: "navigate", pathname: "/app/inbox" },
+    },
+    {
+      id: "executive-refresh-email-openings",
+      title: "Make the AI check again.",
+      body: "The first suggestion is no longer open. Click Refresh openings. The AI will query the updated calendar, remove the conflict, and rebuild its choices before it writes the email.",
+      spotlight: "inbox-email-refresh",
+      spotlightHint: "Refresh the calendar choices",
+      advance: { kind: "event", event: "northstar-executive-openings-refreshed" },
+    },
+    {
       ...fullStep("reply-email"),
       id: "executive-reply-email",
-      body: "The AI has already read Greg's request and checked the calendar. Below the email, you can see the scheduling rules it extracted and the three openings it verified.\n\nClick Reply, then choose Draft a response. The reply will use those real openings instead of inventing a time.",
+      body: "The AI has already read Greg's request and checked the calendar.\n\nClick Reply, then choose Draft a response. The reply will offer the real openings you just verified instead of inventing a time.",
     },
     {
       ...fullStep("send-email-reply"),
       id: "executive-send-email-reply",
-      body: "Review the AI-written reply with the verified appointment options, then click Send reply.\n\nFor this executive demo, Greg selects the first opening. The AI records his response, books the measurement visit, blocks the calendar, and updates the CRM automatically.",
+      body: "Review the AI-written reply with the verified appointment options, then click Send reply.\n\nWatch the conversation after it sends. Greg must choose a time before the AI can book anything. Once his reply arrives, the AI will record his selection, book the measurement visit, block the calendar, and update the CRM.",
+      advance: { kind: "event", event: "northstar-executive-email-booked" },
     },
     {
       id: "executive-open-appointments",
@@ -567,26 +602,48 @@ export function TutorialProvider() {
     },
     {
       id: "executive-appointment-view",
-      title: "The calendar and CRM agree.",
-      body: "Greg's measurement visit is now booked against a real estimator opening. That slot is no longer available to another customer.\n\nThe email, customer reply, appointment, lead stage, and audit trail all stay connected. This is the same scheduling layer that can work during phone calls, texts, or inside an existing CRM.",
+      title: "The completed workflow is the proof.",
+      body: "Greg confirmed one of the calendar-verified times. Only then did the AI book the measurement visit. That slot is now blocked and cannot be offered to another customer.\n\nThe original email, AI-written choices, customer reply, appointment, lead stage, and audit trail all stay connected. This same scheduling layer can work during phone calls, texts, or inside an existing CRM.",
       spotlight: "appointments-estimator-calendar",
       spotlightHint: "Review the booked visit",
       advance: { kind: "manual" },
     },
-    fullStep("automations"),
     {
-      ...fullStep("automations-view"),
-      body: "This library shows how the same foundation expands across sales, marketing, customer service, operations, administration, and IT.\n\nExamples include missed-call rescue, review-risk triage, estimator prep, weather-aware rescheduling, data cleanup, and integration monitoring. Each workflow can run inside this custom CRM or through tools such as Zapier, Make, Power Automate, n8n, and native CRM APIs.",
+      id: "executive-feedback",
+      title: "Now test AI reputation triage.",
+      body: "A scheduling workflow protects revenue before the job. Review management protects the customer relationship after the work.\n\nOpen Feedback to test a new public review. You will provide the input and run the analysis yourself.",
+      spotlight: "nav-feedback",
+      spotlightHint: "Open Feedback",
+      advance: { kind: "navigate", pathname: "/app/feedback" },
     },
-    fullStep("reports"),
     {
-      ...fullStep("reports-view"),
-      body: "Reports turn workflow activity into management decisions. Leaders can track response time, booking rate, source quality, pipeline movement, follow-up health, and operational bottlenecks.\n\nThe AI layer summarizes changes, explains risks, and points managers toward the actions that matter most.",
+      id: "executive-load-review",
+      title: "Load a real customer-service problem.",
+      body: "Load the 2-star review. It describes a completed repair, repeated scheduling problems, missed callbacks, and a customer asking for a manager.\n\nNothing has been classified yet. Click the button to put that raw review into the analyzer.",
+      spotlight: "feedback-load-demo",
+      spotlightHint: "Load the 2-star review",
+      advance: { kind: "event", event: "northstar-feedback-loaded" },
+    },
+    {
+      id: "executive-analyze-review",
+      title: "Turn the review into work.",
+      body: "Click Analyze Feedback. The AI will score sentiment and risk, identify the operating problem, recommend a manager action, draft a public response, and create a review task when the risk is high.",
+      spotlight: "feedback-analyze",
+      spotlightHint: "Analyze the review",
+      advance: { kind: "event", event: "northstar-feedback-analyzed" },
+    },
+    {
+      id: "executive-review-result",
+      title: "The AI created an actionable result.",
+      body: "The review is no longer just a star rating. The system turned it into a risk level, complaint themes, an internal recovery action, a customer-facing response draft, and manager work the team can track.\n\nThat is the implementation pattern across this demo: understand unstructured customer input, apply business rules, complete the next operational step, and leave an audit trail.",
+      spotlight: "feedback-analysis-result",
+      spotlightHint: "Review the AI analysis",
+      advance: { kind: "manual" },
     },
     {
       id: "executive-done",
       title: "That is the five-minute executive tour.",
-      body: "You saw AI voice, live qualification, scheduling, human approval controls, email understanding, calendar booking, workflow automation, and management reporting.\n\nThe CRM is the demo surface. The product being demonstrated is the AI workflow layer: it listens, reasons over business rules, completes work, records what happened, and delivers useful information where the team needs it.",
+      body: "You saw AI voice qualify a lead and schedule an inspection, configurable approval controls, email understanding, calendar-aware reply drafting, explicit customer confirmation, automatic booking, and live reputation-risk triage.\n\nThe CRM is the demo surface. The product being demonstrated is the AI workflow layer: it understands customer input, follows business rules, completes operational steps, and records what happened inside the systems a team already uses.",
       advance: { kind: "manual" },
     },
   ];
@@ -1100,9 +1157,8 @@ function WelcomeTourModal({
             </button>
           </div>
           <p className="mt-3 text-sm leading-6 text-muted-foreground">
-            See how AI voice, scheduling, messaging, automation, and management reporting work
-            together. Customer-facing calls and sends are simulated, so nothing reaches a real
-            customer.
+            See how AI voice, scheduling, messaging, and CRM workflow completion work together.
+            Customer-facing calls and sends are simulated, so nothing reaches a real customer.
           </p>
           <div className="mt-5 grid gap-3 sm:grid-cols-2">
             <button
@@ -1116,11 +1172,11 @@ function WelcomeTourModal({
                 <Badge className="bg-brand-gold text-brand-dark">Recommended</Badge>
               </span>
               <span className="mt-2 block text-xs font-medium uppercase tracking-wide text-brand-dark/70">
-                About 5 minutes
+                About 6 minutes
               </span>
               <span className="mt-2 block text-sm leading-5 text-muted-foreground">
-                The strongest AI workflows: phone scheduling, email booking, automation, and
-                management reporting.
+                Live AI voice, calendar-aware scheduling, email booking, approval controls, and
+                reputation-risk triage.
               </span>
               <span className="mt-4 flex items-center gap-1 text-sm font-semibold text-primary">
                 Start executive tour <ChevronRight className="h-4 w-4" />

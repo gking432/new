@@ -233,6 +233,41 @@ export async function simulateLocalInboundEmail(options?: { executiveScheduling?
   };
 }
 
+export async function refreshLocalExecutiveEmailOpenings(communicationId: string) {
+  const allSlots = await getLocalAvailableSlots(21, 160);
+  const nextMondayOffset = ((8 - demoDayOfWeek(new Date())) % 7) || 7;
+  const nextWeekStart = demoDatePlusDays(nextMondayOffset, 0, 0).getTime();
+  const slots = allSlots
+    .filter(
+      (slot) =>
+        slot.start.getTime() >= nextWeekStart && demoWallClockParts(slot.start).hour >= 15
+    )
+    .slice(0, 3);
+  if (slots.length < 3) throw new Error("Could not find three new afternoon openings");
+  await mutateDemoState((state) => {
+    const source = state.communications.find(
+      (communication) => communication.id === communicationId
+    );
+    if (!source || source.metadata.demo_action !== "executive_inbound_window_email") {
+      throw new Error("Scheduling email not found");
+    }
+    const suggestedSlots = slots.map((slot) => ({
+      start: slot.start.toISOString(),
+      end: slot.end.toISOString(),
+      label: slot.label,
+    }));
+    source.metadata = {
+      ...source.metadata,
+      suggested_slots: suggestedSlots,
+      suggested_reply: `Hi Greg,\n\nThanks for reaching out. We can start with a free in-home measurement visit for the 12 windows. I refreshed our estimator calendar for next week after 3 PM, and these times are open:\n\n${slots.map((slot) => `- ${slot.label}`).join("\n")}\n\nWould one of those work for you?\n\nBest,\nNorthstar Exterior & Home`,
+      availability_refreshed_at: nowIso(),
+    };
+    source.updated_at = nowIso();
+  });
+  revalidatePath("/app", "layout");
+  return { labels: slots.map((slot) => slot.label) };
+}
+
 export async function sendLocalConversationReply(replyToId: string, body: string) {
   const trimmed = body.trim().slice(0, 5000);
   if (!trimmed) throw new Error("Reply cannot be empty");
@@ -259,94 +294,111 @@ export async function sendLocalConversationReply(replyToId: string, body: string
     source.updated_at = nowIso();
     if (source.lead_id) {
       const lead = state.leads.find((candidate) => candidate.id === source.lead_id);
-      const executiveScheduling = source.metadata.demo_action === "executive_inbound_window_email";
       if (lead && source.metadata.demo_action === "inbound_window_email") lead.stage = "contacted";
       state.activities.push(activity(source.lead_id, channel, `${channel === "email" ? "Email" : "Text"} reply sent (simulated)`, trimmed));
-      if (lead && executiveScheduling) {
-        const rawSlots = Array.isArray(source.metadata.suggested_slots)
-          ? source.metadata.suggested_slots
-          : [];
-        const selected = rawSlots.find(
-          (slot): slot is { start: string; end: string; label: string } =>
-            Boolean(
-              slot &&
-                typeof slot === "object" &&
-                "start" in slot &&
-                "end" in slot &&
-                "label" in slot &&
-                typeof slot.start === "string" &&
-                typeof slot.end === "string" &&
-                typeof slot.label === "string"
-            )
-        );
-        if (!selected) throw new Error("The scheduling email has no verified opening");
-
-        state.communications.push({
-          ...source,
-          id: demoId(),
-          direction: "inbound",
-          status: "received",
-          from_value: source.from_value,
-          to_value: source.to_value,
-          subject: source.subject?.toLowerCase().startsWith("re:")
-            ? source.subject
-            : `Re: ${source.subject ?? "Window estimate"}`,
-          body: `The first option, ${selected.label}, works for us. Thank you.`,
-          ai_summary: "Customer selected the first calendar-verified measurement appointment.",
-          suggested_next_action: "Appointment booked automatically; estimator calendar and CRM updated.",
-          ai_generated: false,
-          human_approved: false,
-          metadata: {
-            demo_action: "executive_email_slot_selected",
-            selected_start: selected.start,
-            selected_end: selected.end,
-          },
-          created_at: nowIso(800),
-          updated_at: nowIso(800),
-        });
-        state.appointments.push({
-          id: demoId(),
-          lead_id: lead.id,
-          contact_id: null,
-          title: "Window measurement visit",
-          appointment_type: "inspection",
-          start_time: selected.start,
-          end_time: selected.end,
-          status: "confirmed",
-          location: lead.street_address,
-          assigned_to: demoEstimatorId(state),
-          source: "internal",
-          external_calendar_id: null,
-          created_at: nowIso(900),
-          updated_at: nowIso(900),
-        });
-        lead.stage = "appointment_scheduled";
-        lead.updated_at = nowIso(900);
-        const analysis = state.analyses
-          .filter((candidate) => candidate.lead_id === lead.id)
-          .sort((a, b) => b.created_at.localeCompare(a.created_at))[0];
-        if (analysis) {
-          analysis.summary = `Greg requested a 12-window replacement before winter. The AI extracted his weekday-after-3 PM constraint and booked a measurement visit for ${selected.label}.`;
-          analysis.recommended_next_action =
-            "Prepare the estimator with the email summary and measurement-visit details.";
-          analysis.recommended_contact_window = "Appointment confirmed";
-          analysis.lead_quality_reasoning =
-            "The customer provided clear scope, scheduling constraints, and committed to a measurement visit.";
-          analysis.tags = ["windows", "email_scheduling", "appointment_scheduled"];
-        }
-        state.activities.push(
-          activity(
-            lead.id,
-            "appointment",
-            `Measurement visit booked from AI email workflow: ${selected.label}`,
-            "AI extracted the scheduling rules, offered only open times, recorded the customer's selection, and blocked the estimator calendar.",
-            900
-          )
-        );
-      }
     }
   });
   revalidatePath("/app", "layout");
+}
+
+export async function completeLocalExecutiveEmailScheduling(replyToId: string) {
+  const result = await mutateDemoState((state) => {
+    const source = state.communications.find((communication) => communication.id === replyToId);
+    if (!source?.lead_id || source.metadata.demo_action !== "executive_inbound_window_email") {
+      throw new Error("Scheduling email not found");
+    }
+    const existingReply = state.communications.find(
+      (communication) =>
+        communication.metadata.demo_action === "executive_email_slot_selected" &&
+        communication.metadata.source_communication_id === source.id
+    );
+    const rawSlots = Array.isArray(source.metadata.suggested_slots)
+      ? source.metadata.suggested_slots
+      : [];
+    const selected = rawSlots.find(
+      (slot): slot is { start: string; end: string; label: string } =>
+        Boolean(
+          slot &&
+            typeof slot === "object" &&
+            "start" in slot &&
+            "end" in slot &&
+            "label" in slot &&
+            typeof slot.start === "string" &&
+            typeof slot.end === "string" &&
+            typeof slot.label === "string"
+        )
+    );
+    if (!selected) throw new Error("The scheduling email has no verified opening");
+    if (existingReply) return { label: selected.label, leadId: source.lead_id };
+
+    const lead = state.leads.find((candidate) => candidate.id === source.lead_id);
+    if (!lead) throw new Error("Lead not found");
+    const replyAt = nowIso();
+    state.communications.push({
+      ...source,
+      id: demoId(),
+      direction: "inbound",
+      status: "received",
+      subject: source.subject?.toLowerCase().startsWith("re:")
+        ? source.subject
+        : `Re: ${source.subject ?? "Window estimate"}`,
+      body: `The first option, ${selected.label}, works for us. Thank you.`,
+      ai_summary: "Customer selected the first calendar-verified measurement appointment.",
+      suggested_next_action: "Appointment booked automatically; estimator calendar and CRM updated.",
+      ai_generated: false,
+      human_approved: false,
+      metadata: {
+        demo_action: "executive_email_slot_selected",
+        source_communication_id: source.id,
+        selected_start: selected.start,
+        selected_end: selected.end,
+        needs_attention: false,
+      },
+      created_at: replyAt,
+      updated_at: replyAt,
+    });
+    state.appointments.push({
+      id: demoId(),
+      lead_id: lead.id,
+      contact_id: null,
+      title: "Window measurement visit",
+      appointment_type: "inspection",
+      start_time: selected.start,
+      end_time: selected.end,
+      status: "confirmed",
+      location: lead.street_address,
+      assigned_to: demoEstimatorId(state),
+      source: "internal",
+      external_calendar_id: null,
+      created_at: replyAt,
+      updated_at: replyAt,
+    });
+    lead.stage = "appointment_scheduled";
+    lead.updated_at = replyAt;
+    const analysis = state.analyses
+      .filter((candidate) => candidate.lead_id === lead.id)
+      .sort((a, b) => b.created_at.localeCompare(a.created_at))[0];
+    if (analysis) {
+      analysis.summary = `Greg requested a 12-window replacement before winter. The AI extracted his weekday-after-3 PM constraint and booked a measurement visit for ${selected.label}.`;
+      analysis.recommended_next_action =
+        "Prepare the estimator with the email summary and measurement-visit details.";
+      analysis.recommended_contact_window = "Appointment confirmed";
+      analysis.lead_quality_reasoning =
+        "The customer provided clear scope, scheduling constraints, and committed to a measurement visit.";
+      analysis.tags = ["windows", "email_scheduling", "appointment_scheduled"];
+    }
+    state.activities.push(
+      activity(
+        lead.id,
+        "appointment",
+        `Measurement visit booked after customer confirmation: ${selected.label}`,
+        "Greg selected an offered opening. The AI recorded his reply, booked the visit, and blocked the estimator calendar."
+      )
+    );
+    return { label: selected.label, leadId: lead.id };
+  });
+  revalidatePath("/app", "layout");
+  return result;
 }
 
 export async function draftLocalSoonerInspectionSms(communicationId: string) {

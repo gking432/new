@@ -48,6 +48,12 @@ export interface CallEngineOptions {
   onFinished?: (result: CompleteCallResult) => void;
 }
 
+function isCallGoodbye(text: string) {
+  return /\b(?:bye|goodbye|take care|talk to you later|talk soon|see you(?: then| soon)?|have a (?:good|great|nice) (?:day|evening|night|weekend))\b/i.test(
+    text
+  );
+}
+
 /**
  * The call engine: owns the Realtime WebRTC connection (or scripted state),
  * the transcript, the timer/cap, and the post-call pipeline call. UI shells
@@ -79,6 +85,9 @@ export function useCallEngine(options: CallEngineOptions) {
   const secondsRef = useRef(0);
   const wrapUpSentRef = useRef(false);
   const endedRef = useRef(false);
+  const humanGoodbyeRef = useRef(false);
+  const aiGoodbyeRef = useRef(false);
+  const autoEndTimerRef = useRef<number | null>(null);
   const sessionRef = useRef<SessionResponse | null>(null);
   const modeRef = useRef<"realtime" | "scripted" | null>(null);
 
@@ -92,6 +101,10 @@ export function useCallEngine(options: CallEngineOptions) {
   }, []);
 
   const cleanupMedia = useCallback(() => {
+    if (autoEndTimerRef.current !== null) {
+      window.clearTimeout(autoEndTimerRef.current);
+      autoEndTimerRef.current = null;
+    }
     streamRef.current?.getTracks().forEach((t) => t.stop());
     streamRef.current = null;
     dcRef.current = null;
@@ -176,6 +189,21 @@ export function useCallEngine(options: CallEngineOptions) {
     },
     [cleanupMedia, emit]
   );
+
+  const scheduleGoodbyeHangup = useCallback(() => {
+    if (
+      endedRef.current ||
+      autoEndTimerRef.current !== null ||
+      !humanGoodbyeRef.current ||
+      !aiGoodbyeRef.current
+    ) {
+      return;
+    }
+    autoEndTimerRef.current = window.setTimeout(() => {
+      autoEndTimerRef.current = null;
+      void endCall();
+    }, 1200);
+  }, [endCall]);
 
   // Call timer + duration cap.
   useEffect(() => {
@@ -262,6 +290,7 @@ export function useCallEngine(options: CallEngineOptions) {
           switch (data.type) {
             case "conversation.item.input_audio_transcription.completed":
               if (data.transcript?.trim()) {
+                if (isCallGoodbye(data.transcript)) humanGoodbyeRef.current = true;
                 pushTurn({
                   speaker: "customer",
                   text: data.transcript.trim(),
@@ -278,7 +307,11 @@ export function useCallEngine(options: CallEngineOptions) {
             case "response.audio_transcript.done":
             case "response.output_audio_transcript.done": {
               const text = (data.transcript ?? aiBuffer.text).trim();
-              if (text) pushTurn({ speaker: "ai", text, at: secondsRef.current });
+              if (text) {
+                if (isCallGoodbye(text)) aiGoodbyeRef.current = true;
+                pushTurn({ speaker: "ai", text, at: secondsRef.current });
+                scheduleGoodbyeHangup();
+              }
               aiBuffer.text = "";
               setLiveAiText("");
               break;
@@ -286,6 +319,7 @@ export function useCallEngine(options: CallEngineOptions) {
             case "output_audio_buffer.stopped":
             case "response.done":
               setAiSpeaking(false);
+              scheduleGoodbyeHangup();
               break;
             default:
               break;
@@ -325,7 +359,7 @@ export function useCallEngine(options: CallEngineOptions) {
         fallbackToScripted(err instanceof Error ? err.message : "connection error");
       }
     },
-    [emit, fallbackToScripted, pushTurn]
+    [emit, fallbackToScripted, pushTurn, scheduleGoodbyeHangup]
   );
 
   const answer = useCallback(async () => {

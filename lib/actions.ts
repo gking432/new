@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { analyzeAndSaveLead } from "@/lib/ai/analyzeLead";
-import { analyzeAndSaveFeedback } from "@/lib/ai/analyzeFeedback";
+import { analyzeAndSaveFeedback, analyzeFeedbackContent } from "@/lib/ai/analyzeFeedback";
 import { generateAndSaveFollowup } from "@/lib/ai/generateFollowup";
 import { analyzeLeadForAutomation, buildWebhookPreview } from "@/lib/ai-workflows/services";
 import { runAiWorkflowModule } from "@/lib/ai-workflows/runModule";
@@ -14,7 +14,7 @@ import { createClient } from "@/lib/supabase/server";
 import { feedbackFormSchema, type FeedbackFormValues } from "@/lib/validations/feedback";
 import { followupRequestSchema, type FollowupRequest } from "@/lib/validations/followup";
 import { leadFormSchema, leadStageSchema, type LeadFormInput } from "@/lib/validations/lead";
-import type { Lead, TaskPriority, TaskType } from "@/types/app";
+import type { Feedback, Lead, TaskPriority, TaskType } from "@/types/app";
 import { isLocalDemoMode } from "@/lib/demo/mode";
 import { submitLocalWebLead } from "@/lib/demo/localWorkflows";
 import { demoId, mutateDemoState } from "@/lib/demo/serverStore";
@@ -406,6 +406,60 @@ export async function analyzeFeedback(
 ): Promise<ActionResult<Awaited<ReturnType<typeof analyzeAndSaveFeedback>>>> {
   const parsed = feedbackFormSchema.safeParse(input);
   if (!parsed.success) return { success: false, error: "Please check the feedback form" };
+
+  if (isLocalDemoMode()) {
+    try {
+      const { analysis, aiUsed } = await analyzeFeedbackContent(parsed.data);
+      const createdAt = new Date().toISOString();
+      const feedback: Feedback = {
+        id: demoId(),
+        customer_name: parsed.data.customer_name || null,
+        source: parsed.data.source,
+        rating: parsed.data.rating ?? null,
+        feedback_text: parsed.data.feedback_text,
+        sentiment: analysis.sentiment,
+        risk_level: analysis.risk_level,
+        summary: analysis.summary,
+        key_praise: analysis.key_praise,
+        key_complaints: analysis.key_complaints,
+        operational_category: analysis.operational_category,
+        suggested_internal_action: analysis.suggested_internal_action,
+        suggested_customer_response: analysis.suggested_customer_response,
+        marketing_quote_opportunity: analysis.marketing_quote_opportunity,
+        tags: analysis.tags,
+        raw_output: analysis,
+        created_at: createdAt,
+      };
+      await mutateDemoState((state) => {
+        state.feedback.unshift(feedback);
+        if (analysis.risk_level === "high" || analysis.risk_level === "urgent") {
+          state.tasks.push({
+            id: demoId(),
+            lead_id: null,
+            assigned_to: null,
+            title: `Review ${analysis.risk_level}-risk customer feedback${
+              parsed.data.customer_name ? ` from ${parsed.data.customer_name}` : ""
+            }`,
+            description: `${analysis.summary}\n\nSuggested action: ${analysis.suggested_internal_action}`,
+            type: "manager_review",
+            priority: analysis.risk_level === "urgent" ? "urgent" : "high",
+            status: "open",
+            due_at: new Date(Date.now() + 24 * 60 * 60_000).toISOString(),
+            completed_at: null,
+            created_at: createdAt,
+            updated_at: createdAt,
+          });
+        }
+      });
+      revalidatePath("/app", "layout");
+      return { success: true, data: { feedback, analysis, aiUsed } };
+    } catch (err) {
+      return {
+        success: false,
+        error: err instanceof Error ? err.message : "Feedback analysis failed",
+      };
+    }
+  }
 
   const supabase = await createClient();
   try {

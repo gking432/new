@@ -11,6 +11,7 @@ import { customerServiceLabel } from "@/lib/utils/statuses";
 import { isLocalDemoMode } from "@/lib/demo/mode";
 import { getLocalAvailableSlots } from "@/lib/demo/localData";
 import { createLocalAppointment, updateLocalAppointmentStatus } from "@/lib/demo/localWorkflows";
+import { demoEstimatorId, demoId, mutateDemoState } from "@/lib/demo/serverStore";
 
 type ActionResult<T = undefined> =
   | { success: true; data: T }
@@ -156,6 +157,83 @@ export async function getDemoInspectionSlots(
     };
   } catch (err) {
     return { success: false, error: err instanceof Error ? err.message : "Could not load slots" };
+  }
+}
+
+export async function blockDemoCalendarSlot(input: {
+  start_time: string;
+  end_time: string;
+}): Promise<ActionResult<undefined>> {
+  const start = new Date(input.start_time);
+  const end = new Date(input.end_time);
+  if (
+    Number.isNaN(start.getTime()) ||
+    Number.isNaN(end.getTime()) ||
+    end.getTime() <= start.getTime()
+  ) {
+    return { success: false, error: "Invalid calendar time" };
+  }
+  if (isLocalDemoMode()) {
+    await mutateDemoState((state) => {
+      if (
+        state.appointments.some(
+          (appointment) =>
+            appointment.status !== "cancelled" &&
+            new Date(appointment.start_time).getTime() < end.getTime() &&
+            new Date(appointment.end_time).getTime() > start.getTime()
+        )
+      ) {
+        return;
+      }
+      const now = new Date().toISOString();
+      state.appointments.push({
+        id: demoId(),
+        lead_id: null,
+        contact_id: null,
+        title: "Internal calendar hold",
+        appointment_type: "calendar_hold",
+        start_time: start.toISOString(),
+        end_time: end.toISOString(),
+        status: "confirmed",
+        location: null,
+        assigned_to: demoEstimatorId(state),
+        source: "internal",
+        external_calendar_id: null,
+        created_at: now,
+        updated_at: now,
+      });
+    });
+    revalidatePath("/app", "layout");
+    return { success: true, data: undefined };
+  }
+
+  const supabase = await createClient();
+  try {
+    const user = await requireUser(supabase);
+    const { data: estimator } = await supabase
+      .from("profiles")
+      .select("id")
+      .eq("role", "sales_rep")
+      .limit(1)
+      .maybeSingle();
+    const { error } = await supabase.from("appointments").insert({
+      lead_id: null,
+      title: "Internal calendar hold",
+      appointment_type: "calendar_hold",
+      start_time: start.toISOString(),
+      end_time: end.toISOString(),
+      status: "confirmed",
+      assigned_to: estimator?.id ?? user.id,
+      source: "internal",
+    });
+    if (error) return { success: false, error: error.message };
+    revalidatePath("/app", "layout");
+    return { success: true, data: undefined };
+  } catch (err) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "Could not block the calendar time",
+    };
   }
 }
 
