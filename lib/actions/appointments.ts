@@ -400,6 +400,7 @@ export async function setAvailabilityFromText(
           system: `You convert a contractor's plain-English appointment availability into structured weekly windows. day_of_week uses 0=Sunday … 6=Saturday. Times are 24-hour "HH:MM". slot_minutes is the appointment length (default 60). Only include days the person can work. Respond with JSON: {"windows": [{"day_of_week", "start_time", "end_time", "slot_minutes"}]}.`,
           user: trimmed,
           schema: AvailabilityWindowsSchema,
+          schemaName: "availability_windows",
           maxTokens: 500,
         });
         usedAI = true;

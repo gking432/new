@@ -171,7 +171,7 @@ export function FeedbackAnalyzer() {
             <CardTitle>Analysis</CardTitle>
             {result ? (
               <Badge variant="outline" className="text-xs">
-                {result.aiUsed ? "AI analysis" : "Keyword heuristics (AI offline)"}
+                {result.aiUsed ? "Schema-validated AI analysis" : "Rule-based fallback"}
               </Badge>
             ) : null}
           </div>

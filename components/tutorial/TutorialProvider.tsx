@@ -20,6 +20,7 @@ import { Button } from "@/components/ui/button";
 import { useCall, useLiveCall } from "@/components/calls/CallProvider";
 import { LeadForm } from "@/components/public/LeadForm";
 import { Spotlight } from "@/components/tutorial/Spotlight";
+import { ensureDemoStorylineLead } from "@/lib/actions/demo";
 import { simulateInboundEmail, simulateInboundText } from "@/lib/actions/inbox";
 import { appendDemoEvent } from "@/lib/demo-log";
 
@@ -103,6 +104,7 @@ export function TutorialProvider() {
   const [confirmSimulationOpen, setConfirmSimulationOpen] = useState(false);
   const [showManualNext, setShowManualNext] = useState(true);
   const [pulseNext, setPulseNext] = useState(false);
+  const [storylineLeadId, setStorylineLeadId] = useState<string | null>(null);
   const welcomeHandledRef = useRef<string | null>(null);
 
   // ── Step definitions ──────────────────────────────────────────────────────
@@ -116,7 +118,7 @@ export function TutorialProvider() {
     {
       id: "you-answer",
       title: "First, you are the sales rep.",
-      body: "Act as the company rep and watch the AI help in real time.\n\nWhat to do:\n1. Click Start.\n2. Answer the fake call in the top-left.\n3. Have your audio on and talk out loud.\n4. Ask for the customer's name, phone, email, address, what happened, how urgent it is, and when they want an inspection.\n5. When you schedule, try asking about 5:30 tomorrow first.\n\nThe CRM starts blank because the system does not know who is calling yet. As the customer answers, the AI listens, fills the lead form, drafts CRM notes, and checks the schedule while you talk.",
+      body: "Act as the company rep and watch the AI help in real time.\n\nWhat to do:\n1. Click Start.\n2. Answer the browser call, or choose Simulate call for a silent walkthrough.\n3. In the live version, ask for the customer's name, phone, email, address, what happened, how urgent it is, and when they want an inspection.\n4. When you schedule, try asking about 5:30 tomorrow first.\n\nThe CRM starts blank because the system does not know who is calling yet. As the conversation progresses, the AI fills the lead form, drafts CRM notes, and checks the schedule.",
       action: {
         label: "Start",
         icon: Headphones,
@@ -216,7 +218,7 @@ export function TutorialProvider() {
     {
       id: "speed-to-lead",
       title: "Now meet the AI phone scheduler.",
-      body: "This step shows the AI assistant handling a new website lead.\n\nA homeowner fills out the form. The AI calls back quickly, gathers details, checks the CRM, and books an inspection. Fast speed-to-lead is one benefit, but the bigger point is the AI phone person and scheduler doing real follow-up work.\n\nWhat to do:\n1. Click Open form.\n2. Put in your real first and last name.\n3. Use fake contact details if you want.\n4. Submit the request.\n5. Turn your audio up and answer the fake AI call.\n\nYou are now the customer.",
+      body: "This step shows the AI assistant handling a new website lead.\n\nA homeowner fills out the form. The AI calls back quickly, gathers details, checks the CRM, and books an inspection. Fast speed-to-lead is one benefit, but the bigger point is the AI phone person and scheduler doing real follow-up work.\n\nWhat to do:\n1. Click Open form.\n2. Put in your real first and last name.\n3. Use fake contact details if you want.\n4. Submit the request.\n5. Answer the browser call, or choose Simulate call for a silent walkthrough.\n\nYou are now the customer.",
       action: {
         label: "Open form",
         icon: PhoneOutgoing,
@@ -269,13 +271,19 @@ export function TutorialProvider() {
     },
     {
       id: "text",
-      title: "Remember Jordan Avery? They text back.",
-      body: "Jordan sends an urgent update: the leak is getting worse and they want someone there sooner.\n\nWatch the notification at the top of the screen. The AI matches the phone number, flags the message urgent, and looks for an earlier estimator opening.",
+      title: "The same customer texts back.",
+      body: "The lead created earlier sends an urgent update: the leak is getting worse and they want someone there sooner.\n\nWatch the notification at the top of the screen. The CRM resolves the exact lead, flags the message urgent, and looks for an earlier estimator opening.",
       action: {
         label: "Send text",
         icon: MessageSquareText,
         run: async () => {
-          const r = await simulateInboundText();
+          const context = await ensureDemoStorylineLead(storylineLeadId);
+          if (!context.success) {
+            toast.error(context.error);
+            throw new Error(context.error);
+          }
+          setStorylineLeadId(context.data.lead.id);
+          const r = await simulateInboundText({ leadId: context.data.lead.id });
           if (!r.success) {
             toast.error(r.error);
             throw new Error(r.error);
@@ -762,6 +770,11 @@ export function TutorialProvider() {
   }, [pathname, router, searchParams]);
 
   useEffect(() => {
+    const match = pathname.match(/^\/app\/leads\/([^/]+)$/);
+    if (match?.[1] && match[1] !== "new") setStorylineLeadId(match[1]);
+  }, [pathname]);
+
+  useEffect(() => {
     if (typeof window === "undefined") return;
     const href = window.location.href;
     const hasWelcomeParam = new URLSearchParams(window.location.search).get("tour") === "welcome";
@@ -972,6 +985,7 @@ export function TutorialProvider() {
       onClose={() => setRequestFormOpen(false)}
       onSubmit={(lead) => {
         setRequestFormOpen(false);
+        setStorylineLeadId(lead.leadId);
         startCall({
           scenario: "speed_to_lead_outbound",
           leadId: lead.leadId,
@@ -1175,8 +1189,8 @@ function WelcomeTourModal({
                 About 6 minutes
               </span>
               <span className="mt-2 block text-sm leading-5 text-muted-foreground">
-                Live AI voice, calendar-aware scheduling, email booking, approval controls, and
-                reputation-risk triage.
+                Live or silent call simulation, calendar-aware scheduling, email booking,
+                approval controls, and reputation-risk triage.
               </span>
               <span className="mt-4 flex items-center gap-1 text-sm font-semibold text-primary">
                 Start executive tour <ChevronRight className="h-4 w-4" />
@@ -1235,41 +1249,53 @@ function RequestFormOverlay({
   }) => void;
 }) {
   return (
-    <div className="fixed inset-y-0 left-0 right-0 z-30 overflow-y-auto bg-zinc-950/70 p-4 backdrop-blur-sm lg:right-[340px]">
-      <div className="mx-auto flex min-h-full max-w-5xl items-center justify-center gap-6">
-        <div className="hidden max-w-sm rounded-lg border border-white/15 bg-zinc-900/95 p-5 text-white shadow-2xl md:block">
-          <p className="text-xs font-semibold uppercase tracking-wide text-brand-gold">
-            Speed-to-lead
-          </p>
-          <h2 className="mt-2 text-xl font-semibold tracking-tight">
-            The best lead is the one you call back right away.
-          </h2>
-          <p className="mt-3 text-sm text-white/75">
-            Many sales teams see far better contact rates when a new web lead gets a call inside
-            the first minute. This demo shows that handoff: form submit, instant AI callback, booked
-            inspection, and CRM update.
-          </p>
-          <div className="mt-4 grid grid-cols-2 gap-3">
-            <div className="rounded-md bg-white/10 p-3">
-              <p className="text-2xl font-bold text-brand-gold">60 sec</p>
-              <p className="mt-1 text-xs text-white/70">target callback window</p>
+    <div className="fixed inset-y-0 left-0 right-0 z-30 overflow-y-auto bg-zinc-950/70 p-6 backdrop-blur-sm lg:right-[340px]">
+      <div className="mx-auto flex min-h-full max-w-6xl items-center justify-center">
+        <section className="grid w-full overflow-hidden rounded-xl border bg-background shadow-2xl md:grid-cols-[0.8fr_1.2fr]">
+          <div className="border-b bg-zinc-900 p-7 text-white md:border-b-0 md:border-r">
+            <div className="flex items-start justify-between gap-4">
+              <p className="text-xs font-semibold uppercase tracking-wide text-brand-gold">
+                Speed-to-lead workflow
+              </p>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                onClick={onClose}
+                aria-label="Close form"
+                className="h-8 w-8 text-white hover:bg-white/10 hover:text-white md:hidden"
+              >
+                <X className="h-4 w-4" />
+              </Button>
             </div>
-            <div className="rounded-md bg-white/10 p-3">
-              <p className="text-2xl font-bold text-brand-gold">24/7</p>
-              <p className="mt-1 text-xs text-white/70">AI intake coverage</p>
+            <h2 className="mt-3 text-2xl font-semibold tracking-tight">
+              One request becomes a complete CRM workflow.
+            </h2>
+            <p className="mt-3 text-sm leading-6 text-white/75">
+              Submit this desktop website form. The demo creates or matches the lead, starts the
+              callback, captures the conversation, books an inspection, and prepares the next
+              customer message for approval.
+            </p>
+            <div className="mt-6 space-y-3 text-sm">
+              {["Identity-matched CRM record", "Calendar-aware scheduling", "Human-approved follow-up"].map(
+                (item, index) => (
+                  <div key={item} className="flex items-center gap-3 rounded-md bg-white/10 p-3">
+                    <span className="flex h-6 w-6 items-center justify-center rounded-full bg-brand-gold text-xs font-bold text-zinc-950">
+                      {index + 1}
+                    </span>
+                    {item}
+                  </div>
+                )
+              )}
             </div>
           </div>
-        </div>
-
-        <div className="relative w-full max-w-[390px] rounded-[2.25rem] border-[10px] border-zinc-900 bg-zinc-900 shadow-2xl">
-          <div className="absolute left-1/2 top-2 z-10 h-5 w-24 -translate-x-1/2 rounded-full bg-zinc-950" />
-          <div className="max-h-[86vh] overflow-y-auto rounded-[1.55rem] bg-background pt-8">
-            <div className="sticky top-0 z-10 flex items-start justify-between gap-3 border-b bg-background/95 px-4 py-3 backdrop-blur">
+          <div className="max-h-[88vh] overflow-y-auto">
+            <div className="sticky top-0 z-10 flex items-start justify-between gap-3 border-b bg-background/95 px-6 py-4 backdrop-blur">
               <div>
                 <p className="text-xs font-semibold uppercase tracking-wide text-brand-gold">
-                  Mobile lead form
+                  Customer request
                 </p>
-                <h2 className="text-sm font-semibold">Use your name, then submit.</h2>
+                <h2 className="text-base font-semibold">Create the storyline lead</h2>
               </div>
               <Button
                 type="button"
@@ -1277,16 +1303,16 @@ function RequestFormOverlay({
                 size="icon"
                 onClick={onClose}
                 aria-label="Close form"
-                className="h-8 w-8"
+                className="hidden h-8 w-8 md:inline-flex"
               >
                 <X className="h-4 w-4" />
               </Button>
             </div>
-            <div className="p-4">
+            <div className="p-6">
               <LeadForm dashboardDemo showDemoFill={false} onDashboardSubmit={onSubmit} />
             </div>
           </div>
-        </div>
+        </section>
       </div>
     </div>
   );
@@ -1305,12 +1331,10 @@ function SimulationConfirmDialog({
         <p className="text-xs font-semibold uppercase tracking-wide text-brand-gold">
           Simulate call?
         </p>
-        <h2 className="mt-2 text-lg font-semibold tracking-tight">
-          I recommend doing the live call.
-        </h2>
+        <h2 className="mt-2 text-lg font-semibold tracking-tight">Choose the right pace for the room.</h2>
         <p className="mt-2 text-sm leading-6 text-muted-foreground">
-          The best version of this demo is hearing the AI and watching the notes fill in while you
-          talk. Simulate call will skip the voice part and fill the form with a sample conversation.
+          The live call demonstrates the voice experience. Simulate call runs the same downstream
+          CRM, scheduling, task, and approval workflow without using audio.
         </p>
         <div className="mt-5 flex justify-end gap-2">
           <Button type="button" variant="outline" onClick={onCancel}>

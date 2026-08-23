@@ -207,7 +207,7 @@ export function FollowupComposer({ leads }: { leads: Lead[] }) {
             <CardTitle>Draft</CardTitle>
             {result ? (
               <Badge variant="outline" className="text-xs">
-                {result.aiUsed ? "AI draft — review before sending" : "Template draft (AI offline)"}
+                {result.aiUsed ? "Schema-validated AI draft — review before sending" : "Rule-based template fallback"}
               </Badge>
             ) : null}
           </div>

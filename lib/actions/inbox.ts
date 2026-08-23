@@ -345,10 +345,12 @@ export interface InboundResult {
   headline: string;
 }
 
-export async function simulateInboundText(): Promise<ActionResult<InboundResult>> {
+export async function simulateInboundText(options?: {
+  leadId?: string | null;
+}): Promise<ActionResult<InboundResult>> {
   if (isLocalDemoMode()) {
     try {
-      return { success: true, data: await simulateLocalInboundText() };
+      return { success: true, data: await simulateLocalInboundText(options) };
     } catch (err) {
       return { success: false, error: err instanceof Error ? err.message : "Simulation failed" };
     }
@@ -358,45 +360,33 @@ export async function simulateInboundText(): Promise<ActionResult<InboundResult>
     await requireUser(supabase);
     const events: string[] = [];
 
-    // The guided tour text follow-up belongs to the first caller, Jordan Avery.
-    // Match defensively by phone and name so this never attaches to the user's
-    // later web-form lead.
     const { data: recentLeads } = await supabase
       .from("leads")
       .select("*")
       .order("created_at", { ascending: false })
       .limit(100);
-    const lead =
-      ((recentLeads ?? []) as Lead[]).find((candidate) => {
+    const candidates = (recentLeads ?? []) as Lead[];
+    const lead = options?.leadId
+      ? candidates.find((candidate) => candidate.id === options.leadId) ?? null
+      : candidates.find((candidate) => {
         const phone = (candidate.phone ?? "").replace(/\D/g, "");
         const name = `${candidate.first_name ?? ""} ${candidate.last_name ?? ""}`.toLowerCase();
         return phone.endsWith("4145550123") || (name.includes("jordan") && name.includes("avery"));
-      }) ?? null;
+      }) ?? candidates[0] ?? null;
     if (!lead) {
       return {
         success: false,
-        error: "No customers yet — run the first call step so Jordan can text in.",
+        error: "No CRM lead could be resolved for this text. Create the storyline lead first.",
       };
-    }
-    const normalizedPhone = (lead.phone ?? "").replace(/\D/g, "");
-    if (
-      normalizedPhone.endsWith("4145550123") &&
-      (lead.first_name !== "Jordan" || lead.last_name !== "Avery")
-    ) {
-      await supabase
-        .from("leads")
-        .update({ first_name: "Jordan", last_name: "Avery", updated_at: new Date().toISOString() })
-        .eq("id", lead.id);
-      lead.first_name = "Jordan";
-      lead.last_name = "Avery";
     }
 
     const phone = lead.phone ?? "(unknown)";
     const firstName = lead.first_name;
+    const fullName = `${lead.first_name} ${lead.last_name}`.trim();
     const availability = await getJessAvailability(supabase);
     const body =
       "Hey, the leak is worse. Any way you guys can get out here sooner? Like today if possible?";
-    events.push(`Remember Jordan Avery? Matched ${phone} to their CRM record`);
+    events.push(`Matched ${phone} to ${fullName}'s CRM record`);
 
     const { data: savedComm, error: saveError } = await supabase
       .from("communications")
@@ -409,11 +399,12 @@ export async function simulateInboundText(): Promise<ActionResult<InboundResult>
         to_value: "Northstar Exterior & Home",
         body,
         ai_summary:
-          `Jordan Avery says the leak is getting worse and asks if someone can come sooner. ${availability.estimator?.full_name ?? "Jess Romero"} has an opening ${availability.label}.`,
-        suggested_next_action: `Check ${availability.estimator?.full_name ?? "Jess Romero"}'s availability, then ask Jordan if ${availability.label} works.`,
+          `${fullName} says the leak is getting worse and asks if someone can come sooner. ${availability.estimator?.full_name ?? "Jess Romero"} has an opening ${availability.label}.`,
+        suggested_next_action: `Check ${availability.estimator?.full_name ?? "Jess Romero"}'s availability, then ask ${firstName} if ${availability.label} works.`,
         ai_generated: false,
         metadata: {
-          demo_action: "jordan_urgent_reschedule",
+          demo_action: "storyline_urgent_reschedule",
+          identity_match: options?.leadId ? "explicit_lead_id" : "normalized_phone",
           needs_attention: true,
           suggested_estimator_id: availability.estimator?.id ?? null,
           suggested_estimator_name: availability.estimator?.full_name ?? "Jess Romero",
@@ -427,17 +418,30 @@ export async function simulateInboundText(): Promise<ActionResult<InboundResult>
     if (saveError || !savedComm) return { success: false, error: "Could not save the text" };
     events.push("Inbound text saved and classified as an urgent update");
 
-    await supabase.from("tasks").insert({
-      lead_id: lead.id,
-      title: `Urgent: ${firstName} texted — leak is worse, check earlier availability`,
-      description:
-        `${availability.estimator?.full_name ?? "Jess Romero"} appears to have an opening ${availability.label}. Verify availability, ask Jordan if it works, and move the appointment if they approve.`,
-      type: "sms",
-      priority: "urgent",
-      status: "open",
-      due_at: new Date(Date.now() + 30 * 60_000).toISOString(),
-    });
-    events.push("Urgent task created for the assigned rep");
+    const { data: openTasks } = await supabase
+      .from("tasks")
+      .select("id, title, description")
+      .eq("lead_id", lead.id)
+      .in("status", ["open", "in_progress"])
+      .limit(100);
+    const hasOpenRescheduleTask = (openTasks ?? []).some((task) =>
+      /leak is worse|earlier availability/i.test(`${task.title ?? ""} ${task.description ?? ""}`)
+    );
+    if (!hasOpenRescheduleTask) {
+      await supabase.from("tasks").insert({
+        lead_id: lead.id,
+        title: `Urgent: ${firstName} texted — leak is worse, check earlier availability`,
+        description:
+          `${availability.estimator?.full_name ?? "Jess Romero"} appears to have an opening ${availability.label}. Verify availability, ask ${firstName} if it works, and move the appointment if they approve.`,
+        type: "sms",
+        priority: "urgent",
+        status: "open",
+        due_at: new Date(Date.now() + 30 * 60_000).toISOString(),
+      });
+      events.push("Urgent task created for the assigned rep");
+    } else {
+      events.push("Existing urgent reschedule task reused — no duplicate task created");
+    }
 
     await supabase.from("activities").insert({
       lead_id: lead.id,
@@ -463,7 +467,7 @@ export async function simulateInboundText(): Promise<ActionResult<InboundResult>
         leadName: `${lead.first_name} ${lead.last_name}`,
         events,
         urgency: "urgent",
-        headline: "AI: Jordan Avery says the leak is getting worse. Wants to reschedule.",
+        headline: `AI: ${fullName} says the leak is getting worse and wants to reschedule.`,
       },
     };
   } catch (err) {

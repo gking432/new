@@ -158,7 +158,7 @@ export function LeadActionPanel({ leadId, stage }: { leadId: string; stage: stri
           <div className="flex items-center justify-between">
             <p className="text-sm font-medium">{draft.label} draft</p>
             <Badge variant="outline" className="text-[10px]">
-              {draft.aiUsed ? "AI draft — review before sending" : "Template draft (AI offline)"}
+              {draft.aiUsed ? "Schema-validated AI draft — review before sending" : "Rule-based template fallback"}
             </Badge>
           </div>
           {draft.followup.subject ? (

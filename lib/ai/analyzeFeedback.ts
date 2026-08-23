@@ -13,6 +13,26 @@ export interface AnalyzeFeedbackResult {
   aiUsed: boolean;
 }
 
+function applyFeedbackBusinessRules(
+  input: FeedbackFormValues,
+  analysis: FeedbackAnalysisOutput
+): FeedbackAnalysisOutput {
+  const text = input.feedback_text.toLowerCase();
+  const asksForManager = /\bmanager|supervisor|owner\b/.test(text);
+  const repeatedContactFailure = /\b(?:three|3|multiple|several)\b.*\b(?:call|message)|no(?:body)? called|no callbacks?|had to (?:call|leave)/.test(
+    text
+  );
+  const needsRecoveryEscalation =
+    input.rating != null && input.rating <= 2 && (asksForManager || repeatedContactFailure);
+
+  if (!needsRecoveryEscalation || analysis.risk_level === "urgent") return analysis;
+  return {
+    ...analysis,
+    risk_level: "high",
+    tags: Array.from(new Set([...analysis.tags, "manager_review", "service_recovery"])),
+  };
+}
+
 export async function analyzeFeedbackContent(input: FeedbackFormValues) {
   let analysis: FeedbackAnalysisOutput;
   let aiUsed = false;
@@ -34,6 +54,7 @@ export async function analyzeFeedbackContent(input: FeedbackFormValues) {
           )
         ),
         schema: FeedbackAnalysisSchema,
+        schemaName: "feedback_analysis",
       });
       aiUsed = true;
     } catch (error) {
@@ -43,6 +64,10 @@ export async function analyzeFeedbackContent(input: FeedbackFormValues) {
   } else {
     analysis = heuristicFeedbackAnalysis(input);
   }
+
+  // Model judgment supplies the nuance; deterministic business policy decides
+  // when a service-recovery request must become trackable manager work.
+  analysis = applyFeedbackBusinessRules(input, analysis);
 
   return { analysis, aiUsed };
 }

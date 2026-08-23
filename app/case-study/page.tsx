@@ -19,7 +19,7 @@ const STACK = [
   "shadcn/ui",
   "Recharts",
   "React Hook Form + Zod",
-  "Supabase (Postgres, Auth, RLS)",
+  "Supabase Postgres + isolated browser demo store",
   "OpenAI API (chat + Realtime/WebRTC)",
   "HubSpot CRM API",
   "Vercel",
@@ -31,7 +31,7 @@ const NEXT_STEPS = [
   "Google Calendar free/busy and event sync (the provider seam is already in place)",
   "Realtime tool-calling for mid-call CRM lookups and live booking",
   "A live property-data provider behind the existing provider interface",
-  "Role-based permissions, duplicate-lead detection, and lead source ROI",
+  "Role-based permissions, identity-resolution monitoring, and lead source ROI",
 ];
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
@@ -66,8 +66,8 @@ export default function CaseStudyPage() {
             Home service companies lose revenue in predictable places: leads sit untouched while
             crews are in the field, call details never make it into the CRM, follow-up depends on
             whoever remembers, appointment opportunities slip during the call, and quoting starts
-            from a blank page. The first contractor to call a storm-damage lead usually wins the
-            job — yet the median response time in the industry is measured in hours.
+            from a blank page. The implementation target is simple: shorten the time to a useful
+            response while keeping every customer touchpoint attached to a trustworthy record.
           </p>
         </Section>
 
@@ -98,8 +98,8 @@ export default function CaseStudyPage() {
             The flagship demo: a homeowner submits the website form, and seconds later a phone
             screen rings in the browser — the company&apos;s AI scheduling assistant calling back.
             With an OpenAI key it&apos;s a live voice conversation over WebRTC (real microphone,
-            real AI speech, ephemeral tokens minted server-side); without one, a scripted
-            click-through mode plays the same call. Either way, ending the call produces a hidden
+            real AI speech, ephemeral tokens minted server-side); without one, a silent simulation
+            runs the same scenario. Either way, ending the call produces a hidden
             transcript, a CRM note on the timeline, an urgent task, a booked inspection, a stage
             change, and a confirmation draft waiting for approval. There is no real telephony —
             and the demo is honest about that — but the entire post-call pipeline is real.
@@ -111,9 +111,10 @@ export default function CaseStudyPage() {
             Transcripts are deliberately not front and center. The lead timeline gets a short,
             actionable AI note — what changed, what the customer needs, what to do next — and the
             full transcript lives behind a &ldquo;View Full Transcript&rdquo; modal, searchable
-            but out of the way. The AI also recognizes existing customers by phone number, pulls
-            their CRM context before answering, and logs second touchpoints without re-asking
-            what it already knows.
+            but out of the way. The AI also resolves existing customers by explicit lead ID,
+            normalized phone number, or email, pulls their CRM context before answering, and logs
+            second touchpoints without re-asking what it already knows. An unmatched inbound
+            contact creates a new record instead of attaching to whichever lead was created last.
           </p>
         </Section>
 
@@ -150,11 +151,11 @@ export default function CaseStudyPage() {
 
         <Section title="Human approval for customer communication">
           <p>
-            Nothing customer-facing sends automatically. Every AI-drafted SMS and email lands in
-            an approval queue where a person can edit, approve, or discard it — and in demo mode,
-            &ldquo;send&rdquo; is explicitly simulated. The AI is also constrained: it never
-            promises insurance approval or final pricing, and it identifies itself as an AI
-            assistant on outbound calls.
+            AI-written sales and service-recovery messages land in an approval queue where a person
+            can edit, approve, or discard them. Routine confirmations and reminders can be
+            pre-approved by policy. In demo mode every &ldquo;send&rdquo; is explicitly simulated.
+            The AI is also constrained: it never promises insurance approval or final pricing, and
+            it identifies itself as an AI assistant on outbound calls.
           </p>
         </Section>
 
@@ -168,11 +169,12 @@ export default function CaseStudyPage() {
           </div>
           <Card className="mt-4">
             <CardContent className="p-4 text-sm">
-              All AI calls run server-side through a provider-abstracted layer with Zod-validated
-              structured output and deterministic fallbacks, so no workflow dies when AI is
-              unavailable. Realtime voice uses short-lived ephemeral tokens — the real API key
-              never reaches the browser. Row Level Security separates anonymous lead intake from
-              the authenticated internal app.
+              All AI calls run server-side through a provider-abstracted layer with strict,
+              Zod-derived Structured Outputs and deterministic fallbacks, so no workflow dies when
+              AI is unavailable. Realtime voice uses short-lived ephemeral tokens — the real API
+              key never reaches the browser. The portfolio build is intentionally no-login and
+              uses isolated demo data; a production rollout would add the company&apos;s identity,
+              authorization, retention, and audit policies at the integration boundary.
             </CardContent>
           </Card>
         </Section>

@@ -209,6 +209,7 @@ export async function summarizeCall(args: SummarizeCallArgs): Promise<SummarizeC
           nowIso: new Date().toISOString(),
         }),
         schema: CallSummarySchema,
+        schemaName: "call_summary",
         maxTokens: 2000,
       });
       return { summary, aiStatus: "completed" };

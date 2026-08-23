@@ -43,14 +43,42 @@ function activity(leadId: string, type: string, title: string, description: stri
   };
 }
 
-export async function simulateLocalInboundText() {
-  const state = await readDemoState();
-  const lead = state.leads.find((candidate) => {
-    const phone = (candidate.phone ?? "").replace(/\D/g, "");
-    const name = `${candidate.first_name} ${candidate.last_name}`.toLowerCase();
-    return phone.endsWith("4145550123") || (name.includes("jordan") && name.includes("avery"));
-  });
-  if (!lead) throw new Error("No customers yet - run the first call step so Jordan can text in.");
+export async function simulateLocalInboundText(options?: { leadId?: string | null }) {
+  let state = await readDemoState();
+  let lead = options?.leadId
+    ? state.leads.find((candidate) => candidate.id === options.leadId) ?? null
+    : state.leads.find((candidate) => {
+        const phone = (candidate.phone ?? "").replace(/\D/g, "");
+        const name = `${candidate.first_name} ${candidate.last_name}`.toLowerCase();
+        return phone.endsWith("4145550123") || (name.includes("jordan") && name.includes("avery"));
+      }) ??
+      [...state.leads].sort((a, b) => b.created_at.localeCompare(a.created_at))[0] ??
+      null;
+
+  // A standalone scenario still behaves like an inbound CRM event: if the
+  // sender cannot be matched, intake creates the customer record first.
+  if (!lead) {
+    const leadId = await submitLocalWebLead({
+      first_name: "Jordan",
+      last_name: "Avery",
+      email: "jordan.avery@example.com",
+      phone: "(414) 555-0123",
+      preferred_contact_method: "phone",
+      street_address: "418 Lakeview Ct",
+      city: "Pewaukee",
+      state: "WI",
+      zip_code: "53072",
+      service_type: "storm_damage",
+      timeframe: "emergency",
+      active_leak: "yes",
+      insurance_started: "no",
+      description: "Storm damage with missing shingles and a growing ceiling water spot.",
+      source: "sms",
+    });
+    state = await readDemoState();
+    lead = state.leads.find((candidate) => candidate.id === leadId) ?? null;
+  }
+  if (!lead) throw new Error("Could not resolve or create a CRM lead for this text.");
 
   const slots = await getLocalAvailableSlots(4, 40);
   const current = state.appointments
@@ -63,8 +91,7 @@ export async function simulateLocalInboundText() {
 
   const communicationId = await mutateDemoState((next) => {
     const savedLead = next.leads.find((candidate) => candidate.id === lead.id)!;
-    savedLead.first_name = "Jordan";
-    savedLead.last_name = "Avery";
+    const fullName = `${savedLead.first_name} ${savedLead.last_name}`.trim();
     const estimatorId = demoEstimatorId(next);
     const estimatorName = next.profiles.find((profile) => profile.id === estimatorId)?.full_name ?? "Jess Romero";
     const label = sameDayLabel(suggested.start.toISOString());
@@ -81,14 +108,15 @@ export async function simulateLocalInboundText() {
       to_value: "Northstar Exterior & Home",
       subject: null,
       body,
-      ai_summary: `Jordan Avery says the leak is getting worse and asks if someone can come sooner. ${estimatorName} has an opening ${label}.`,
-      suggested_next_action: `Check ${estimatorName}'s availability, then ask Jordan if ${label} works.`,
+      ai_summary: `${fullName} says the leak is getting worse and asks if someone can come sooner. ${estimatorName} has an opening ${label}.`,
+      suggested_next_action: `Check ${estimatorName}'s availability, then ask ${savedLead.first_name} if ${label} works.`,
       ai_generated: false,
       human_approved: false,
       scheduled_send_at: null,
       automation_key: null,
       metadata: {
-        demo_action: "jordan_urgent_reschedule",
+        demo_action: "storyline_urgent_reschedule",
+        identity_match: options?.leadId ? "explicit_lead_id" : "normalized_phone",
         needs_attention: true,
         suggested_estimator_id: estimatorId,
         suggested_estimator_name: estimatorName,
@@ -100,20 +128,28 @@ export async function simulateLocalInboundText() {
       updated_at: nowIso(),
     };
     next.communications.push(communication);
-    next.tasks.push({
-      id: demoId(),
-      lead_id: savedLead.id,
-      assigned_to: demoAdminId(next),
-      title: "Urgent: Jordan texted - leak is worse, check earlier availability",
-      description: `${estimatorName} appears to have an opening ${label}. Verify it, ask Jordan if it works, and move the appointment if they approve.`,
-      type: "sms",
-      priority: "urgent",
-      status: "open",
-      due_at: nowIso(30 * 60_000),
-      completed_at: null,
-      created_at: nowIso(),
-      updated_at: nowIso(),
-    });
+    const hasOpenRescheduleTask = next.tasks.some(
+      (task) =>
+        task.lead_id === savedLead.id &&
+        (task.status === "open" || task.status === "in_progress") &&
+        /leak is worse|earlier availability/i.test(`${task.title} ${task.description ?? ""}`)
+    );
+    if (!hasOpenRescheduleTask) {
+      next.tasks.push({
+        id: demoId(),
+        lead_id: savedLead.id,
+        assigned_to: demoAdminId(next),
+        title: `Urgent: ${savedLead.first_name} texted - leak is worse, check earlier availability`,
+        description: `${estimatorName} appears to have an opening ${label}. Verify it, ask ${savedLead.first_name} if it works, and move the appointment if they approve.`,
+        type: "sms",
+        priority: "urgent",
+        status: "open",
+        due_at: nowIso(30 * 60_000),
+        completed_at: null,
+        created_at: nowIso(),
+        updated_at: nowIso(),
+      });
+    }
     next.activities.push(activity(savedLead.id, "sms", "Inbound text received", body));
     return communication.id;
   });
@@ -121,14 +157,14 @@ export async function simulateLocalInboundText() {
   return {
     communicationId,
     leadId: lead.id,
-    leadName: "Jordan Avery",
+    leadName: `${lead.first_name} ${lead.last_name}`.trim(),
     events: [
-      "Matched Jordan's phone number to the existing CRM record",
+      `Matched the inbound number to ${lead.first_name} ${lead.last_name}'s CRM record`,
       "Inbound text saved and classified as urgent",
       "AI found an earlier estimator opening",
     ],
     urgency: "urgent" as const,
-    headline: "AI: Jordan Avery says the leak is getting worse. Wants to reschedule.",
+    headline: `AI: ${lead.first_name} ${lead.last_name} says the leak is getting worse and wants to reschedule.`,
   };
 }
 

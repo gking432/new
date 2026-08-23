@@ -286,8 +286,8 @@ export function LeadForm({
           </p>
           <p className="mt-1 text-sm text-brand-dark/80">
             Use your real first and last name so the later callback feels personal. Use fake phone,
-            email, and project details if you want. After submitting, turn your audio up and answer
-            the fake call from the AI assistant.
+            email, and project details if you want. After submitting, answer the browser call or use
+            the guided tour&apos;s silent simulation.
           </p>
         </div>
       )}

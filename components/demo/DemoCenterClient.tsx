@@ -41,6 +41,7 @@ import { useCall } from "@/components/calls/CallProvider";
 import { syncLeadToHubSpot } from "@/lib/actions/crm";
 import {
   createDemoSpeedToLead,
+  ensureDemoStorylineLead,
   getDemoGuideContext,
   type DemoLatestLead,
 } from "@/lib/actions/demo";
@@ -56,6 +57,7 @@ export function DemoCenterClient({
   const router = useRouter();
   const { startCall, callActive } = useCall();
   const [busy, setBusy] = useState<string | null>(null);
+  const [storylineLead, setStorylineLead] = useState<DemoLatestLead | null>(latestLead);
 
   async function runSpeedToLead() {
     setBusy("speed");
@@ -72,6 +74,8 @@ export function DemoCenterClient({
         : `Website lead submitted: ${result.data.name} — AI classified it and automations fired`
     );
     appendDemoEvent("Speed-to-lead AI call starting…");
+    const context = await getDemoGuideContext(result.data.leadId);
+    if (context.latestLead) setStorylineLead(context.latestLead);
     startCall({
       scenario: "speed_to_lead_outbound",
       leadId: result.data.leadId,
@@ -84,13 +88,17 @@ export function DemoCenterClient({
 
   async function runExistingCustomerCall() {
     setBusy("existing");
-    const ctx = await getDemoGuideContext();
+    const ctx = await ensureDemoStorylineLead(storylineLead?.id);
     setBusy(null);
-    if (!ctx.latestLead) {
-      toast.error("No customers yet — run the speed-to-lead demo first.");
+    if (!ctx.success) {
+      toast.error(ctx.error);
       return;
     }
-    const l = ctx.latestLead;
+    const l = ctx.data.lead;
+    setStorylineLead(l);
+    if (ctx.data.created) {
+      appendDemoEvent(`Created ${l.first_name} ${l.last_name} before simulating the callback`);
+    }
     startCall({
       scenario: "existing_customer_call",
       leadId: l.id,
@@ -109,8 +117,15 @@ export function DemoCenterClient({
 
   async function runInboundText() {
     setBusy("text");
-    appendDemoEvent("Inbound text received from a customer…");
-    const result = await simulateInboundText();
+    const ctx = await ensureDemoStorylineLead(storylineLead?.id);
+    if (!ctx.success) {
+      setBusy(null);
+      toast.error(ctx.error);
+      return;
+    }
+    setStorylineLead(ctx.data.lead);
+    appendDemoEvent(`Inbound text received from ${ctx.data.lead.first_name} ${ctx.data.lead.last_name}…`);
+    const result = await simulateInboundText({ leadId: ctx.data.lead.id });
     setBusy(null);
     if (!result.success) {
       toast.error(result.error);
@@ -136,13 +151,17 @@ export function DemoCenterClient({
   }
 
   async function runHubSpotSync() {
-    if (!latestLead) {
-      toast.error("No leads available to sync");
+    setBusy("hubspot");
+    const ctx = await ensureDemoStorylineLead(storylineLead?.id);
+    if (!ctx.success) {
+      setBusy(null);
+      toast.error(ctx.error);
       return;
     }
-    setBusy("hubspot");
-    appendDemoEvent(`Preparing HubSpot payload for ${latestLead.first_name} ${latestLead.last_name}…`);
-    const result = await syncLeadToHubSpot(latestLead.id);
+    const lead = ctx.data.lead;
+    setStorylineLead(lead);
+    appendDemoEvent(`Preparing HubSpot payload for ${lead.first_name} ${lead.last_name}…`);
+    const result = await syncLeadToHubSpot(lead.id);
     setBusy(null);
     if (!result.success) {
       toast.error(result.error);
@@ -187,6 +206,7 @@ export function DemoCenterClient({
           icon={Zap}
           title="Run Speed-to-Lead Demo"
           tag="Primary wow demo"
+          target="Creates or reuses Jordan Avery"
           description="A homeowner submits the website form — and the AI scheduling assistant calls them back within seconds. Answer the call, then browse the CRM while it runs."
         >
           <Button onClick={runSpeedToLead} disabled={busy !== null || callActive}>
@@ -214,6 +234,7 @@ export function DemoCenterClient({
         <ScenarioCard
           icon={PhoneIncoming}
           title="Simulate New Inbound Call (AI answers)"
+          target="Creates Marcus Webb"
           description="An unknown homeowner (Marcus Webb) calls the office. The AI answers, runs intake, creates the lead, books the inspection, and writes the CRM notes."
         >
           <CallLauncher
@@ -230,6 +251,7 @@ export function DemoCenterClient({
         <ScenarioCard
           icon={Headphones}
           title="You Answer (AI is the customer)"
+          target="Creates or matches Jordan Avery"
           description="Flip it around: you're the rep and the AI plays the homeowner. The dashboard opens a live lead form that fills as you ask — and flags in red whatever you still need to get."
         >
           <CallLauncher
@@ -249,10 +271,11 @@ export function DemoCenterClient({
         <ScenarioCard
           icon={Phone}
           title="Simulate Existing Customer Call"
+          target={storylineLead ? `Uses ${storylineLead.first_name} ${storylineLead.last_name}` : "Seeds Jordan Avery first"}
           description={
-            latestLead
-              ? `${latestLead.first_name} ${latestLead.last_name} (your latest lead) calls back — you play them. The AI matches the number, answers with their full history, and logs a second touchpoint. Real AI voice.`
-              : "Create a lead first (run the speed-to-lead demo) — then they can call back."
+            storylineLead
+              ? `${storylineLead.first_name} ${storylineLead.last_name} calls back. The AI opens the same CRM record, uses its history, and logs a second touchpoint.`
+              : "If the storyline has not started, this action creates its demo lead first and then logs the callback against that record."
           }
         >
           <Button
@@ -269,7 +292,8 @@ export function DemoCenterClient({
         <ScenarioCard
           icon={MessageSquareText}
           title="Simulate Inbound Text"
-          description="Jordan Avery texts that the leak is getting worse. The AI matches the number, flags it urgent, creates a task, and finds Jess Romero's next same-day opening."
+          target={storylineLead ? `Uses ${storylineLead.first_name} ${storylineLead.last_name}` : "Seeds Jordan Avery first"}
+          description="The storyline customer texts that the leak is getting worse. The CRM matches the number to the same lead, flags it urgent, creates a task, and finds Jess Romero's next same-day opening."
         >
           <Button variant="outline" onClick={runInboundText} disabled={busy !== null}>
             {busy === "text" ? <Loader2 className="h-4 w-4 animate-spin" /> : <MessageSquareText className="h-4 w-4" />}
@@ -281,6 +305,7 @@ export function DemoCenterClient({
         <ScenarioCard
           icon={Mail}
           title="Simulate Inbound Email"
+          target="Creates or matches Greg Tomlinson"
           description="A new prospect emails about replacing 12 windows. The AI creates the lead, classifies the service, and flags the Inbox conversation for a normal reply."
         >
           <Button variant="outline" onClick={runInboundEmail} disabled={busy !== null}>
@@ -293,13 +318,14 @@ export function DemoCenterClient({
         <ScenarioCard
           icon={Cable}
           title="Run HubSpot Dry Sync"
+          target={storylineLead ? `Uses ${storylineLead.first_name} ${storylineLead.last_name}` : "Seeds Jordan Avery first"}
           description={
-            latestLead
-              ? `Push ${latestLead.first_name} ${latestLead.last_name} to HubSpot as a contact + deal + AI note. Without a token this is a dry run — payload logged, nothing external touched.`
-              : "Requires at least one lead."
+            storylineLead
+              ? `Push ${storylineLead.first_name} ${storylineLead.last_name} to HubSpot as a contact + deal + AI note. Without a token this is a dry run — payload logged, nothing external touched.`
+              : "Creates the storyline lead if needed, then prepares its contact, deal, and AI-note payload."
           }
         >
-          <Button variant="outline" onClick={runHubSpotSync} disabled={busy !== null || !latestLead}>
+          <Button variant="outline" onClick={runHubSpotSync} disabled={busy !== null}>
             {busy === "hubspot" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Cable className="h-4 w-4" />}
             Run dry sync
           </Button>
@@ -368,12 +394,14 @@ function ScenarioCard({
   icon: Icon,
   title,
   tag,
+  target,
   description,
   children,
 }: {
   icon: React.ComponentType<{ className?: string }>;
   title: string;
   tag?: string;
+  target?: string;
   description: string;
   children: React.ReactNode;
 }) {
@@ -386,11 +414,14 @@ function ScenarioCard({
           </span>
           {title}
         </CardTitle>
-        {tag && (
-          <Badge className="w-fit bg-brand-gold/20 text-brand-dark border border-brand-gold/40">
-            {tag}
-          </Badge>
-        )}
+        <div className="flex flex-wrap gap-1.5">
+          {tag && (
+            <Badge className="w-fit bg-brand-gold/20 text-brand-dark border border-brand-gold/40">
+              {tag}
+            </Badge>
+          )}
+          {target && <Badge variant="outline">CRM target: {target}</Badge>}
+        </div>
         <CardDescription>{description}</CardDescription>
       </CardHeader>
       <CardContent className="mt-auto">{children}</CardContent>

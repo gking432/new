@@ -2,6 +2,8 @@
 
 import { submitLead } from "@/lib/actions";
 import { findExistingLead } from "@/lib/calls/completeCall";
+import { isLocalDemoMode } from "@/lib/demo/mode";
+import { demoId, mutateDemoState, readDemoState } from "@/lib/demo/serverStore";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 
@@ -16,26 +18,68 @@ export interface DemoLatestLead {
 }
 
 /**
- * Context the demo guide needs. With the blank-slate demo, existing-customer
- * and inbound-text scenarios reference the most recent lead the demoer
- * actually created.
+ * Resolves the lead used by the current demo story. Explicit identity always
+ * wins; recency is only a convenience for opening the guide after a visitor
+ * has already created a lead.
  */
-export async function getDemoGuideContext(): Promise<{ latestLead: DemoLatestLead | null }> {
+export async function getDemoGuideContext(
+  preferredLeadId?: string | null
+): Promise<{ latestLead: DemoLatestLead | null }> {
+  if (isLocalDemoMode()) {
+    const state = await readDemoState();
+    const lead = preferredLeadId
+      ? state.leads.find((candidate) => candidate.id === preferredLeadId) ?? null
+      : [...state.leads].sort((a, b) => b.created_at.localeCompare(a.created_at))[0] ?? null;
+    if (!lead) return { latestLead: null };
+    return {
+      latestLead: {
+        id: lead.id,
+        first_name: lead.first_name,
+        last_name: lead.last_name,
+        phone: lead.phone,
+        stage: lead.stage,
+        urgency: lead.urgency,
+        service_type: lead.service_type,
+      },
+    };
+  }
   const supabase = await createClient();
-  const { data } = await supabase
+  let query = supabase
     .from("leads")
-    .select("id, first_name, last_name, phone, stage, urgency, service_type")
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
+    .select("id, first_name, last_name, phone, stage, urgency, service_type");
+  query = preferredLeadId
+    ? query.eq("id", preferredLeadId)
+    : query.order("created_at", { ascending: false });
+  const { data } = await query.limit(1).maybeSingle();
   return { latestLead: (data as DemoLatestLead | null) ?? null };
 }
 
-const DEMO_HOMEOWNERS = [
-  { first: "Jordan", last: "Avery", phone: "(414) 555-0123", city: "Pewaukee", street: "418 Lakeview Ct" },
-  { first: "Maria", last: "Castillo", phone: "(414) 555-0167", city: "Waukesha", street: "902 Hillcrest Dr" },
-  { first: "Tyler", last: "Brennan", phone: "(262) 555-0190", city: "Brookfield", street: "1377 Stonefield Rd" },
-];
+const DEMO_HOMEOWNER = {
+  first: "Jordan",
+  last: "Avery",
+  phone: "(414) 555-0123",
+  city: "Pewaukee",
+  street: "418 Lakeview Ct",
+};
+
+export async function ensureDemoStorylineLead(
+  preferredLeadId?: string | null
+): Promise<
+  | { success: true; data: { lead: DemoLatestLead; created: boolean } }
+  | { success: false; error: string }
+> {
+  const current = await getDemoGuideContext(preferredLeadId);
+  if (current.latestLead) {
+    return { success: true, data: { lead: current.latestLead, created: false } };
+  }
+  const created = await createDemoSpeedToLead();
+  if (!created.success) return created;
+  const resolved = await getDemoGuideContext(created.data.leadId);
+  if (!resolved.latestLead) {
+    return { success: false, error: "The demo lead was created but could not be reloaded" };
+  }
+  return { success: true, data: { lead: resolved.latestLead, created: true } };
+}
 
 /**
  * Demo Center helper: submits a storm-damage lead through the real public
@@ -48,21 +92,31 @@ export async function createDemoSpeedToLead(): Promise<
   | { success: true; data: { leadId: string; name: string; phone: string; reused: boolean } }
   | { success: false; error: string }
 > {
-  const homeowner = DEMO_HOMEOWNERS[Math.floor(Math.random() * DEMO_HOMEOWNERS.length)];
+  const homeowner = DEMO_HOMEOWNER;
+  const localMode = isLocalDemoMode();
 
-  try {
-    const supabase = createAdminClient();
-    const existing = await findExistingLead(supabase, homeowner.phone);
+  if (localMode) {
+    const state = await readDemoState();
+    const targetPhone = homeowner.phone.replace(/\D/g, "").slice(-10);
+    const existing = state.leads.find(
+      (candidate) => (candidate.phone ?? "").replace(/\D/g, "").slice(-10) === targetPhone
+    );
     if (existing) {
-      await supabase
-        .from("leads")
-        .update({ stage: "new", updated_at: new Date().toISOString() })
-        .eq("id", existing.id);
-      await supabase.from("activities").insert({
-        lead_id: existing.id,
-        type: "lead_created",
-        title: "Repeat website submission matched to this existing record",
-        description: "Demo speed-to-lead run reused the existing lead (matched by phone number).",
+      await mutateDemoState((next) => {
+        const lead = next.leads.find((candidate) => candidate.id === existing.id);
+        if (!lead) return;
+        lead.stage = "new";
+        lead.updated_at = new Date().toISOString();
+        next.activities.push({
+          id: demoId(),
+          lead_id: lead.id,
+          user_id: null,
+          type: "lead_created",
+          title: "Repeat website submission matched to this existing record",
+          description: "Demo speed-to-lead run reused the existing lead (matched by phone number).",
+          metadata: { identity_match: "normalized_phone" },
+          created_at: new Date().toISOString(),
+        });
       });
       return {
         success: true,
@@ -74,9 +128,37 @@ export async function createDemoSpeedToLead(): Promise<
         },
       };
     }
-  } catch {
-    // Admin client unavailable — fall through to the normal pipeline, which
-    // reports a friendly configuration error.
+  }
+
+  if (!localMode) {
+    try {
+      const supabase = createAdminClient();
+      const existing = await findExistingLead(supabase, homeowner.phone);
+      if (existing) {
+        await supabase
+          .from("leads")
+          .update({ stage: "new", updated_at: new Date().toISOString() })
+          .eq("id", existing.id);
+        await supabase.from("activities").insert({
+          lead_id: existing.id,
+          type: "lead_created",
+          title: "Repeat website submission matched to this existing record",
+          description: "Demo speed-to-lead run reused the existing lead (matched by phone number).",
+        });
+        return {
+          success: true,
+          data: {
+            leadId: existing.id,
+            name: `${existing.first_name} ${existing.last_name}`,
+            phone: existing.phone ?? homeowner.phone,
+            reused: true,
+          },
+        };
+      }
+    } catch {
+      // Admin client unavailable — fall through to the normal pipeline, which
+      // reports a friendly configuration error.
+    }
   }
 
   const result = await submitLead({

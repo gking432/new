@@ -60,8 +60,8 @@ clean updates into external systems (HubSpot dry-run or live).
 ## Tech stack
 
 Next.js 15 (App Router) · React 19 · TypeScript · Tailwind CSS 4 · shadcn/ui ·
-Recharts · React Hook Form + Zod · Supabase (Postgres, Auth, RLS) · OpenAI API
-(chat + Realtime over WebRTC, provider-abstracted, server-side keys only) ·
+Recharts · React Hook Form + Zod · isolated browser demo store + optional Supabase Postgres · OpenAI API
+(Structured Outputs + Realtime over WebRTC, provider-abstracted, server-side keys only) ·
 HubSpot CRM API · Vercel
 
 ## Setup
@@ -73,7 +73,10 @@ npm install
 cp .env.example .env.local
 ```
 
-### 2. Supabase
+### 2. Supabase (optional shared-data mode)
+
+The portfolio demo uses its isolated browser store by default. To exercise the
+shared Postgres implementation, set `DEMO_STORAGE=supabase`, then:
 
 1. Create a project at [supabase.com](https://supabase.com).
 2. Copy the project URL, anon key, and service role key into `.env.local`.
@@ -85,7 +88,7 @@ cp .env.example .env.local
    - `supabase/migrations/005_evening_weekend_availability.sql`
    - `supabase/migrations/006_communication_lifecycle.sql` (scheduled reminder lifecycle)
 
-### 3. Set up demo users
+### 3. Set up demo users (Supabase mode only)
 
 ```bash
 npm run seed
@@ -102,8 +105,10 @@ Creates four demo users (password `demo-password`):
 
 The dashboard intentionally starts as a **blank slate** — no leads, customers,
 tasks, or messages. The only records that appear are the ones created live
-during the demo (form submissions, calls, texts, emails). The existing-customer
-and inbound-text scenarios reference the most recent lead you've created.
+during the demo (form submissions, calls, texts, emails). The guided walkthrough
+carries an explicit storyline lead ID through callbacks, texts, approvals, and
+sync. Standalone scenarios resolve a displayed customer or seed one when needed;
+they never attach activity to a record merely because it was created most recently.
 
 Re-running `npm run seed` clears all customer/operational data back to a blank
 slate (config — users, settings, automations, availability — is preserved). For
@@ -120,14 +125,17 @@ automation rules, and availability windows.
 
 - `OPENAI_API_KEY` — enables AI lead analysis, call summaries, and **live AI
   voice calls** (OpenAI Realtime over WebRTC).
+- Structured workflows use strict JSON Schema generated from the application's
+  Zod contracts. Deterministic business rules and clearly labeled fallbacks
+  keep the operational workflow running when a provider is unavailable.
 - Without a key, everything still works: lead analysis falls back to rules,
   and calls run in **scripted demo mode** (click-through customer lines) that
   produces the same transcripts, notes, tasks, and appointments.
 
 **Cost control:** Realtime sessions are capped at `REALTIME_MAX_CALL_SECONDS`
-(default 180s — roughly $0.10–$0.30 per call at typical Realtime rates),
-session creation is rate-limited, ephemeral tokens are minted server-side, and
-scripted mode is free. A full demo day fits comfortably under ~$10.
+(default 180s), session creation is rate-limited, ephemeral tokens are minted
+server-side, and silent scripted mode makes it possible to run the full workflow
+without a live voice session.
 
 ### 5. HubSpot (optional)
 
@@ -148,7 +156,7 @@ npm run dev
 ```
 
 - Public site: `http://localhost:3000`
-- Command center: `http://localhost:3000/app` (log in at `/login`)
+- Command center: `http://localhost:3000/app` (the portfolio build is intentionally no-login)
 - Demo Center: `http://localhost:3000/app/demo-center`
 - Case study: `http://localhost:3000/case-study`
 
@@ -168,7 +176,8 @@ npm run dev
 
 ### Existing customer callback
 
-1. Demo Center → **Simulate Existing Customer Call** (your latest created lead).
+1. Demo Center → **Simulate Existing Customer Call**. The card shows the exact
+   CRM target; if the storyline is empty, it seeds Jordan Avery first.
 2. The matched CRM record shows before you answer; the AI opens with the
    prior request context, handles rescheduling/insurance questions, moves the
    appointment if needed, and logs the second touchpoint to the timeline.
@@ -187,7 +196,8 @@ npm run dev
 ## Safety / demo guardrails
 
 - "Demo call — no real phone call placed" labels on every call surface
-- AI drafts are always labeled and require human approval before (simulated) sending
+- Generative customer drafts are labeled and require human approval before
+  simulated sending; routine reminder templates may be pre-approved by policy
 - Quote outputs are always "internal ballpark — not a final quote"
 - The AI never promises insurance approval, coverage, or pricing, and is
   transparent that it's an AI assistant on outbound calls
@@ -206,7 +216,8 @@ See `.env.example` for the full list with comments: Supabase keys, OpenAI
 
 1. Push to GitHub and import the repo in [Vercel](https://vercel.com).
 2. Add the environment variables from `.env.local`.
-3. Deploy. Supabase hosts the database/auth; no other services are required.
+3. Deploy. The portfolio demo uses isolated browser data by default; set
+   `DEMO_STORAGE=supabase` when you want the shared Postgres implementation.
 
 ## What I'd build next in production
 
@@ -215,4 +226,4 @@ See `.env.example` for the full list with comments: Supabase keys, OpenAI
 - Google Calendar free/busy + event sync (the provider seam is in place)
 - A live property-data provider behind `lib/property/provider.ts`
 - Realtime tool-calling for mid-call CRM lookups and live booking
-- Role-based permissions, duplicate-lead detection, and source ROI reporting
+- Role-based permissions, identity-resolution monitoring, and source ROI reporting

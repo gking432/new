@@ -1,4 +1,5 @@
 import OpenAI from "openai";
+import { zodResponseFormat } from "openai/helpers/zod";
 import type { z } from "zod";
 
 /**
@@ -31,6 +32,7 @@ export async function callStructuredAI<T>(args: {
   system: string;
   user: string;
   schema: z.ZodType<T>;
+  schemaName?: string;
   maxTokens?: number;
 }): Promise<T> {
   const apiKey = process.env.OPENAI_API_KEY;
@@ -41,30 +43,31 @@ export async function callStructuredAI<T>(args: {
   const client = new OpenAI({ apiKey });
   const model = process.env.AI_MODEL || "gpt-4.1-mini";
 
-  const completion = await client.chat.completions.create({
+  const completion = await client.chat.completions.parse({
     model,
     messages: [
       { role: "system", content: args.system },
       { role: "user", content: args.user },
     ],
-    response_format: { type: "json_object" },
-    max_tokens: args.maxTokens ?? 1500,
-    temperature: 0.4,
+    response_format: zodResponseFormat(
+      args.schema,
+      args.schemaName ?? "northstar_structured_response"
+    ),
+    max_completion_tokens: args.maxTokens ?? 1500,
+    temperature: 0.2,
   });
 
-  const content = completion.choices[0]?.message?.content;
-  if (!content) {
-    throw new AIResponseError("AI returned an empty response");
+  const message = completion.choices[0]?.message;
+  if (message?.refusal) {
+    throw new AIResponseError(`AI refused the structured request: ${message.refusal}`);
+  }
+  if (!message?.parsed) {
+    throw new AIResponseError("AI returned no schema-conforming response");
   }
 
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(content);
-  } catch {
-    throw new AIResponseError("AI returned invalid JSON");
-  }
-
-  const result = args.schema.safeParse(parsed);
+  // The SDK parser enforces the schema at the provider boundary. Keep the
+  // application-side parse as a final defense and to preserve useful errors.
+  const result = args.schema.safeParse(message.parsed);
   if (!result.success) {
     throw new AIResponseError(
       `AI output failed validation: ${result.error.issues

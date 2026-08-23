@@ -26,7 +26,11 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { useCall } from "@/components/calls/CallProvider";
-import { createDemoSpeedToLead, getDemoGuideContext } from "@/lib/actions/demo";
+import {
+  createDemoSpeedToLead,
+  ensureDemoStorylineLead,
+  getDemoGuideContext,
+} from "@/lib/actions/demo";
 import { simulateInboundEmail, simulateInboundText } from "@/lib/actions/inbox";
 import { appendDemoEvent } from "@/lib/demo-log";
 
@@ -137,6 +141,8 @@ function InternalGuide({ close }: { close: () => void }) {
         ? `Repeat submission matched to existing lead: ${result.data.name} (no duplicate created)`
         : `Website lead submitted: ${result.data.name} — AI classified it and automations fired`
     );
+    const context = await getDemoGuideContext(result.data.leadId);
+    if (context.latestLead) setLatestLead(context.latestLead);
     close();
     startCall({
       scenario: "speed_to_lead_outbound",
@@ -149,22 +155,30 @@ function InternalGuide({ close }: { close: () => void }) {
     });
   }
 
-  function runExistingCustomerCall() {
-    if (!latestLead) return;
+  async function runExistingCustomerCall() {
+    setBusy("existing");
+    const context = await ensureDemoStorylineLead(latestLead?.id);
+    setBusy(null);
+    if (!context.success) {
+      toast.error(context.error);
+      return;
+    }
+    const lead = context.data.lead;
+    setLatestLead(lead);
     close();
     startCall({
       scenario: "existing_customer_call",
-      leadId: latestLead.id,
-      callerName: `${latestLead.first_name} ${latestLead.last_name}`,
-      callerPhone: latestLead.phone,
-      subtitle: `${latestLead.service_type.replace(/_/g, " ")} lead`,
+      leadId: lead.id,
+      callerName: `${lead.first_name} ${lead.last_name}`,
+      callerPhone: lead.phone,
+      subtitle: `${lead.service_type.replace(/_/g, " ")} lead`,
       direction: "inbound",
       navigateTo: "/app",
       crmContext: [
-        { label: "Name", value: `${latestLead.first_name} ${latestLead.last_name}` },
-        { label: "Stage", value: latestLead.stage.replace(/_/g, " ") },
-        { label: "Urgency", value: latestLead.urgency },
-        { label: "Service", value: latestLead.service_type.replace(/_/g, " ") },
+        { label: "Name", value: `${lead.first_name} ${lead.last_name}` },
+        { label: "Stage", value: lead.stage.replace(/_/g, " ") },
+        { label: "Urgency", value: lead.urgency },
+        { label: "Service", value: lead.service_type.replace(/_/g, " ") },
       ],
     });
   }
@@ -182,7 +196,14 @@ function InternalGuide({ close }: { close: () => void }) {
 
   async function runInboundText() {
     setBusy("text");
-    const result = await simulateInboundText();
+    const context = await ensureDemoStorylineLead(latestLead?.id);
+    if (!context.success) {
+      setBusy(null);
+      toast.error(context.error);
+      return;
+    }
+    setLatestLead(context.data.lead);
+    const result = await simulateInboundText({ leadId: context.data.lead.id });
     setBusy(null);
     if (!result.success) {
       toast.error(result.error);
@@ -255,10 +276,10 @@ function InternalGuide({ close }: { close: () => void }) {
         body={
           latestLead
             ? `${latestLead.first_name} ${latestLead.last_name} calls the office. The AI matches their number, shows the CRM record before you answer, and references the request — no re-asking what we already know.`
-            : "Create a lead first by running the speed-to-lead demo."
+            : "If the storyline has not started, the demo creates Jordan Avery first, then attaches the callback to that CRM record."
         }
       >
-        <Button size="sm" onClick={runExistingCustomerCall} disabled={callsBlocked || !latestLead}>
+        <Button size="sm" onClick={runExistingCustomerCall} disabled={callsBlocked}>
           <PhoneIncoming className="h-3.5 w-3.5" />
           Customer calls the office
         </Button>
@@ -277,8 +298,10 @@ function InternalGuide({ close }: { close: () => void }) {
 
       <Step
         number={5}
-        title="Jordan texts an urgent update"
-        body="Jordan Avery texts that the leak is getting worse and asks if someone can come today. The AI matches the phone number, flags the message as urgent, creates a task, and suggests an open slot with Jess Romero."
+        title="The storyline customer texts an urgent update"
+        body={latestLead
+          ? `${latestLead.first_name} ${latestLead.last_name} texts that the leak is getting worse. The AI matches the same CRM record, flags the message as urgent, creates a task, and suggests an open slot with Jess Romero.`
+          : "The demo creates Jordan Avery if needed, then matches the inbound number to that CRM record and handles the urgent update."}
       >
         <Button size="sm" onClick={runInboundText} disabled={busy !== null}>
           {busy === "text" ? (

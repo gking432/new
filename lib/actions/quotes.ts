@@ -255,6 +255,7 @@ export async function generateQuoteEstimate(input: QuoteRequest): Promise<
             weather,
           }),
           schema: QuoteSummarySchema,
+          schemaName: "quote_summary",
           maxTokens: 500,
         });
         aiSummary = ai.summary;

@@ -65,6 +65,7 @@ export async function analyzeAndSaveLead(
         system: LEAD_ANALYSIS_SYSTEM_PROMPT,
         user: buildLeadAnalysisUserPrompt(JSON.stringify(leadPromptPayload(lead), null, 2)),
         schema: LeadAnalysisSchema,
+        schemaName: "lead_analysis",
       });
     } catch (error) {
       console.error("AI lead analysis failed, using fallback:", error);

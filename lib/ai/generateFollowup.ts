@@ -82,6 +82,7 @@ export async function generateAndSaveFollowup(
             : "No analysis available.",
         }),
         schema: FollowupSchema,
+        schemaName: "followup_draft",
       });
       aiUsed = true;
     } catch (error) {
