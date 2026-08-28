@@ -1,8 +1,5 @@
 import {
-  AlertTriangle,
-  Globe2,
   MessageSquareText,
-  ShieldCheck,
   Star,
   ThumbsDown,
   ThumbsUp,
@@ -20,6 +17,7 @@ import {
 } from "@/components/ui/table";
 import { FeedbackAnalyzer } from "@/components/app/FeedbackAnalyzer";
 import { FeedbackCharts } from "@/components/app/FeedbackCharts";
+import { FeedbackSourceSummary } from "@/components/app/FeedbackSourceSummary";
 import { MetricCard } from "@/components/app/MetricCard";
 import { getFeedbackList, getTasks } from "@/lib/db/queries";
 import { createClient } from "@/lib/supabase/server";
@@ -268,13 +266,14 @@ export default async function FeedbackPage() {
         <div>
           <h2 className="text-xl font-semibold tracking-tight">Review Management</h2>
           <p className="mt-1 max-w-3xl text-sm text-muted-foreground">
-            Monitor reviews from Google, Yelp, Yellow Pages, Facebook, Angi, BBB, and local
-            neighborhood channels. AI turns feedback into risk flags, manager tasks, response
-            drafts, and operations coaching signals.
+            Analyze customer feedback and turn it into structured risk, a response draft, and
+            trackable manager work.
           </p>
         </div>
         <Badge variant="secondary">{sampleMode ? "Sample review feed" : "Current reviews"}</Badge>
       </div>
+
+      <FeedbackAnalyzer />
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
         <MetricCard label="Average Rating" value={averageRating} icon={Star} />
@@ -298,69 +297,7 @@ export default async function FeedbackPage() {
         <MetricCard label="Open Review Tasks" value={reviewTaskCount} icon={TimerOff} />
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        {sourceStats.map((source) => (
-          <Card key={source.source}>
-            <CardContent className="space-y-3 p-5">
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-medium">{source.label}</p>
-                  <p className="mt-1 text-xs text-muted-foreground">{source.count} review touchpoints</p>
-                </div>
-                <Globe2 className="h-4 w-4 shrink-0 text-primary" />
-              </div>
-              <div className="grid grid-cols-2 gap-3 text-sm">
-                <div>
-                  <p className="text-xs text-muted-foreground">Avg. rating</p>
-                  <p className="mt-0.5 font-semibold">{source.average}★</p>
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground">Risk flags</p>
-                  <p className="mt-0.5 font-semibold">{source.risk}</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
-
-      <div className="grid gap-4 lg:grid-cols-3">
-        <Card>
-          <CardContent className="flex gap-3 p-5">
-            <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-600" />
-            <div>
-              <p className="font-medium">Reputation risk triage</p>
-              <p className="mt-1 text-sm text-muted-foreground">
-                Negative reviews become manager work, not just a public comment sitting online.
-              </p>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="flex gap-3 p-5">
-            <MessageSquareText className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
-            <div>
-              <p className="font-medium">AI response drafting</p>
-              <p className="mt-1 text-sm text-muted-foreground">
-                The system can draft calm, useful replies while keeping human approval available.
-              </p>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="flex gap-3 p-5">
-            <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-status-success" />
-            <div>
-              <p className="font-medium">Operations coaching</p>
-              <p className="mt-1 text-sm text-muted-foreground">
-                Review themes expose coaching opportunities in scheduling, warranty, cleanup, and communication.
-              </p>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      <FeedbackAnalyzer />
+      <FeedbackSourceSummary sources={sourceStats} />
 
       <FeedbackCharts feedback={feedback} />
 
