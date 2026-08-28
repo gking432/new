@@ -3,8 +3,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
+  ArrowRight,
   ChevronLeft,
   ChevronRight,
+  CheckCircle2,
+  Database,
   GraduationCap,
   Headphones,
   Loader2,
@@ -12,6 +15,8 @@ import {
   MessageSquareText,
   MousePointerClick,
   PhoneOutgoing,
+  ShieldCheck,
+  Workflow,
   X,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -46,6 +51,14 @@ interface Step {
   spotlightHint?: string;
   action?: { label: string; icon?: React.ComponentType<{ className?: string }>; run: (ctx: RunCtx) => Promise<void> | void };
   simulate?: { label: string };
+  transition?: {
+    eyebrow: string;
+    summary: string;
+    details: Array<{ label: string; value: string }>;
+    tools: string[];
+    productionNote: string;
+    nextLabel: string;
+  };
   advance: Advance;
 }
 
@@ -525,6 +538,45 @@ export function TutorialProvider() {
       body: "Review the appointment details, then approve and send the confirmation.\n\nThis approval is a configurable guardrail. A company can require human review, or allow routine confirmations and reminders to send automatically.",
     },
     {
+      id: "executive-lead-recap",
+      title: "The homeowner workflow is complete.",
+      body: "",
+      transition: {
+        eyebrow: "Technical workflow recap",
+        summary:
+          "A sparse website request became a qualified CRM record, a booked inspection, an auditable activity history, a follow-up task, and a human-approved confirmation.",
+        details: [
+          { label: "Trigger", value: "Website form submission created the identity-matched lead." },
+          {
+            label: "AI orchestration",
+            value:
+              "The voice workflow gathered the missing project context, applied qualification rules, and selected a real appointment opening.",
+          },
+          {
+            label: "System writes",
+            value:
+              "The workflow updated the lead, created the appointment and task, appended CRM activity, and generated the confirmation draft.",
+          },
+          {
+            label: "Human control",
+            value: "An approval policy stopped the outbound SMS until a team member reviewed it.",
+          },
+        ],
+        tools: [
+          "lead.upsert",
+          "availability.search",
+          "appointment.create",
+          "activity.append",
+          "task.create",
+          "message.draft",
+        ],
+        productionNote:
+          "This demo executes through application tools and server actions. In production, those tool contracts can wrap HubSpot or Salesforce, Google or Microsoft calendars, Twilio, and MCP servers without changing the orchestration story.",
+        nextLabel: "Alright—meet Greg's email",
+      },
+      advance: { kind: "manual" },
+    },
+    {
       id: "executive-email",
       title: "Now Greg sends an email about 12 windows.",
       body: "The first homeowner workflow is complete. Next, Greg Tomlinson emails about replacing 12 windows before winter. He says weekdays after 3 PM work best.\n\nClick Receive Greg's email. The Inbox notification appears immediately, just like it would for a real inbound message.",
@@ -580,6 +632,46 @@ export function TutorialProvider() {
       spotlightHint: "Review the draft, then send the reply",
     },
     {
+      id: "executive-email-recap",
+      title: "Greg's email workflow is complete.",
+      body: "",
+      transition: {
+        eyebrow: "Technical workflow recap",
+        summary:
+          "An unstructured inbound email became a matched CRM lead, structured scheduling constraints, a calendar-aware response, and a logged customer communication—with no premature booking.",
+        details: [
+          { label: "Trigger", value: "An inbound email webhook created the Greg conversation." },
+          {
+            label: "AI orchestration",
+            value:
+              "The workflow extracted the 12-window scope and weekday-after-3 PM constraint, queried availability, and composed a grounded reply.",
+          },
+          {
+            label: "System writes",
+            value:
+              "Greg's lead and email thread were persisted, and the simulated outbound reply was appended to the same customer timeline.",
+          },
+          {
+            label: "Human control",
+            value:
+              "The draft stayed editable and unsent until the user reviewed it. No appointment was created without a customer response.",
+          },
+        ],
+        tools: [
+          "email.ingest",
+          "contact.match",
+          "lead.upsert",
+          "availability.search",
+          "reply.generate",
+          "communication.append",
+        ],
+        productionNote:
+          "In a real deployment, Gmail or Microsoft Graph could provide the mailbox event, the CRM could be exposed through direct APIs or MCP, and calendar availability could be another typed tool available to the model.",
+        nextLabel: "Alright—test reputation triage",
+      },
+      advance: { kind: "manual" },
+    },
+    {
       id: "executive-feedback",
       title: "Now test AI reputation triage.",
       body: "A scheduling workflow protects revenue before the job. Review management protects the customer relationship after the work.\n\nOpen Feedback to test a new public review. You will provide the input and run the analysis yourself.",
@@ -612,8 +704,47 @@ export function TutorialProvider() {
       advance: { kind: "manual" },
     },
     {
+      id: "executive-feedback-recap",
+      title: "The customer-risk workflow is complete.",
+      body: "",
+      transition: {
+        eyebrow: "Technical workflow recap",
+        summary:
+          "A raw two-star review became structured risk data, complaint themes, a recovery recommendation, a public-response draft, and trackable manager work.",
+        details: [
+          { label: "Trigger", value: "A new review entered the feedback analyzer." },
+          {
+            label: "AI orchestration",
+            value:
+              "Structured output classified sentiment, escalation risk, operational themes, and the recommended next action.",
+          },
+          {
+            label: "System writes",
+            value:
+              "The analysis and response draft were stored, and business rules created a manager task for the high-risk case.",
+          },
+          {
+            label: "Human control",
+            value:
+              "The system recommends and drafts; a manager still owns recovery outreach and the public response.",
+          },
+        ],
+        tools: [
+          "feedback.analyze",
+          "risk.classify",
+          "response.draft",
+          "task.create",
+          "audit.append",
+        ],
+        productionNote:
+          "The same pattern can start from Google Business Profile, Yelp, survey software, or a support platform. API adapters or MCP servers normalize those sources into one typed workflow.",
+        nextLabel: "Alright—wrap up the executive tour",
+      },
+      advance: { kind: "manual" },
+    },
+    {
       id: "executive-done",
-      title: "That is the five-minute executive tour.",
+      title: "That is the executive tour.",
       body: "You saw AI voice qualify a lead and schedule an inspection, configurable approval controls, email understanding, calendar-aware reply drafting, and live reputation-risk triage.\n\nThe CRM is the demo surface. The product being demonstrated is the AI workflow layer: it understands customer input, follows business rules, completes operational steps, and records what happened inside the systems a team already uses.",
       advance: { kind: "manual" },
     },
@@ -968,6 +1099,22 @@ export function TutorialProvider() {
     />
   ) : null;
 
+  if (step.transition) {
+    return (
+      <>
+        {requestFormOverlay}
+        {simulationConfirm}
+        <TechnicalTransitionModal
+          step={step}
+          index={index}
+          total={total}
+          onNext={() => go(index + 1)}
+          onStop={stop}
+        />
+      </>
+    );
+  }
+
   if (!tourMode || step.id === "welcome") {
     return (
       <>
@@ -1151,7 +1298,7 @@ function WelcomeTourModal({
                 <Badge className="bg-brand-gold text-brand-dark">Recommended</Badge>
               </span>
               <span className="mt-2 block text-xs font-medium uppercase tracking-wide text-brand-dark/70">
-                About 5 minutes
+                About 7 minutes
               </span>
               <span className="mt-2 block text-sm leading-5 text-muted-foreground">
                 Live or silent call simulation, calendar-aware scheduling, AI-drafted email
@@ -1313,6 +1460,125 @@ function SimulationConfirmDialog({
           </Button>
           <Button type="button" onClick={onConfirm}>
             Simulate call
+          </Button>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function TechnicalTransitionModal({
+  step,
+  index,
+  total,
+  onNext,
+  onStop,
+}: {
+  step: Step;
+  index: number;
+  total: number;
+  onNext: () => void;
+  onStop: () => void;
+}) {
+  const recap = step.transition!;
+
+  return (
+    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-blue-950/10 p-4 sm:p-6">
+      <section
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="technical-recap-title"
+        className="max-h-[calc(100vh-2rem)] w-full max-w-5xl overflow-y-auto rounded-2xl border border-blue-200 bg-background shadow-2xl"
+      >
+        <div className="flex items-center justify-between gap-4 rounded-t-2xl bg-brand-dark px-5 py-4 text-white sm:px-7">
+          <div className="flex items-center gap-3">
+            <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-blue-500/20 text-blue-200">
+              <CheckCircle2 className="h-5 w-5" />
+            </span>
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-blue-200">
+                {recap.eyebrow}
+              </p>
+              <p className="mt-0.5 text-xs text-white/60">
+                Executive tour · {index + 1} / {total}
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={onStop}
+            className="rounded-md p-1 text-white/60 hover:bg-white/10 hover:text-white"
+            aria-label="Exit tour"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        <div className="grid gap-0 lg:grid-cols-[1.15fr_0.85fr]">
+          <div className="p-5 sm:p-7">
+            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-blue-700">
+              What just happened
+            </p>
+            <h2 id="technical-recap-title" className="mt-2 text-2xl font-semibold tracking-tight">
+              {step.title}
+            </h2>
+            <p className="mt-3 text-sm leading-6 text-muted-foreground">{recap.summary}</p>
+
+            <div className="mt-6 space-y-3">
+              {recap.details.map((detail) => (
+                <div key={detail.label} className="grid gap-1 rounded-lg border bg-card p-3 sm:grid-cols-[130px_1fr] sm:gap-4">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-foreground">
+                    {detail.label}
+                  </p>
+                  <p className="text-sm leading-5 text-muted-foreground">{detail.value}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="border-t bg-blue-50/60 p-5 sm:p-7 lg:border-l lg:border-t-0">
+            <div className="flex items-center gap-2 text-blue-900">
+              <Workflow className="h-4 w-4" />
+              <h3 className="text-sm font-semibold">Tool-oriented architecture</h3>
+            </div>
+            <p className="mt-2 text-sm leading-6 text-blue-950/70">
+              The orchestration layer works through narrow, auditable tool contracts rather than
+              giving the model unrestricted system access.
+            </p>
+
+            <div className="mt-4 flex flex-wrap gap-2" aria-label="Workflow tools">
+              {recap.tools.map((tool) => (
+                <code
+                  key={tool}
+                  className="rounded-md border border-blue-200 bg-white px-2 py-1 text-xs font-medium text-blue-900 shadow-sm"
+                >
+                  {tool}
+                </code>
+              ))}
+            </div>
+
+            <div className="mt-6 rounded-xl border border-blue-200 bg-white p-4">
+              <p className="flex items-center gap-2 text-sm font-semibold text-blue-950">
+                <Database className="h-4 w-4" />
+                Production integration
+              </p>
+              <p className="mt-2 text-sm leading-6 text-blue-950/70">{recap.productionNote}</p>
+            </div>
+
+            <div className="mt-4 flex items-start gap-2 rounded-lg bg-blue-900 px-3 py-3 text-blue-50">
+              <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0" />
+              <p className="text-xs leading-5">
+                Each tool can enforce authentication, schema validation, permissions, retries,
+                idempotency, and audit logging outside the model.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div className="flex items-center justify-end border-t bg-background px-5 py-4 sm:px-7">
+          <Button onClick={onNext} className="min-w-64">
+            {recap.nextLabel}
+            <ArrowRight className="h-4 w-4" />
           </Button>
         </div>
       </section>
