@@ -440,11 +440,11 @@ export async function analyzeFeedback(
             title: `Review ${analysis.risk_level}-risk customer feedback${
               parsed.data.customer_name ? ` from ${parsed.data.customer_name}` : ""
             }`,
-            description: `${analysis.summary}\n\nSuggested action: ${analysis.suggested_internal_action}`,
+            description: `${analysis.summary}\n\nSuggested action: ${analysis.suggested_internal_action}\n\nFeedback record: ${feedback.id}`,
             type: "manager_review",
             priority: analysis.risk_level === "urgent" ? "urgent" : "high",
             status: "open",
-            due_at: new Date(Date.now() + 24 * 60 * 60_000).toISOString(),
+            due_at: createdAt,
             completed_at: null,
             created_at: createdAt,
             updated_at: createdAt,
@@ -471,6 +471,90 @@ export async function analyzeFeedback(
     return {
       success: false,
       error: err instanceof Error ? err.message : "Feedback analysis failed",
+    };
+  }
+}
+
+export async function publishFeedbackResponse(
+  feedbackId: string,
+  taskId: string,
+  responseBody: string
+): Promise<ActionResult> {
+  const postedResponse = responseBody.trim();
+  if (postedResponse.length < 20) {
+    return { success: false, error: "Review the response before posting" };
+  }
+  const postedAt = new Date().toISOString();
+
+  if (isLocalDemoMode()) {
+    try {
+      await mutateDemoState((state) => {
+        const feedback = state.feedback.find((item) => item.id === feedbackId);
+        const task = state.tasks.find((item) => item.id === taskId);
+        if (!feedback) throw new Error("Feedback record not found");
+        if (!task || task.type !== "manager_review") throw new Error("Review task not found");
+
+        feedback.tags = Array.from(new Set([...feedback.tags, "response_posted"]));
+        feedback.raw_output = {
+          ...(typeof feedback.raw_output === "object" && feedback.raw_output
+            ? feedback.raw_output
+            : {}),
+          response_posted: true,
+          response_posted_at: postedAt,
+          posted_response: postedResponse,
+        };
+        task.status = "complete";
+        task.completed_at = postedAt;
+        task.updated_at = postedAt;
+      });
+      revalidatePath("/app", "layout");
+      return { success: true };
+    } catch (err) {
+      return {
+        success: false,
+        error: err instanceof Error ? err.message : "Could not post the response",
+      };
+    }
+  }
+
+  const supabase = await createClient();
+  try {
+    await requireUser(supabase);
+    const { data: feedback } = await supabase
+      .from("feedback")
+      .select("tags, raw_output")
+      .eq("id", feedbackId)
+      .single();
+    if (!feedback) return { success: false, error: "Feedback record not found" };
+
+    const tags = Array.from(new Set([...(feedback.tags ?? []), "response_posted"]));
+    const rawOutput = {
+      ...(typeof feedback.raw_output === "object" && feedback.raw_output
+        ? feedback.raw_output
+        : {}),
+      response_posted: true,
+      response_posted_at: postedAt,
+      posted_response: postedResponse,
+    };
+    const { error: feedbackError } = await supabase
+      .from("feedback")
+      .update({ tags, raw_output: rawOutput })
+      .eq("id", feedbackId);
+    if (feedbackError) return { success: false, error: feedbackError.message };
+
+    const { error: taskError } = await supabase
+      .from("tasks")
+      .update({ status: "complete", completed_at: postedAt, updated_at: postedAt })
+      .eq("id", taskId)
+      .eq("type", "manager_review");
+    if (taskError) return { success: false, error: taskError.message };
+
+    revalidatePath("/app", "layout");
+    return { success: true };
+  } catch (err) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "Could not post the response",
     };
   }
 }

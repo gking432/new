@@ -115,11 +115,11 @@ export async function analyzeAndSaveFeedback(
       title: `Review ${analysis.risk_level}-risk customer feedback${
         input.customer_name ? ` from ${input.customer_name}` : ""
       }`,
-      description: `${analysis.summary}\n\nSuggested action: ${analysis.suggested_internal_action}`,
+      description: `${analysis.summary}\n\nSuggested action: ${analysis.suggested_internal_action}\n\nFeedback record: ${feedback.id}`,
       type: "manager_review",
       priority: analysis.risk_level === "urgent" ? "urgent" : "high",
       status: "open",
-      due_at: new Date(Date.now() + 24 * 60 * 60_000).toISOString(),
+      due_at: new Date().toISOString(),
     });
   }
 

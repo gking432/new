@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Loader2, Sparkles } from "lucide-react";
+import { CheckCircle2, Loader2, Send, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -22,9 +22,10 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { analyzeFeedback } from "@/lib/actions";
-import type { FeedbackAnalysisOutput } from "@/lib/ai/schemas";
+import { analyzeFeedback, publishFeedbackResponse } from "@/lib/actions";
+import { FeedbackAnalysisSchema, type FeedbackAnalysisOutput } from "@/lib/ai/schemas";
 import { CATEGORY_LABELS, RISK_STYLES, SENTIMENT_STYLES } from "@/lib/utils/statuses";
+import type { Feedback } from "@/types/app";
 
 const SOURCE_OPTIONS = [
   ["google_review", "Google review"],
@@ -36,14 +37,64 @@ const SOURCE_OPTIONS = [
 
 const NONE = "__none__";
 
-export function FeedbackAnalyzer() {
-  const [source, setSource] = useState("google_review");
-  const [customerName, setCustomerName] = useState("");
-  const [rating, setRating] = useState<string>(NONE);
-  const [text, setText] = useState("");
+function analysisFromFeedback(feedback: Feedback): FeedbackAnalysisOutput {
+  const parsed = FeedbackAnalysisSchema.safeParse(feedback.raw_output);
+  if (parsed.success) return parsed.data;
+  return {
+    sentiment: feedback.sentiment ?? "neutral",
+    risk_level: feedback.risk_level ?? "low",
+    summary: feedback.summary ?? feedback.feedback_text,
+    key_praise: feedback.key_praise,
+    key_complaints: feedback.key_complaints,
+    operational_category: feedback.operational_category ?? "unknown",
+    suggested_internal_action: feedback.suggested_internal_action ?? "Review the feedback.",
+    suggested_customer_response:
+      feedback.suggested_customer_response ?? "Thank you for sharing this feedback with us.",
+    marketing_quote_opportunity: feedback.marketing_quote_opportunity,
+    tags: feedback.tags,
+  };
+}
+
+function responseChannel(source: string) {
+  if (source === "google_review" || source === "google_reviews") return "Google";
+  if (source === "call_note") return "the customer record";
+  return source.replace(/_/g, " ").replace(/^./, (letter) => letter.toUpperCase());
+}
+
+export function FeedbackAnalyzer({
+  initialFeedback,
+  reviewTaskId,
+}: {
+  initialFeedback?: Feedback | null;
+  reviewTaskId?: string;
+}) {
+  const restoredFeedback = reviewTaskId ? initialFeedback ?? null : null;
+  const restoredAnalysis = restoredFeedback ? analysisFromFeedback(restoredFeedback) : null;
+  const [source, setSource] = useState(restoredFeedback?.source ?? "google_review");
+  const [customerName, setCustomerName] = useState(restoredFeedback?.customer_name ?? "");
+  const [rating, setRating] = useState<string>(
+    restoredFeedback?.rating != null ? String(restoredFeedback.rating) : NONE
+  );
+  const [text, setText] = useState(restoredFeedback?.feedback_text ?? "");
   const [analyzing, setAnalyzing] = useState(false);
-  const [result, setResult] = useState<{ analysis: FeedbackAnalysisOutput; aiUsed: boolean } | null>(
-    null
+  const [posting, setPosting] = useState(false);
+  const [result, setResult] = useState<{
+    analysis: FeedbackAnalysisOutput;
+    aiUsed: boolean | null;
+    feedbackId: string;
+    responsePosted: boolean;
+  } | null>(
+    restoredFeedback && restoredAnalysis
+      ? {
+          analysis: restoredAnalysis,
+          aiUsed: null,
+          feedbackId: restoredFeedback.id,
+          responsePosted: restoredFeedback.tags.includes("response_posted"),
+        }
+      : null
+  );
+  const [responseDraft, setResponseDraft] = useState(
+    restoredAnalysis?.suggested_customer_response ?? ""
   );
 
   async function analyze() {
@@ -59,7 +110,10 @@ export function FeedbackAnalyzer() {
       setResult({
         analysis: response.data.feedback.raw_output as FeedbackAnalysisOutput,
         aiUsed: response.data.aiUsed,
+        feedbackId: response.data.feedback.id,
+        responsePosted: false,
       });
+      setResponseDraft(response.data.feedback.suggested_customer_response ?? "");
       window.dispatchEvent(new CustomEvent("northstar-feedback-analyzed"));
       window.dispatchEvent(new CustomEvent("northstar-task-created"));
       toast.success("Review analyzed - manager action and response draft prepared");
@@ -69,6 +123,21 @@ export function FeedbackAnalyzer() {
   }
 
   const analysis = result?.analysis;
+
+  async function postResponse() {
+    if (!result?.feedbackId || !reviewTaskId) return;
+    setPosting(true);
+    const response = await publishFeedbackResponse(result.feedbackId, reviewTaskId, responseDraft);
+    setPosting(false);
+    if (!response.success) {
+      toast.error(response.error);
+      return;
+    }
+    setResult((current) => (current ? { ...current, responsePosted: true } : current));
+    window.dispatchEvent(new CustomEvent("northstar-feedback-response-posted"));
+    window.dispatchEvent(new CustomEvent("northstar-task-completed"));
+    toast.success(`Response posted to ${responseChannel(source)} (simulated) - task completed`);
+  }
 
   function loadDemoReview() {
     setSource("google_review");
@@ -171,7 +240,11 @@ export function FeedbackAnalyzer() {
             <CardTitle>Analysis</CardTitle>
             {result ? (
               <Badge variant="outline" className="text-xs">
-                {result.aiUsed ? "Schema-validated AI analysis" : "Rule-based fallback"}
+                {result.aiUsed == null
+                  ? "Stored analysis"
+                  : result.aiUsed
+                    ? "Schema-validated AI analysis"
+                    : "Rule-based fallback"}
               </Badge>
             ) : null}
           </div>
@@ -227,9 +300,37 @@ export function FeedbackAnalyzer() {
               </div>
               <div className="rounded-lg border bg-secondary/30 p-3">
                 <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                  Suggested customer response (AI draft — edit before posting)
+                  Public response draft (editable)
                 </p>
-                <p className="mt-1 text-sm">{analysis.suggested_customer_response}</p>
+                <Textarea
+                  className="mt-2 bg-background"
+                  rows={4}
+                  value={responseDraft}
+                  onChange={(event) => setResponseDraft(event.target.value)}
+                  disabled={result.responsePosted}
+                  aria-label="Public response draft"
+                />
+                {reviewTaskId ? (
+                  result.responsePosted ? (
+                    <div
+                      className="mt-3 flex items-center gap-2 rounded-md bg-status-success/10 px-3 py-2 text-sm font-medium text-status-success"
+                      data-tour="feedback-response-status"
+                    >
+                      <CheckCircle2 className="h-4 w-4" />
+                      Posted to {responseChannel(source)} (simulated) · manager task completed
+                    </div>
+                  ) : (
+                    <Button
+                      className="mt-3 w-full"
+                      onClick={postResponse}
+                      disabled={posting || responseDraft.trim().length < 20}
+                      data-tour="feedback-post-response"
+                    >
+                      {posting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                      Approve & post to {responseChannel(source)} (simulated)
+                    </Button>
+                  )
+                ) : null}
               </div>
               {analysis.marketing_quote_opportunity ? (
                 <div className="rounded-lg border border-brand-gold/40 bg-brand-gold/10 p-3">

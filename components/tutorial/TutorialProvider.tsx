@@ -61,7 +61,7 @@ interface Step {
     nextLabel: string;
     inspect?: {
       label: string;
-      path: string;
+      path?: string;
     };
   };
   advance: Advance;
@@ -591,8 +591,6 @@ export function TutorialProvider() {
       title: "Inspect the completed lead record.",
       body: "This started as only a name and phone number. The voice workflow turned it into a qualified CRM record with the homeowner's project details, appointment, AI analysis, follow-up task, communication, and an auditable activity history.\n\nExplore the record for as long as you like. When you are ready, use the button below to continue to Greg's email.",
       nextLabel: "Continue to Greg's email",
-      spotlight: "lead-timeline",
-      spotlightHint: "Review the complete activity history",
       advance: { kind: "manual" },
     },
     {
@@ -700,8 +698,6 @@ export function TutorialProvider() {
       title: "Inspect Greg's completed CRM record.",
       body: "Greg's unstructured email is now attached to a real lead with structured project scope, scheduling constraints, the original message, the AI-assisted response, and a customer activity trail. No appointment was invented or booked before Greg agreed.\n\nExplore the record, then continue when you are ready to see reputation triage.",
       nextLabel: "Continue to reputation triage",
-      spotlight: "lead-timeline",
-      spotlightHint: "Review Greg's CRM activity history",
       advance: { kind: "manual" },
     },
     {
@@ -730,11 +726,35 @@ export function TutorialProvider() {
     },
     {
       id: "executive-review-result",
-      title: "The AI created an actionable result.",
-      body: "The review is no longer just a star rating. The system turned it into a risk level, complaint themes, an internal recovery action, a customer-facing response draft, and manager work the team can track.\n\nThat is the implementation pattern across this demo: understand unstructured customer input, apply business rules, complete the next operational step, and leave an audit trail.",
+      title: "The AI created actionable work.",
+      body: "The review is no longer just a star rating. The system turned it into a risk level, complaint themes, an internal recovery action, an editable public-response draft, and a manager task.\n\nThe Tasks badge is the operational handoff. Click Next, then follow that notification so the complaint is actually resolved instead of merely analyzed.",
       spotlight: "feedback-analysis-result",
       spotlightHint: "Review the AI analysis",
       advance: { kind: "manual" },
+    },
+    {
+      id: "executive-open-review-task",
+      title: "Follow the reputation-risk task.",
+      body: "The high-risk review created due-now work for the manager. Open Tasks to see the complaint, recommended recovery action, priority, and response handoff in the same queue as the rest of the business's work.",
+      spotlight: "nav-tasks",
+      spotlightHint: "Open Tasks",
+      advance: { kind: "navigate", pathname: "/app/tasks" },
+    },
+    {
+      id: "executive-review-task",
+      title: "Open the review response task.",
+      body: "This is the accountability layer: the complaint has an owner, priority, due time, and recommended action. Click Review & respond to return to the stored analysis and public-response draft.",
+      spotlight: "task-review-response-link",
+      spotlightHint: "Open Review & respond",
+      advance: { kind: "navigate", pathname: "/app/feedback" },
+    },
+    {
+      id: "executive-post-review-response",
+      title: "Review and post the public response.",
+      body: "The AI draft is editable. Read it, make any change you want, then approve the simulated Google response. Posting records the response and automatically completes the manager task, clearing the Tasks notification.",
+      spotlight: "feedback-post-response",
+      spotlightHint: "Approve the response and complete the task",
+      advance: { kind: "event", event: "northstar-feedback-response-posted" },
     },
     {
       id: "executive-feedback-recap",
@@ -743,7 +763,7 @@ export function TutorialProvider() {
       transition: {
         eyebrow: "Technical workflow recap",
         summary:
-          "A raw two-star review became structured risk data, complaint themes, a recovery recommendation, a public-response draft, and trackable manager work.",
+          "A raw two-star review became structured risk data, complaint themes, a recovery recommendation, trackable manager work, and a human-approved public response.",
         details: [
           { label: "Trigger", value: "A new review entered the feedback analyzer." },
           {
@@ -754,12 +774,12 @@ export function TutorialProvider() {
           {
             label: "System writes",
             value:
-              "The analysis and response draft were stored, and business rules created a manager task for the high-risk case.",
+              "The analysis and response draft were stored, business rules created a due-now manager task, and posting the response completed that task and cleared the notification.",
           },
           {
             label: "Human control",
             value:
-              "The system recommends and drafts; a manager still owns recovery outreach and the public response.",
+              "The system routed and drafted the work; a manager reviewed, edited, and approved the public response before it was posted.",
           },
         ],
         tools: [
@@ -767,31 +787,30 @@ export function TutorialProvider() {
           "risk.classify",
           "response.draft",
           "task.create",
+          "review.publish",
+          "task.complete",
           "audit.append",
         ],
         productionNote:
           "The same pattern can start from Google Business Profile, Yelp, survey software, or a support platform. API adapters or MCP servers normalize those sources into one typed workflow.",
         nextLabel: "Alright—wrap up the executive tour",
         inspect: {
-          label: "View the full analysis first",
-          path: "/app/feedback",
+          label: "View the completed resolution first",
         },
       },
       advance: { kind: "manual" },
     },
     {
       id: "executive-feedback-analysis-review",
-      title: "Inspect the completed risk analysis.",
-      body: "The original review has become structured sentiment and risk data, complaint themes, an internal recovery recommendation, a public-response draft, and trackable manager work.\n\nReview the full output, then finish the executive tour when you are ready.",
+      title: "Inspect the completed customer-recovery workflow.",
+      body: "The original review is now structured risk data, complaint themes, an internal recovery recommendation, a posted public response, and a completed manager task.\n\nLook over the entire page without any additional highlight. Finish the guided tour whenever you are ready.",
       nextLabel: "Finish the executive tour",
-      spotlight: "feedback-analysis-result",
-      spotlightHint: "Review the complete AI analysis",
       advance: { kind: "manual" },
     },
     {
       id: "executive-done",
-      title: "That is the executive tour.",
-      body: "You saw AI voice qualify a lead and schedule an inspection, configurable approval controls, email understanding, calendar-aware reply drafting, and live reputation-risk triage.\n\nThe CRM is the demo surface. The product being demonstrated is the AI workflow layer: it understands customer input, follows business rules, completes operational steps, and records what happened inside the systems a team already uses.",
+      title: "The guided story is complete. The CRM is yours to explore.",
+      body: "You saw AI voice qualify a lead and schedule an inspection, configurable approval controls, email understanding, calendar-aware reply drafting, and a reputation workflow that ended with completed human work.\n\nClick Finish to remove the tour sidebar. Then feel free to click through every tab, inspect the leads and timelines you created, open calls and messages, change stages, use the quote tool, and experiment with the rest of the CRM. The demo remains fully interactive after the tour ends.",
       advance: { kind: "manual" },
     },
   ];
@@ -928,16 +947,16 @@ export function TutorialProvider() {
     router.replace("/app");
   }, [pathname, router, searchParams]);
 
+  const showTourDock =
+    active && !compactSpotlight && Boolean(tourMode) && (step?.id !== "welcome" || welcomeMorphing);
+
   useEffect(() => {
-    document.body.classList.toggle(
-      "tutorial-open",
-      active && !compactSpotlight && Boolean(tourMode) && (step?.id !== "welcome" || welcomeMorphing)
-    );
+    document.body.classList.toggle("tutorial-open", showTourDock);
     if (tourMode) {
       writeTourStorage(storageKeys(tourMode).active, active ? "1" : "0");
     }
     return () => document.body.classList.remove("tutorial-open");
-  }, [active, compactSpotlight, step?.id, tourMode, welcomeMorphing]);
+  }, [active, showTourDock, tourMode]);
 
   useEffect(() => {
     if (tourMode) writeTourStorage(storageKeys(tourMode).index, String(index));
@@ -1159,7 +1178,7 @@ export function TutorialProvider() {
           onInspect={
             inspect
               ? () => {
-                  router.push(inspect.path);
+                  if (inspect.path) router.push(inspect.path);
                   go(index + 1);
                 }
               : undefined
@@ -1353,7 +1372,7 @@ function WelcomeTourModal({
                 <Badge className="bg-brand-gold text-brand-dark">Recommended</Badge>
               </span>
               <span className="mt-2 block text-xs font-medium uppercase tracking-wide text-brand-dark/70">
-                About 7 minutes
+                About 8 minutes
               </span>
               <span className="mt-2 block text-sm leading-5 text-muted-foreground">
                 Live or silent call simulation, calendar-aware scheduling, AI-drafted email

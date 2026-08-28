@@ -54,6 +54,10 @@ export function TaskList({
   }
 
   function taskHref(task: TaskWithLead) {
+    if (task.status !== "complete" && task.type === "manager_review") {
+      const feedbackId = task.description?.match(/Feedback record: ([\w-]+)/)?.[1];
+      return `/app/feedback?task=${task.id}${feedbackId ? `&feedback=${feedbackId}` : ""}`;
+    }
     const opensApprovalQueue =
       task.status !== "complete" &&
       (task.type === "sms" ||
@@ -78,6 +82,10 @@ export function TaskList({
         const priority = PRIORITY_STYLES[task.priority];
         const href = taskHref(task);
         const opensApprovalQueue = href?.startsWith("/app/inbox") ?? false;
+        const opensFeedbackReview = href?.startsWith("/app/feedback") ?? false;
+        const visibleDescription = task.description
+          ?.replace(/\n\nFeedback record: [\w-]+/, "")
+          .trim();
         return (
           <li
             key={task.id}
@@ -139,9 +147,9 @@ export function TaskList({
                   {formatTaskDueDate(task.due_at)}
                 </span>
               </p>
-              {!compact && task.description ? (
+              {!compact && visibleDescription ? (
                 <p className="mt-1 line-clamp-2 text-sm text-muted-foreground">
-                  {task.description}
+                  {visibleDescription}
                 </p>
               ) : null}
             </div>
@@ -186,6 +194,20 @@ export function TaskList({
                     onClick={(event) => event.stopPropagation()}
                   >
                     <MessageSquareText className="h-3.5 w-3.5" />
+                  </Link>
+                </Button>
+              ) : null}
+              {opensFeedbackReview ? (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-8"
+                  asChild
+                  data-tour="task-review-response-link"
+                >
+                  <Link href={href ?? "/app/feedback"} onClick={(event) => event.stopPropagation()}>
+                    <MessageSquareText className="h-3.5 w-3.5" />
+                    Review & respond
                   </Link>
                 </Button>
               ) : null}

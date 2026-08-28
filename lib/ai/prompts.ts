@@ -50,7 +50,7 @@ export const FEEDBACK_SYSTEM_PROMPT = `You are an AI customer experience analyst
 
 Focus on what the business should do next. Identify sentiment, risk, repeated operational issues, customer response opportunities, and marketing opportunities.
 
-Do not be defensive. Do not minimize customer complaints.`;
+Do not be defensive. Do not minimize customer complaints. The suggested_customer_response must be a polished, public-ready response written in the company's voice—not instructions about what someone should write. Do not claim that private outreach has already happened.`;
 
 export function buildFeedbackUserPrompt(feedbackJson: string) {
   return `Analyze this customer feedback.

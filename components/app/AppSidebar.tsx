@@ -31,9 +31,6 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
-import { initials } from "@/lib/utils/format";
-import { ROLE_LABELS } from "@/lib/utils/statuses";
-import type { Profile } from "@/types/app";
 
 const NAV_ITEMS = [
   { href: "/app", label: "Overview", icon: LayoutDashboard, exact: true },
@@ -52,10 +49,8 @@ const NAV_ITEMS = [
 ];
 
 export function AppSidebar({
-  profile,
   badges = {},
 }: {
-  profile: Profile | null;
   badges?: Record<string, number>;
 }) {
   const pathname = usePathname();
@@ -206,18 +201,6 @@ export function AppSidebar({
             </DialogFooter>
           </DialogContent>
         </Dialog>
-
-        <div className="flex items-center gap-3">
-          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white/10 text-sm font-medium">
-            {initials(profile?.full_name)}
-          </span>
-          <div className="min-w-0 flex-1 leading-tight">
-            <p className="truncate text-sm font-medium">{profile?.full_name ?? "Team member"}</p>
-            <p className="truncate text-[11px] text-sidebar-foreground/60">
-              {profile ? ROLE_LABELS[profile.role] ?? profile.role : ""}
-            </p>
-          </div>
-        </div>
       </div>
     </aside>
   );

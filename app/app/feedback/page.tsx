@@ -201,7 +201,12 @@ function sourceLabel(source: string | null) {
   return REVIEW_SOURCE_LABELS[source] ?? source.replace(/_/g, " ");
 }
 
-export default async function FeedbackPage() {
+export default async function FeedbackPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ task?: string; feedback?: string }>;
+}) {
+  const { task: reviewTaskId, feedback: reviewFeedbackId } = await searchParams;
   const [databaseFeedback, tasks] = isLocalDemoMode()
     ? await Promise.all([getLocalFeedback(), getLocalTasks()])
     : await (async () => {
@@ -210,6 +215,9 @@ export default async function FeedbackPage() {
       })();
   const sampleMode = databaseFeedback.length === 0;
   const feedback = sampleMode ? SAMPLE_FEEDBACK : databaseFeedback;
+  const reviewFeedback = reviewTaskId
+    ? databaseFeedback.find((item) => item.id === reviewFeedbackId) ?? databaseFeedback[0] ?? null
+    : null;
 
   const rated = feedback.filter((item) => item.rating != null);
   const averageRating =
@@ -273,7 +281,10 @@ export default async function FeedbackPage() {
         <Badge variant="secondary">{sampleMode ? "Sample review feed" : "Current reviews"}</Badge>
       </div>
 
-      <FeedbackAnalyzer />
+      <FeedbackAnalyzer
+        initialFeedback={reviewFeedback}
+        reviewTaskId={reviewTaskId}
+      />
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
         <MetricCard label="Average Rating" value={averageRating} icon={Star} />
