@@ -7,13 +7,11 @@ import {
   ArrowDownLeft,
   ArrowUpRight,
   Bot,
-  CalendarRange,
   Clock,
   Loader2,
   Mail,
   MessageSquareText,
   Reply,
-  RefreshCw,
   Send,
   Trash2,
   Wand2,
@@ -34,8 +32,6 @@ import {
   approveAndSimulateCommunication,
   draftSoonerInspectionSms,
   discardCommunication,
-  completeExecutiveEmailScheduling,
-  refreshExecutiveEmailOpenings,
   sendConversationReply,
 } from "@/lib/actions/inbox";
 import { cn } from "@/lib/utils";
@@ -226,23 +222,6 @@ export function InboxView({
   const pendingDraft = selected?.messages.find(
     (m) => m.direction === "outbound" && m.status === "draft"
   );
-  const executiveEmailSource = selected?.messages.find((message) => {
-    const meta = (message.metadata ?? {}) as Record<string, unknown>;
-    return meta.demo_action === "executive_inbound_window_email";
-  });
-  const executiveEmailSlots = Array.isArray(executiveEmailSource?.metadata?.suggested_slots)
-    ? executiveEmailSource.metadata.suggested_slots.filter(
-        (slot): slot is { start: string; label: string } =>
-          Boolean(
-            slot &&
-              typeof slot === "object" &&
-              "start" in slot &&
-              "label" in slot &&
-              typeof slot.start === "string" &&
-              typeof slot.label === "string"
-          )
-      )
-    : [];
   const approvalsCount = approvalConversations.length;
   const scheduledCount = automatedMessages.length;
   const attentionCount = conversations.reduce(
@@ -323,20 +302,6 @@ export function InboxView({
     });
   }
 
-  function refreshEmailOpenings() {
-    if (!executiveEmailSource) return;
-    startTransition(async () => {
-      const result = await refreshExecutiveEmailOpenings(executiveEmailSource.id);
-      if (result.success) {
-        window.dispatchEvent(new CustomEvent("northstar-executive-openings-refreshed"));
-        toast.success(`AI refreshed the calendar - next option: ${result.data.labels[0]}`);
-        router.refresh();
-      } else {
-        toast.error(result.error ?? "Could not refresh the calendar");
-      }
-    });
-  }
-
   function discard(draftId: string) {
     startTransition(async () => {
       const result = await discardCommunication(draftId);
@@ -367,8 +332,7 @@ export function InboxView({
     const sourceId = replyToId;
     const source = selected?.messages.find((message) => message.id === sourceId);
     const sourceMeta = (source?.metadata ?? {}) as Record<string, unknown>;
-    const completesExecutiveScheduling =
-      sourceMeta.demo_action === "executive_inbound_window_email";
+    const isExecutiveEmail = sourceMeta.demo_action === "executive_inbound_window_email";
     startTransition(async () => {
       const sent = await sendConversationReply({ replyToId: sourceId, body: replyBody });
       if (sent.success) {
@@ -377,30 +341,12 @@ export function InboxView({
         setReplyToId(null);
         window.dispatchEvent(new CustomEvent("northstar-comm-sent"));
         router.refresh();
-        if (completesExecutiveScheduling) {
-          toast("Options sent to Greg", {
-            description: "Waiting for the customer to choose an appointment time.",
+        if (isExecutiveEmail) {
+          toast("Reply sent to Greg", {
+            description:
+              "The AI-drafted email is logged. No appointment is booked until Greg responds.",
             position: "top-center",
           });
-          window.setTimeout(async () => {
-            const confirmation = await completeExecutiveEmailScheduling(sourceId);
-            if (!confirmation.success) {
-              toast.error(confirmation.error ?? "Could not complete the email scheduling demo");
-              return;
-            }
-            window.dispatchEvent(new CustomEvent("northstar-inbox-updated"));
-            window.dispatchEvent(new CustomEvent("northstar-executive-email-booked"));
-            toast("Greg confirmed an appointment", {
-              description: `Greg selected ${confirmation.data.label}. The AI booked the visit and blocked the estimator calendar.`,
-              position: "top-center",
-              duration: 10000,
-              action: {
-                label: "Open Appointments",
-                onClick: () => router.push("/app/appointments"),
-              },
-            });
-            router.refresh();
-          }, 1500);
         }
       } else {
         toast.error(sent.error ?? "Reply failed");
@@ -568,28 +514,6 @@ export function InboxView({
                 <span className="flex-1" />
                 {selected.channel === "email" && tab === "conversations" && (
                   <>
-                    {executiveEmailSlots[0] ? (
-                      <>
-                        <Button size="sm" variant="outline" asChild data-tour="inbox-email-calendar">
-                          <Link
-                            href={`/app/appointments?slot=${encodeURIComponent(executiveEmailSlots[0].start)}`}
-                          >
-                            <CalendarRange className="h-3.5 w-3.5" />
-                            View {executiveEmailSlots.length} openings
-                          </Link>
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={refreshEmailOpenings}
-                          disabled={pending}
-                          data-tour="inbox-email-refresh"
-                        >
-                          <RefreshCw className={cn("h-3.5 w-3.5", pending && "animate-spin")} />
-                          Refresh openings
-                        </Button>
-                      </>
-                    ) : null}
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
                         <Button size="sm" data-tour="inbox-email-reply">
@@ -673,6 +597,12 @@ export function InboxView({
                       .map((msg) => (
                         <div key={msg.id} className="space-y-2">
                           <div
+                            data-tour={
+                              ((msg.metadata ?? {}) as Record<string, unknown>).demo_action ===
+                              "executive_inbound_window_email"
+                                ? "inbox-executive-email"
+                                : undefined
+                            }
                             className={cn(
                               "overflow-hidden rounded-lg border bg-background",
                               msg.direction === "inbound" && needsAttention(msg) && "border-red-200 bg-red-50/30"

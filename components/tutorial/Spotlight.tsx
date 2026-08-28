@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 
 interface Rect {
+  target: string;
   top: number;
   left: number;
   width: number;
@@ -17,10 +18,12 @@ interface Rect {
  */
 export function Spotlight({
   target,
+  stepKey,
   padding = 8,
   wiggle = false,
 }: {
   target: string;
+  stepKey: string;
   padding?: number;
   wiggle?: boolean;
 }) {
@@ -29,16 +32,13 @@ export function Spotlight({
 
   useEffect(() => {
     let raf = 0;
-    setVisible(false);
-    const revealTimer = window.setTimeout(() => setVisible(true), 1500);
-
     function measure() {
       const el = document.querySelector<HTMLElement>(`[data-tour="${target}"]`);
       if (el) {
         el.classList.toggle("tour-target-wiggle", wiggle);
         const r = el.getBoundingClientRect();
         if (r.width > 0 && r.height > 0) {
-          setRect({ top: r.top, left: r.left, width: r.width, height: r.height });
+          setRect({ target, top: r.top, left: r.left, width: r.width, height: r.height });
           return;
         }
       }
@@ -56,7 +56,6 @@ export function Spotlight({
       document
         .querySelector<HTMLElement>(`[data-tour="${target}"]`)
         ?.classList.remove("tour-target-wiggle");
-      clearTimeout(revealTimer);
       clearInterval(interval);
       cancelAnimationFrame(raf);
       window.removeEventListener("scroll", onScroll, true);
@@ -64,11 +63,22 @@ export function Spotlight({
     };
   }, [target, wiggle]);
 
-  if (!rect) return null;
-  const t = Math.max(0, rect.top - padding);
-  const l = Math.max(0, rect.left - padding);
-  const w = rect.width + padding * 2;
-  const h = rect.height + padding * 2;
+  const activeRect = rect?.target === target ? rect : null;
+  const hasTarget = activeRect !== null;
+  useEffect(() => {
+    setVisible(false);
+    if (!hasTarget) {
+      return;
+    }
+    const revealTimer = window.setTimeout(() => setVisible(true), 1500);
+    return () => clearTimeout(revealTimer);
+  }, [hasTarget, stepKey]);
+
+  if (!activeRect) return null;
+  const t = Math.max(0, activeRect.top - padding);
+  const l = Math.max(0, activeRect.left - padding);
+  const w = activeRect.width + padding * 2;
+  const h = activeRect.height + padding * 2;
 
   return (
     <div

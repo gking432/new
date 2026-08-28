@@ -526,10 +526,10 @@ export function TutorialProvider() {
     },
     {
       id: "executive-email",
-      title: "Now watch AI handle an email lead.",
-      body: "Greg Tomlinson emails about replacing 12 windows. He says weekdays after 3 PM work best and asks for openings next week.\n\nThe AI will create the lead, understand the scheduling limits, check the estimator calendar, and prepare a reply with real open times.",
+      title: "Now Greg sends an email about 12 windows.",
+      body: "The first homeowner workflow is complete. Next, Greg Tomlinson emails about replacing 12 windows before winter. He says weekdays after 3 PM work best.\n\nClick Receive Greg's email. The Inbox notification appears immediately, just like it would for a real inbound message.",
       action: {
-        label: "Receive scheduling email",
+        label: "Receive Greg's email",
         icon: Mail,
         run: async (ctx) => {
           const r = await simulateInboundEmail({ executiveScheduling: true });
@@ -551,70 +551,33 @@ export function TutorialProvider() {
     },
     {
       id: "executive-open-email",
-      title: "Open Greg's email conversation.",
-      body: "The AI matched the email to a new CRM lead, understood that Greg needs a weekday after 3 PM, and checked the shared estimator calendar.\n\nOpen Conversations to read the original request.",
-      spotlight: "inbox-conversations",
-      spotlightHint: "Open Conversations",
-      advance: { kind: "event", event: "northstar-inbox-conversations-opened" },
-    },
-    {
-      id: "executive-check-email-openings",
-      title: "Verify what the AI saw.",
-      body: "The AI found three openings that fit Greg's request. Instead of trusting a hidden recommendation, open the calendar and inspect the first available slot yourself.\n\nClick View openings. These are live openings from the same schedule the phone and email assistants use.",
-      spotlight: "inbox-email-calendar",
-      spotlightHint: "View the calendar openings",
-      advance: { kind: "navigate", pathname: "/app/appointments" },
-    },
-    {
-      id: "executive-email-openings-view",
-      title: "Change the schedule under the AI.",
-      body: "This is the first opening the AI found after applying Greg's weekday and after-3 PM limits. Existing appointments were excluded before it was suggested.\n\nNow create a conflict yourself. Click Block this time. The slot will become unavailable, and the AI will have to react to the changed calendar.",
-      spotlight: "appointments-email-slot-check",
-      spotlightHint: "Block the suggested time",
-      advance: { kind: "event", event: "northstar-executive-slot-blocked" },
-    },
-    {
-      id: "executive-back-to-email",
-      title: "Return to Greg's email.",
-      body: "Now return to Inbox. The AI draft will use the same verified openings you just saw on the estimator calendar.",
+      title: "Greg sent an email about some windows.",
+      body: "The notification is immediate. Greg's message is waiting in Inbox.\n\nOpen Inbox and read the customer's original email before asking the AI to do anything.",
       spotlight: "nav-inbox",
-      spotlightHint: "Return to Inbox",
-      advance: { kind: "navigate", pathname: "/app/inbox" },
+      spotlightHint: "Open Inbox to read Greg's email",
+      advance: { kind: "event", event: "northstar-nav-inbox-clicked" },
     },
     {
-      id: "executive-refresh-email-openings",
-      title: "Make the AI check again.",
-      body: "The first suggestion is no longer open. Click Refresh openings. The AI will query the updated calendar, remove the conflict, and rebuild its choices before it writes the email.",
-      spotlight: "inbox-email-refresh",
-      spotlightHint: "Refresh the calendar choices",
-      advance: { kind: "event", event: "northstar-executive-openings-refreshed" },
+      id: "executive-read-email",
+      title: "Read Greg's request first.",
+      body: "Greg wants to replace 12 original windows before winter. He asks for a measurement visit next week and says weekdays after 3 PM work best.\n\nThis is still the customer's raw email. Nothing has been sent, no appointment has moved, and the AI has not drafted the response yet. Take a moment to read it, then click Next.",
+      spotlight: "inbox-executive-email",
+      spotlightHint: "Read Greg's original email",
+      advance: { kind: "manual" },
     },
     {
       ...fullStep("reply-email"),
       id: "executive-reply-email",
-      body: "The AI has already read Greg's request and checked the calendar.\n\nClick Reply, then choose Draft a response. The reply will offer the real openings you just verified instead of inventing a time.",
+      title: "Now ask the AI to draft the reply.",
+      body: "The AI action happens now. Click Reply, then Draft a response.\n\nThe AI will use Greg's project details and weekday-after-3 PM constraint, check available estimator times, and write a response that offers real openings. Nothing is sent until you review it.",
+      spotlightHint: "Click Reply, then Draft a response",
     },
     {
       ...fullStep("send-email-reply"),
       id: "executive-send-email-reply",
-      body: "Review the AI-written reply with the verified appointment options, then click Send reply.\n\nWatch the conversation after it sends. Greg must choose a time before the AI can book anything. Once his reply arrives, the AI will record his selection, book the measurement visit, block the calendar, and update the CRM.",
-      advance: { kind: "event", event: "northstar-executive-email-booked" },
-    },
-    {
-      id: "executive-open-appointments",
-      title: "See the email become a booked appointment.",
-      body: "The customer accepted one of the offered times. Open Appointments to verify that the AI completed the operational handoff.",
-      spotlight: "nav-appointments",
-      spotlightHint: "Open Appointments",
-      advance: { kind: "navigate", pathname: "/app/appointments" },
-    },
-    {
-      id: "executive-appointment-view",
-      title: "The completed workflow is the proof.",
-      body: "Greg confirmed one of the calendar-verified times. Only then did the AI book the measurement visit. That slot is now blocked and cannot be offered to another customer.\n\nThe original email, AI-written choices, customer reply, appointment, lead stage, and audit trail all stay connected. This same scheduling layer can work during phone calls, texts, or inside an existing CRM.",
-      spotlight: "appointments-estimator-calendar",
-      spotlightHint: "Review the booked visit",
-      advance: { kind: "manual" },
+      title: "Review the AI-drafted reply.",
+      body: "Read the draft in context with Greg's email. It should acknowledge the 12-window project and offer real weekday openings after 3 PM.\n\nYou can edit it before sending. When it looks right, click Send reply. Demo mode logs the email without contacting anyone or booking an appointment before Greg responds.",
+      spotlightHint: "Review the draft, then send the reply",
     },
     {
       id: "executive-feedback",
@@ -651,7 +614,7 @@ export function TutorialProvider() {
     {
       id: "executive-done",
       title: "That is the five-minute executive tour.",
-      body: "You saw AI voice qualify a lead and schedule an inspection, configurable approval controls, email understanding, calendar-aware reply drafting, explicit customer confirmation, automatic booking, and live reputation-risk triage.\n\nThe CRM is the demo surface. The product being demonstrated is the AI workflow layer: it understands customer input, follows business rules, completes operational steps, and records what happened inside the systems a team already uses.",
+      body: "You saw AI voice qualify a lead and schedule an inspection, configurable approval controls, email understanding, calendar-aware reply drafting, and live reputation-risk triage.\n\nThe CRM is the demo surface. The product being demonstrated is the AI workflow layer: it understands customer input, follows business rules, completes operational steps, and records what happened inside the systems a team already uses.",
       advance: { kind: "manual" },
     },
   ];
@@ -682,7 +645,6 @@ export function TutorialProvider() {
     "automations",
     "reports",
     "settings",
-    "executive-open-appointments",
   ]);
   const requiredOverlayStepIds = new Set([
     "save-first-lead",
@@ -705,6 +667,7 @@ export function TutorialProvider() {
     "automations-view",
     "reports-view",
     "settings-view",
+    "executive-read-email",
   ]);
   const highlightOnlyStepIds = new Set([
     "go-inbox-urgent-text",
@@ -716,13 +679,13 @@ export function TutorialProvider() {
     "go-appointments-after-reschedule",
     "jess-booked-after-reschedule",
     "executive-open-email",
-    "executive-appointment-view",
   ]);
   const showRequiredSpotlight = Boolean(
     step?.spotlight && (requiredOverlayStepIds.has(step.id) || tabClickStepIds.has(step.id))
   );
   const showSpotlightHighlight = Boolean(
-    step?.spotlight && (showRequiredSpotlight || highlightOnlyStepIds.has(step.id))
+    step?.spotlight &&
+      (tourMode === "executive" || showRequiredSpotlight || highlightOnlyStepIds.has(step.id))
   );
 
   // ── Persistence ─────────────────────────────────────────────────────────
@@ -1050,10 +1013,10 @@ export function TutorialProvider() {
       {requestFormOverlay}
       {simulationConfirm}
       {showSpotlightHighlight && (
-        <Spotlight key={step.id} target={step.spotlight} wiggle={false} />
+        <Spotlight target={step.spotlight} stepKey={step.id} wiggle={false} />
       )}
       <TutorialTooltip
-        key={step.id}
+        stepKey={step.id}
         step={step}
         running={running}
         role={callRole()}
@@ -1081,6 +1044,7 @@ export function TutorialProvider() {
 }
 
 interface AnchorRect {
+  target: string;
   top: number;
   left: number;
   width: number;
@@ -1095,9 +1059,10 @@ function useAnchorRect(target?: string) {
       setRect(null);
       return;
     }
+    const anchorTarget = target;
     let raf = 0;
     function measure() {
-      const el = document.querySelector<HTMLElement>(`[data-tour="${target}"]`);
+      const el = document.querySelector<HTMLElement>(`[data-tour="${anchorTarget}"]`);
       if (!el) {
         setRect(null);
         return;
@@ -1107,7 +1072,7 @@ function useAnchorRect(target?: string) {
         setRect(null);
         return;
       }
-      setRect({ top: r.top, left: r.left, width: r.width, height: r.height });
+      setRect({ target: anchorTarget, top: r.top, left: r.left, width: r.width, height: r.height });
     }
     measure();
     const interval = setInterval(measure, 250);
@@ -1125,7 +1090,7 @@ function useAnchorRect(target?: string) {
     };
   }, [target]);
 
-  return rect;
+  return rect?.target === target ? rect : null;
 }
 
 function WelcomeTourModal({
@@ -1186,11 +1151,11 @@ function WelcomeTourModal({
                 <Badge className="bg-brand-gold text-brand-dark">Recommended</Badge>
               </span>
               <span className="mt-2 block text-xs font-medium uppercase tracking-wide text-brand-dark/70">
-                About 6 minutes
+                About 5 minutes
               </span>
               <span className="mt-2 block text-sm leading-5 text-muted-foreground">
-                Live or silent call simulation, calendar-aware scheduling, email booking,
-                approval controls, and reputation-risk triage.
+                Live or silent call simulation, calendar-aware scheduling, AI-drafted email
+                replies, approval controls, and reputation-risk triage.
               </span>
               <span className="mt-4 flex items-center gap-1 text-sm font-semibold text-primary">
                 Start executive tour <ChevronRight className="h-4 w-4" />
@@ -1497,12 +1462,14 @@ function TutorialSidebar({
 }
 
 function TutorialTooltip({
+  stepKey,
   step,
   running,
   role,
   onRunAction,
   onRunSimulation,
 }: {
+  stepKey: string;
   step: Step;
   running: boolean;
   role: string | null;
@@ -1511,23 +1478,21 @@ function TutorialTooltip({
 }) {
   const rect = useAnchorRect(step.spotlight);
   const [visible, setVisible] = useState(false);
+  const hasAnchor = rect !== null;
   const ActionIcon = step.action?.icon;
   const width = Math.min(320, typeof window === "undefined" ? 320 : window.innerWidth - 32);
 
   useEffect(() => {
+    setVisible(false);
+    if (!hasAnchor) {
+      return;
+    }
     const revealTimer = window.setTimeout(() => setVisible(true), 2000);
     return () => clearTimeout(revealTimer);
-  }, []);
+  }, [hasAnchor, stepKey]);
 
   const style = (() => {
-    if (!rect || typeof window === "undefined") {
-      return {
-        left: "50%",
-        top: "50%",
-        transform: "translate(-50%, -50%)",
-        width,
-      } as React.CSSProperties;
-    }
+    if (!rect || typeof window === "undefined") return { width } as React.CSSProperties;
     const margin = 12;
     const estimatedHeight = 130;
     const sidebarWidth = window.innerWidth >= 1024 ? 340 : 0;
@@ -1559,7 +1524,7 @@ function TutorialTooltip({
     <section
       data-testid="tour-tooltip"
       className={`fixed z-50 max-h-[calc(100vh-2rem)] overflow-y-auto rounded-lg border border-white/15 bg-zinc-700 text-white shadow-2xl transition-opacity duration-500 ease-out motion-reduce:transition-none ${
-        visible ? "opacity-100" : "pointer-events-none opacity-0"
+        hasAnchor && visible ? "opacity-100" : "pointer-events-none opacity-0"
       }`}
       style={style}
     >
