@@ -718,11 +718,11 @@ export function TutorialProvider() {
     "executive-open-email",
     "executive-appointment-view",
   ]);
-  const showSpotlightOverlay = Boolean(
+  const showRequiredSpotlight = Boolean(
     step?.spotlight && (requiredOverlayStepIds.has(step.id) || tabClickStepIds.has(step.id))
   );
   const showSpotlightHighlight = Boolean(
-    step?.spotlight && (showSpotlightOverlay || highlightOnlyStepIds.has(step.id))
+    step?.spotlight && (showRequiredSpotlight || highlightOnlyStepIds.has(step.id))
   );
 
   // ── Persistence ─────────────────────────────────────────────────────────
@@ -1050,7 +1050,7 @@ export function TutorialProvider() {
       {requestFormOverlay}
       {simulationConfirm}
       {showSpotlightHighlight && (
-        <Spotlight target={step.spotlight} dim={showSpotlightOverlay} wiggle={false} />
+        <Spotlight key={step.id} target={step.spotlight} wiggle={false} />
       )}
       <TutorialTooltip
         step={step}

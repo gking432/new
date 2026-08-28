@@ -10,26 +10,28 @@ interface Rect {
 }
 
 /**
- * Dims the screen except for the element carrying the given `data-tour` value,
- * drawing an attention ring around it. Visual-only (pointer-events: none) so
- * the dashboard stays fully usable — the user clicks the real element to move
- * on. Re-measures on an interval so it tracks layout/route changes.
+ * Draws a delayed blue outline around the element carrying the given
+ * `data-tour` value. Visual-only (pointer-events: none) so the dashboard stays
+ * fully usable while the user explores it. Re-measures on an interval so it
+ * tracks layout and route changes.
  */
 export function Spotlight({
   target,
   padding = 8,
-  dim = true,
   wiggle = false,
 }: {
   target: string;
   padding?: number;
-  dim?: boolean;
   wiggle?: boolean;
 }) {
   const [rect, setRect] = useState<Rect | null>(null);
+  const [visible, setVisible] = useState(false);
 
   useEffect(() => {
     let raf = 0;
+    setVisible(false);
+    const revealTimer = window.setTimeout(() => setVisible(true), 1500);
+
     function measure() {
       const el = document.querySelector<HTMLElement>(`[data-tour="${target}"]`);
       if (el) {
@@ -54,6 +56,7 @@ export function Spotlight({
       document
         .querySelector<HTMLElement>(`[data-tour="${target}"]`)
         ?.classList.remove("tour-target-wiggle");
+      clearTimeout(revealTimer);
       clearInterval(interval);
       cancelAnimationFrame(raf);
       window.removeEventListener("scroll", onScroll, true);
@@ -68,26 +71,20 @@ export function Spotlight({
   const h = rect.height + padding * 2;
 
   return (
-    <div className="pointer-events-none fixed inset-0 z-30">
-      {/* Dim everything + a bright gold glow ring around the target so it pops
-          even on the dark sidebar. */}
+    <div
+      data-testid="tour-spotlight"
+      className="pointer-events-none fixed inset-0 z-30 transition-opacity ease-out motion-reduce:transition-none"
+      style={{ opacity: visible ? 1 : 0, transitionDuration: "1500ms" }}
+    >
       <div
-        className="absolute rounded-lg transition-all duration-200"
+        className="absolute rounded-lg border-2 border-blue-500 transition-all duration-200"
         style={{
           top: t,
           left: l,
           width: w,
           height: h,
-          boxShadow:
-            `0 0 0 3px rgba(255,255,255,0.9), 0 0 0 6px rgba(199,154,59,1), 0 0 28px 10px rgba(199,154,59,0.85)${
-              dim ? ", 0 0 0 9999px rgba(10,15,13,0.68)" : ""
-            }`,
+          boxShadow: "0 0 0 3px rgba(255,255,255,0.9), 0 0 22px 5px rgba(37,99,235,0.35)",
         }}
-      />
-      {/* Pulsing outline for extra motion. */}
-      <div
-        className="absolute rounded-lg border-2 border-brand-gold animate-pulse"
-        style={{ top: t - 4, left: l - 4, width: w + 8, height: h + 8 }}
       />
     </div>
   );
