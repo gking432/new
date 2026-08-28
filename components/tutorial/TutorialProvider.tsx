@@ -1053,6 +1053,7 @@ export function TutorialProvider() {
         <Spotlight key={step.id} target={step.spotlight} wiggle={false} />
       )}
       <TutorialTooltip
+        key={step.id}
         step={step}
         running={running}
         role={callRole()}
@@ -1509,8 +1510,15 @@ function TutorialTooltip({
   onRunSimulation: () => void;
 }) {
   const rect = useAnchorRect(step.spotlight);
+  const [visible, setVisible] = useState(false);
   const ActionIcon = step.action?.icon;
   const width = Math.min(320, typeof window === "undefined" ? 320 : window.innerWidth - 32);
+
+  useEffect(() => {
+    const revealTimer = window.setTimeout(() => setVisible(true), 2000);
+    return () => clearTimeout(revealTimer);
+  }, []);
+
   const style = (() => {
     if (!rect || typeof window === "undefined") {
       return {
@@ -1549,7 +1557,10 @@ function TutorialTooltip({
 
   return (
     <section
-      className="fixed z-50 max-h-[calc(100vh-2rem)] overflow-y-auto rounded-lg border border-white/15 bg-zinc-700 text-white shadow-2xl"
+      data-testid="tour-tooltip"
+      className={`fixed z-50 max-h-[calc(100vh-2rem)] overflow-y-auto rounded-lg border border-white/15 bg-zinc-700 text-white shadow-2xl transition-opacity duration-500 ease-out motion-reduce:transition-none ${
+        visible ? "opacity-100" : "pointer-events-none opacity-0"
+      }`}
       style={style}
     >
       <div className="space-y-3 p-3">
