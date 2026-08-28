@@ -10,16 +10,21 @@ import { customerServiceLabel } from "@/lib/utils/statuses";
  */
 
 function knownFacts(lead: Lead): string {
+  const knownService = lead.service_type && lead.service_type !== "not_sure";
   const lines = [
     lead.first_name && `- Name: ${lead.first_name} ${lead.last_name}`,
     lead.phone && `- Phone: ${lead.phone}`,
     lead.email && `- Email: ${lead.email}`,
     [lead.street_address, lead.city, lead.state].filter(Boolean).length &&
       `- Address: ${[lead.street_address, lead.city, lead.state].filter(Boolean).join(", ")}`,
-    lead.service_type && `- Service: ${customerServiceLabel(lead.service_type)}`,
+    knownService && `- Service: ${customerServiceLabel(lead.service_type)}`,
     lead.description && `- What they told us: "${lead.description}"`,
-    lead.active_leak && `- Active leak reported: ${lead.active_leak}`,
-    lead.insurance_started && `- Insurance claim started: ${lead.insurance_started}`,
+    lead.active_leak &&
+      lead.active_leak !== "not_sure" &&
+      `- Active leak reported: ${lead.active_leak}`,
+    lead.insurance_started &&
+      lead.insurance_started !== "not_sure" &&
+      `- Insurance claim started: ${lead.insurance_started}`,
   ].filter(Boolean);
   return lines.join("\n");
 }
@@ -55,18 +60,23 @@ export function buildRealtimeInstructions(args: {
 
   if (args.scenario === "speed_to_lead_outbound" && args.lead) {
     const first = args.lead.first_name;
-    const service = customerServiceLabel(args.lead.service_type).toLowerCase();
+    const serviceKnown = args.lead.service_type !== "not_sure";
+    const service = serviceKnown
+      ? customerServiceLabel(args.lead.service_type).toLowerCase()
+      : null;
     return `${persona}
 
 ${first} just submitted a request on our website and you're calling them right back to get a free inspection on the calendar.
 
 HOW TO OPEN (follow this exactly, one line at a time, waiting after each):
 1. "Hey, is this ${first}?"  → wait for them to answer.
-2. "Hi ${first}, this is Riley over at Northstar Exterior & Home — I'm calling about your request for ${service}. Did I catch you at an okay time?"  → wait.
-3. Then have a natural conversation: ask how things are going / what's going on with the ${service}, and listen.
+2. "Hi ${first}, this is Riley over at Northstar Exterior & Home — I'm calling about the request you just sent. Did I catch you at an okay time?"  → wait.
+3. Then have a natural conversation: ${serviceKnown ? `ask what's going on with the ${service}` : "ask what they would like help with"}, and listen.
 
 We ALREADY HAVE all their contact info from the form, so do NOT ask for their email, phone, or address up front — that's annoying. Here's what's on file:
 ${knownFacts(args.lead)}
+
+Before scheduling, you MUST learn the project type, what happened, how urgent it is, whether water is actively leaking, and whether insurance has been started when storm damage is involved. Ask naturally, one item at a time. Do not infer or skip these details just because the website record says "not sure."
 
 Your goal: understand the situation briefly, then get a free inspection booked. ${scheduling(args.slots)}
 

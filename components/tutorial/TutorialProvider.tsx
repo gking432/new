@@ -993,7 +993,6 @@ export function TutorialProvider() {
           callerPhone: lead.phone,
           subtitle: "AI Scheduling Assistant",
           direction: "inbound",
-          seedFields: { service_type: lead.serviceType },
           navigateTo: `/app/leads/${lead.leadId}`,
         });
       }}
@@ -1245,7 +1244,6 @@ function RequestFormOverlay({
     leadId: string;
     name: string;
     phone: string;
-    serviceType: string;
   }) => void;
 }) {
   return (
@@ -1276,6 +1274,13 @@ function RequestFormOverlay({
               callback, captures the conversation, books an inspection, and prepares the next
               customer message for approval.
             </p>
+            <div className="mt-5 rounded-lg border border-brand-gold/40 bg-brand-gold/10 p-3">
+              <p className="text-sm font-semibold text-brand-gold">You are the customer.</p>
+              <p className="mt-1 text-sm leading-5 text-white/75">
+                Enter a name and phone number, then answer the callback. Riley must discover the
+                project, urgency, and scheduling needs during the conversation.
+              </p>
+            </div>
             <div className="mt-6 space-y-3 text-sm">
               {["Identity-matched CRM record", "Calendar-aware scheduling", "Human-approved follow-up"].map(
                 (item, index) => (
@@ -1309,7 +1314,7 @@ function RequestFormOverlay({
               </Button>
             </div>
             <div className="p-6">
-              <LeadForm dashboardDemo showDemoFill={false} onDashboardSubmit={onSubmit} />
+              <LeadForm dashboardDemo showDemoFill onDashboardSubmit={onSubmit} />
             </div>
           </div>
         </section>

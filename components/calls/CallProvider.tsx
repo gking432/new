@@ -580,7 +580,7 @@ function ActiveCallWindow({
     phase === "failed";
 
   return (
-    <div className="fixed left-1/2 top-4 z-50 w-[min(620px,calc(100vw-32px))] -translate-x-1/2">
+    <div className="fixed left-1/2 top-14 z-50 w-[min(620px,calc(100vw-32px))] -translate-x-1/2">
       <audio ref={audioRef} autoPlay playsInline className="hidden" />
       {options.crmContext && options.crmContext.length > 0 && phase === "incoming" && (
         <div className="mb-2 rounded-2xl border border-brand-gold/50 bg-amber-50 p-3 text-sm shadow-xl">
@@ -789,14 +789,19 @@ function CallPill({
           >
             <PhoneOff className="h-5 w-5" />
           </button>
-          <button
-            type="button"
-            onClick={onAnswer}
-            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-green-500 text-white transition hover:bg-green-400"
-            aria-label="Answer"
-          >
-            <Phone className="h-5 w-5" />
-          </button>
+          <div className="relative shrink-0">
+            <span className="pointer-events-none absolute -top-10 right-0 whitespace-nowrap rounded-md bg-brand-gold px-2.5 py-1.5 text-[11px] font-bold text-brand-dark shadow-lg after:absolute after:right-4 after:top-full after:border-4 after:border-transparent after:border-t-brand-gold">
+              Click to answer
+            </span>
+            <button
+              type="button"
+              onClick={onAnswer}
+              className="flex h-11 w-11 items-center justify-center rounded-full bg-green-500 text-white shadow-[0_0_0_5px_rgba(34,197,94,0.18)] transition hover:scale-105 hover:bg-green-400"
+              aria-label="Answer"
+            >
+              <Phone className="h-5 w-5" />
+            </button>
+          </div>
         </>
       ) : phase === "done" || phase === "failed" ? (
         <button

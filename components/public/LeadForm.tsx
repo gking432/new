@@ -201,7 +201,6 @@ export function LeadForm({
     leadId: string;
     name: string;
     phone: string;
-    serviceType: LeadFormValues["service_type"];
   }) => void;
 }) {
   const router = useRouter();
@@ -221,7 +220,9 @@ export function LeadForm({
       best_time_to_contact: "anytime",
       homeowner_status: "owner",
       state: "WI",
+      service_type: "not_sure",
       project_reason: "damage_repair",
+      timeframe: "researching",
       budget_range: "not_sure",
       insurance_started: "not_sure",
       active_leak: "not_sure",
@@ -229,11 +230,28 @@ export function LeadForm({
     },
   });
 
+  function fillDemoCustomer() {
+    const customer = DEMO_CUSTOMERS[Math.floor(Math.random() * DEMO_CUSTOMERS.length)];
+    reset(
+      dashboardDemo
+        ? {
+            ...customer,
+            service_type: "not_sure",
+            project_reason: "other",
+            timeframe: "researching",
+            description: "",
+            insurance_started: "not_sure",
+            active_leak: "not_sure",
+          }
+        : customer
+    );
+  }
+
   // Auto-fill triggers: the demo guide dispatches an event when already on
   // this page, or links here with ?fill=demo from elsewhere.
   useEffect(() => {
     const fill = () => {
-      reset(DEMO_CUSTOMERS[Math.floor(Math.random() * DEMO_CUSTOMERS.length)]);
+      fillDemoCustomer();
       toast.success("Form filled with a demo customer — review and submit");
     };
     if (searchParams.get("fill") === "demo") fill();
@@ -258,7 +276,6 @@ export function LeadForm({
           leadId,
           name: `${values.first_name} ${values.last_name}`.trim(),
           phone: values.phone,
-          serviceType: values.service_type,
         });
         setSubmitting(false);
         return;
@@ -275,22 +292,8 @@ export function LeadForm({
     }
   }
 
-  const fromDashboardTour = dashboardDemo || searchParams.get("demo") === "dashboard";
-
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
-      {fromDashboardTour && (
-        <div className="rounded-lg border-2 border-brand-gold bg-brand-gold/15 p-4">
-          <p className="text-sm font-bold uppercase tracking-wide text-brand-dark">
-            You are the customer in this scenario
-          </p>
-          <p className="mt-1 text-sm text-brand-dark/80">
-            Use your real first and last name so the later callback feels personal. Use fake phone,
-            email, and project details if you want. After submitting, answer the browser call or use
-            the guided tour&apos;s silent simulation.
-          </p>
-        </div>
-      )}
       {showDemoFill && (
         <div className="flex flex-wrap items-center gap-3 rounded-lg border border-brand-gold/40 bg-brand-gold/10 p-3">
           <Button
@@ -298,16 +301,14 @@ export function LeadForm({
             variant="outline"
             size="sm"
             className="bg-background"
-            onClick={() =>
-              reset(DEMO_CUSTOMERS[Math.floor(Math.random() * DEMO_CUSTOMERS.length)])
-            }
+            onClick={fillDemoCustomer}
           >
             <Sparkles className="h-3.5 w-3.5 text-brand-gold" />
-            Generate demo customer
+            Auto-fill demo customer
           </Button>
           <p className="text-xs text-muted-foreground">
-            Auto-fills the form with a realistic homeowner — or enter your own info; everything you
-            type works in the demo. After submitting, watch for the AI callback.
+            Fills the contact fields with a realistic homeowner. The AI callback will still need to
+            discover what happened and what service they need.
           </p>
         </div>
       )}
@@ -325,6 +326,7 @@ export function LeadForm({
         </CardContent>
       </Card>
 
+      {!dashboardDemo && (
       <Card>
         <CardHeader>
           <CardTitle>What do you need help with?</CardTitle>
@@ -373,6 +375,7 @@ export function LeadForm({
           </div>
         </CardContent>
       </Card>
+      )}
 
       <Card>
         <CardHeader>

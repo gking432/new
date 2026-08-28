@@ -145,7 +145,7 @@ export function MockPhoneFrame({
               <CallButton color="red" label="Decline" onClick={onDecline}>
                 <PhoneOff className="h-6 w-6" />
               </CallButton>
-              <CallButton color="green" label="Answer" pulse onClick={onAnswer}>
+              <CallButton color="green" label="Answer" hint="Click to answer" pulse onClick={onAnswer}>
                 <Phone className="h-6 w-6" />
               </CallButton>
             </>
@@ -177,18 +177,25 @@ export function MockPhoneFrame({
 function CallButton({
   color,
   label,
+  hint,
   pulse = false,
   onClick,
   children,
 }: {
   color: "green" | "red" | "gray" | "white";
   label: string;
+  hint?: string;
   pulse?: boolean;
   onClick?: () => void;
   children: React.ReactNode;
 }) {
   return (
-    <div className="flex flex-col items-center gap-1.5">
+    <div className="relative flex flex-col items-center gap-1.5">
+      {hint ? (
+        <span className="pointer-events-none absolute -top-9 whitespace-nowrap rounded-md bg-brand-gold px-2.5 py-1 text-[11px] font-bold text-brand-dark shadow-lg after:absolute after:left-1/2 after:top-full after:-translate-x-1/2 after:border-4 after:border-transparent after:border-t-brand-gold">
+          {hint}
+        </span>
+      ) : null}
       <button
         type="button"
         onClick={onClick}
