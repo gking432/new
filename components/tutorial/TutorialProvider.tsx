@@ -579,7 +579,7 @@ export function TutorialProvider() {
         ],
         productionNote:
           "This demo executes through application tools and server actions. In production, those tool contracts can wrap HubSpot or Salesforce, Google or Microsoft calendars, Twilio, and MCP servers without changing the orchestration story.",
-        nextLabel: "Alright—meet Greg's email",
+        nextLabel: "Continue to the next workflow",
         inspect: {
           label: "View the lead record first",
           path: storylineLeadId ? `/app/leads/${storylineLeadId}` : "/app/leads",
@@ -590,8 +590,8 @@ export function TutorialProvider() {
     {
       id: "executive-lead-record-review",
       title: "Inspect the completed lead record.",
-      body: "This started as only a name and phone number. The voice workflow turned it into a qualified CRM record with the homeowner's project details, appointment, AI analysis, follow-up task, communication, and an auditable activity history.\n\nExplore the record for as long as you like. When you are ready, use the button below to continue to Greg's email.",
-      nextLabel: "Continue to Greg's email",
+      body: "This started as only a name and phone number. The voice workflow turned it into a qualified CRM record with the homeowner's project details, appointment, AI analysis, follow-up task, communication, and an auditable activity history.\n\nExplore the record for as long as you like. When you are ready, use the button below to continue to the next workflow.",
+      nextLabel: "Continue to the next workflow",
       advance: { kind: "manual" },
     },
     {
@@ -720,19 +720,11 @@ export function TutorialProvider() {
       advance: { kind: "event", event: "northstar-feedback-analyzed" },
     },
     {
-      id: "executive-review-result",
-      title: "Review the AI recommendation.",
-      body: "The review is no longer just a star rating. The system turned it into a risk level, complaint themes, a recovery recommendation, and an editable public-response draft.\n\nRead the recommended response and edit it if you want. Then click Next in the sidebar.",
-      spotlight: "feedback-analysis-result",
-      spotlightHint: "Review the response, then click Next in the sidebar",
-      advance: { kind: "manual" },
-    },
-    {
       id: "executive-post-review-response",
-      title: "Approve the public response.",
-      body: "You have reviewed the AI draft. Now click Approve & post to Google. The public post is simulated, but the approval and audit behavior match a production workflow.",
-      spotlight: "feedback-post-response",
-      spotlightHint: "Approve and post the response",
+      title: "Review the AI recommendation, then publish.",
+      body: "The review is now a risk level, complaint themes, a recovery recommendation, and an editable public-response draft.\n\nRead the analysis and response, make any changes you want, then click Approve & post to Google when you are ready. The public post is simulated, but the approval and audit behavior match a production workflow.",
+      spotlight: "feedback-analysis-result",
+      spotlightHint: "Review the analysis and response, then approve and post when ready",
       advance: { kind: "event", event: "northstar-feedback-response-posted" },
     },
     {
