@@ -47,6 +47,7 @@ interface Step {
   id: string;
   title: string;
   body: string;
+  nextLabel?: string;
   spotlight?: string;
   spotlightHint?: string;
   action?: { label: string; icon?: React.ComponentType<{ className?: string }>; run: (ctx: RunCtx) => Promise<void> | void };
@@ -58,6 +59,10 @@ interface Step {
     tools: string[];
     productionNote: string;
     nextLabel: string;
+    inspect?: {
+      label: string;
+      path: string;
+    };
   };
   advance: Advance;
 }
@@ -118,6 +123,7 @@ export function TutorialProvider() {
   const [showManualNext, setShowManualNext] = useState(true);
   const [pulseNext, setPulseNext] = useState(false);
   const [storylineLeadId, setStorylineLeadId] = useState<string | null>(null);
+  const [gregLeadId, setGregLeadId] = useState<string | null>(null);
   const welcomeHandledRef = useRef<string | null>(null);
 
   // ── Step definitions ──────────────────────────────────────────────────────
@@ -573,7 +579,20 @@ export function TutorialProvider() {
         productionNote:
           "This demo executes through application tools and server actions. In production, those tool contracts can wrap HubSpot or Salesforce, Google or Microsoft calendars, Twilio, and MCP servers without changing the orchestration story.",
         nextLabel: "Alright—meet Greg's email",
+        inspect: {
+          label: "View the lead record first",
+          path: storylineLeadId ? `/app/leads/${storylineLeadId}` : "/app/leads",
+        },
       },
+      advance: { kind: "manual" },
+    },
+    {
+      id: "executive-lead-record-review",
+      title: "Inspect the completed lead record.",
+      body: "This started as only a name and phone number. The voice workflow turned it into a qualified CRM record with the homeowner's project details, appointment, AI analysis, follow-up task, communication, and an auditable activity history.\n\nExplore the record for as long as you like. When you are ready, use the button below to continue to Greg's email.",
+      nextLabel: "Continue to Greg's email",
+      spotlight: "lead-timeline",
+      spotlightHint: "Review the complete activity history",
       advance: { kind: "manual" },
     },
     {
@@ -589,6 +608,7 @@ export function TutorialProvider() {
             toast.error(r.error);
             throw new Error(r.error);
           }
+          setGregLeadId(r.data.leadId);
           r.data.events.forEach(appendDemoEvent);
           window.dispatchEvent(new CustomEvent("northstar-inbox-updated"));
           toast("New scheduling email", {
@@ -668,7 +688,20 @@ export function TutorialProvider() {
         productionNote:
           "In a real deployment, Gmail or Microsoft Graph could provide the mailbox event, the CRM could be exposed through direct APIs or MCP, and calendar availability could be another typed tool available to the model.",
         nextLabel: "Alright—test reputation triage",
+        inspect: {
+          label: "View Greg's CRM record first",
+          path: gregLeadId ? `/app/leads/${gregLeadId}` : "/app/leads",
+        },
       },
+      advance: { kind: "manual" },
+    },
+    {
+      id: "executive-greg-record-review",
+      title: "Inspect Greg's completed CRM record.",
+      body: "Greg's unstructured email is now attached to a real lead with structured project scope, scheduling constraints, the original message, the AI-assisted response, and a customer activity trail. No appointment was invented or booked before Greg agreed.\n\nExplore the record, then continue when you are ready to see reputation triage.",
+      nextLabel: "Continue to reputation triage",
+      spotlight: "lead-timeline",
+      spotlightHint: "Review Greg's CRM activity history",
       advance: { kind: "manual" },
     },
     {
@@ -739,7 +772,20 @@ export function TutorialProvider() {
         productionNote:
           "The same pattern can start from Google Business Profile, Yelp, survey software, or a support platform. API adapters or MCP servers normalize those sources into one typed workflow.",
         nextLabel: "Alright—wrap up the executive tour",
+        inspect: {
+          label: "View the full analysis first",
+          path: "/app/feedback",
+        },
       },
+      advance: { kind: "manual" },
+    },
+    {
+      id: "executive-feedback-analysis-review",
+      title: "Inspect the completed risk analysis.",
+      body: "The original review has become structured sentiment and risk data, complaint themes, an internal recovery recommendation, a public-response draft, and trackable manager work.\n\nReview the full output, then finish the executive tour when you are ready.",
+      nextLabel: "Finish the executive tour",
+      spotlight: "feedback-analysis-result",
+      spotlightHint: "Review the complete AI analysis",
       advance: { kind: "manual" },
     },
     {
@@ -1100,6 +1146,7 @@ export function TutorialProvider() {
   ) : null;
 
   if (step.transition) {
+    const inspect = step.transition.inspect;
     return (
       <>
         {requestFormOverlay}
@@ -1108,7 +1155,15 @@ export function TutorialProvider() {
           step={step}
           index={index}
           total={total}
-          onNext={() => go(index + 1)}
+          onNext={() => go(index + (inspect ? 2 : 1))}
+          onInspect={
+            inspect
+              ? () => {
+                  router.push(inspect.path);
+                  go(index + 1);
+                }
+              : undefined
+          }
           onStop={stop}
         />
       </>
@@ -1472,12 +1527,14 @@ function TechnicalTransitionModal({
   index,
   total,
   onNext,
+  onInspect,
   onStop,
 }: {
   step: Step;
   index: number;
   total: number;
   onNext: () => void;
+  onInspect?: () => void;
   onStop: () => void;
 }) {
   const recap = step.transition!;
@@ -1575,7 +1632,17 @@ function TechnicalTransitionModal({
           </div>
         </div>
 
-        <div className="flex items-center justify-end border-t bg-background px-5 py-4 sm:px-7">
+        <div className="flex flex-col-reverse gap-2 border-t bg-background px-5 py-4 sm:flex-row sm:items-center sm:justify-end sm:px-7">
+          {recap.inspect && onInspect && (
+            <Button
+              variant="outline"
+              onClick={onInspect}
+              className="min-w-64 border-stone-300 bg-[#fffaf0] text-brand-dark hover:bg-[#f7efdf]"
+            >
+              <Database className="h-4 w-4" />
+              {recap.inspect.label}
+            </Button>
+          )}
           <Button onClick={onNext} className="min-w-64">
             {recap.nextLabel}
             <ArrowRight className="h-4 w-4" />
@@ -1695,7 +1762,7 @@ function TutorialSidebar({
               pulseNext ? "tour-target-wiggle" : ""
             }`}
           >
-            Next
+            {step.nextLabel ?? "Next"}
             <ChevronRight className="h-4 w-4" />
           </Button>
         )}
@@ -1717,7 +1784,9 @@ function TutorialSidebar({
               Finish
             </Button>
           ) : (
-            <span className="px-2 text-xs text-muted-foreground">Click Next above to continue</span>
+            <span className="px-2 text-xs text-muted-foreground">
+              Use the button above when you are ready
+            </span>
           )
         ) : (
           <span className="px-2 text-xs text-muted-foreground">Waiting for the dashboard action…</span>
