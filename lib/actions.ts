@@ -432,24 +432,6 @@ export async function analyzeFeedback(
       };
       await mutateDemoState((state) => {
         state.feedback.unshift(feedback);
-        if (analysis.risk_level === "high" || analysis.risk_level === "urgent") {
-          state.tasks.push({
-            id: demoId(),
-            lead_id: null,
-            assigned_to: null,
-            title: `Review ${analysis.risk_level}-risk customer feedback${
-              parsed.data.customer_name ? ` from ${parsed.data.customer_name}` : ""
-            }`,
-            description: `${analysis.summary}\n\nSuggested action: ${analysis.suggested_internal_action}\n\nFeedback record: ${feedback.id}`,
-            type: "manager_review",
-            priority: analysis.risk_level === "urgent" ? "urgent" : "high",
-            status: "open",
-            due_at: createdAt,
-            completed_at: null,
-            created_at: createdAt,
-            updated_at: createdAt,
-          });
-        }
       });
       revalidatePath("/app", "layout");
       return { success: true, data: { feedback, analysis, aiUsed } };
@@ -464,7 +446,9 @@ export async function analyzeFeedback(
   const supabase = await createClient();
   try {
     await requireUser(supabase);
-    const result = await analyzeAndSaveFeedback(supabase, parsed.data);
+    const result = await analyzeAndSaveFeedback(supabase, parsed.data, {
+      createManagerTask: false,
+    });
     revalidatePath("/app/feedback");
     return { success: true, data: result };
   } catch (err) {
@@ -477,7 +461,6 @@ export async function analyzeFeedback(
 
 export async function publishFeedbackResponse(
   feedbackId: string,
-  taskId: string,
   responseBody: string
 ): Promise<ActionResult> {
   const postedResponse = responseBody.trim();
@@ -490,9 +473,7 @@ export async function publishFeedbackResponse(
     try {
       await mutateDemoState((state) => {
         const feedback = state.feedback.find((item) => item.id === feedbackId);
-        const task = state.tasks.find((item) => item.id === taskId);
         if (!feedback) throw new Error("Feedback record not found");
-        if (!task || task.type !== "manager_review") throw new Error("Review task not found");
 
         feedback.tags = Array.from(new Set([...feedback.tags, "response_posted"]));
         feedback.raw_output = {
@@ -503,9 +484,6 @@ export async function publishFeedbackResponse(
           response_posted_at: postedAt,
           posted_response: postedResponse,
         };
-        task.status = "complete";
-        task.completed_at = postedAt;
-        task.updated_at = postedAt;
       });
       revalidatePath("/app", "layout");
       return { success: true };
@@ -541,13 +519,6 @@ export async function publishFeedbackResponse(
       .update({ tags, raw_output: rawOutput })
       .eq("id", feedbackId);
     if (feedbackError) return { success: false, error: feedbackError.message };
-
-    const { error: taskError } = await supabase
-      .from("tasks")
-      .update({ status: "complete", completed_at: postedAt, updated_at: postedAt })
-      .eq("id", taskId)
-      .eq("type", "manager_review");
-    if (taskError) return { success: false, error: taskError.message };
 
     revalidatePath("/app", "layout");
     return { success: true };

@@ -315,16 +315,14 @@ export function InboxView({
     });
   }
 
-  function openReply(mode: "draft" | "blank") {
+  function openReply() {
     const inbound = [...(selected?.messages ?? [])].reverse().find((m) => m.direction === "inbound");
     if (!inbound) return;
     const meta = (inbound.metadata ?? {}) as Record<string, unknown>;
     setReplyToId(inbound.id);
-    setReplyBody(mode === "draft" && typeof meta.suggested_reply === "string" ? meta.suggested_reply : "");
+    setReplyBody(typeof meta.suggested_reply === "string" ? meta.suggested_reply : "");
     setReplyOpen(true);
-    if (mode === "draft") {
-      window.dispatchEvent(new CustomEvent("northstar-email-draft-opened"));
-    }
+    window.dispatchEvent(new CustomEvent("northstar-email-draft-opened"));
   }
 
   function sendReply() {
@@ -522,13 +520,9 @@ export function InboxView({
                         </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
-                        <DropdownMenuItem onClick={() => openReply("draft")}>
+                        <DropdownMenuItem onClick={openReply}>
                           <Wand2 className="h-3.5 w-3.5" />
                           Draft a response
-                        </DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => openReply("blank")}>
-                          <Reply className="h-3.5 w-3.5" />
-                          Type a response
                         </DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>
@@ -649,7 +643,7 @@ export function InboxView({
                     value={replyBody}
                     onChange={(e) => setReplyBody(e.target.value)}
                     rows={7}
-                    placeholder="Draft a response or type a response…"
+                    placeholder="Review the AI-drafted response…"
                     className="bg-background"
                   />
                   <div className="mt-2 flex flex-wrap gap-2">

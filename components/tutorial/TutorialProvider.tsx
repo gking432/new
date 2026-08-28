@@ -47,6 +47,7 @@ interface Step {
   id: string;
   title: string;
   body: string;
+  completion?: boolean;
   nextLabel?: string;
   spotlight?: string;
   spotlightHint?: string;
@@ -600,7 +601,7 @@ export function TutorialProvider() {
       action: {
         label: "Receive Greg's email",
         icon: Mail,
-        run: async (ctx) => {
+        run: async () => {
           const r = await simulateInboundEmail({ executiveScheduling: true });
           if (!r.success) {
             toast.error(r.error);
@@ -609,12 +610,6 @@ export function TutorialProvider() {
           setGregLeadId(r.data.leadId);
           r.data.events.forEach(appendDemoEvent);
           window.dispatchEvent(new CustomEvent("northstar-inbox-updated"));
-          toast("New scheduling email", {
-            description: r.data.headline,
-            position: "top-center",
-            duration: 12000,
-            action: { label: "Open Inbox", onClick: () => ctx.router.push("/app/inbox") },
-          });
         },
       },
       advance: { kind: "action" },
@@ -630,9 +625,9 @@ export function TutorialProvider() {
     {
       id: "executive-read-email",
       title: "Read Greg's request first.",
-      body: "Greg wants to replace 12 original windows before winter. He asks for a measurement visit next week and says weekdays after 3 PM work best.\n\nThis is still the customer's raw email. Nothing has been sent, no appointment has moved, and the AI has not drafted the response yet. Take a moment to read it, then click Next.",
+      body: "Greg wants to replace 12 original windows before winter. He asks for a measurement visit next week and says weekdays after 3 PM work best.\n\nThis is still the customer's raw email. Nothing has been sent, no appointment has moved, and the AI has not drafted the response yet. Take a moment to read it, then click Next in the sidebar.",
       spotlight: "inbox-executive-email",
-      spotlightHint: "Read Greg's original email",
+      spotlightHint: "Read Greg's original email, then click Next in the sidebar",
       advance: { kind: "manual" },
     },
     {
@@ -703,57 +698,41 @@ export function TutorialProvider() {
     {
       id: "executive-feedback",
       title: "Now test AI reputation triage.",
-      body: "A scheduling workflow protects revenue before the job. Review management protects the customer relationship after the work.\n\nOpen Feedback to test a new public review. You will provide the input and run the analysis yourself.",
+      body: "A scheduling workflow protects revenue before the job. Review management protects the customer relationship after the work.\n\nOpen Feedback. A new public review is already waiting there, exactly as it would arrive from a connected reputation channel.",
       spotlight: "nav-feedback",
       spotlightHint: "Open Feedback",
       advance: { kind: "navigate", pathname: "/app/feedback" },
     },
     {
-      id: "executive-load-review",
-      title: "Load a real customer-service problem.",
-      body: "Load the 2-star review. It describes a completed repair, repeated scheduling problems, missed callbacks, and a customer asking for a manager.\n\nNothing has been classified yet. Click the button to put that raw review into the analyzer.",
-      spotlight: "feedback-load-demo",
-      spotlightHint: "Load the 2-star review",
-      advance: { kind: "event", event: "northstar-feedback-loaded" },
+      id: "executive-open-review",
+      title: "A new two-star Google review is waiting.",
+      body: "The review describes a completed repair, repeated scheduling problems, missed callbacks, and a customer asking for a manager.\n\nOpen it and read the customer's original words before AI does anything.",
+      spotlight: "feedback-new-review",
+      spotlightHint: "Open the new Google review",
+      advance: { kind: "event", event: "northstar-feedback-opened" },
     },
     {
       id: "executive-analyze-review",
-      title: "Turn the review into work.",
-      body: "Click Analyze Feedback. The AI will score sentiment and risk, identify the operating problem, recommend a manager action, draft a public response, and create a review task when the risk is high.",
+      title: "Turn the review into an actionable response.",
+      body: "Click Have AI analyze it. The AI will score sentiment and risk, identify the operating problem, recommend a recovery action, and draft a public response.",
       spotlight: "feedback-analyze",
-      spotlightHint: "Analyze the review",
+      spotlightHint: "Have AI analyze the review",
       advance: { kind: "event", event: "northstar-feedback-analyzed" },
     },
     {
       id: "executive-review-result",
-      title: "The AI created actionable work.",
-      body: "The review is no longer just a star rating. The system turned it into a risk level, complaint themes, an internal recovery action, an editable public-response draft, and a manager task.\n\nThe Tasks badge is the operational handoff. Click Next, then follow that notification so the complaint is actually resolved instead of merely analyzed.",
+      title: "Review the AI recommendation.",
+      body: "The review is no longer just a star rating. The system turned it into a risk level, complaint themes, a recovery recommendation, and an editable public-response draft.\n\nRead the recommended response and edit it if you want. Then click Next in the sidebar.",
       spotlight: "feedback-analysis-result",
-      spotlightHint: "Review the AI analysis",
+      spotlightHint: "Review the response, then click Next in the sidebar",
       advance: { kind: "manual" },
     },
     {
-      id: "executive-open-review-task",
-      title: "Follow the reputation-risk task.",
-      body: "The high-risk review created due-now work for the manager. Open Tasks to see the complaint, recommended recovery action, priority, and response handoff in the same queue as the rest of the business's work.",
-      spotlight: "nav-tasks",
-      spotlightHint: "Open Tasks",
-      advance: { kind: "navigate", pathname: "/app/tasks" },
-    },
-    {
-      id: "executive-review-task",
-      title: "Open the review response task.",
-      body: "This is the accountability layer: the complaint has an owner, priority, due time, and recommended action. Click Review & respond to return to the stored analysis and public-response draft.",
-      spotlight: "task-review-response-link",
-      spotlightHint: "Open Review & respond",
-      advance: { kind: "navigate", pathname: "/app/feedback" },
-    },
-    {
       id: "executive-post-review-response",
-      title: "Review and post the public response.",
-      body: "The AI draft is editable. Read it, make any change you want, then approve the simulated Google response. Posting records the response and automatically completes the manager task, clearing the Tasks notification.",
+      title: "Approve the public response.",
+      body: "You have reviewed the AI draft. Now click Approve & post to Google. The public post is simulated, but the approval and audit behavior match a production workflow.",
       spotlight: "feedback-post-response",
-      spotlightHint: "Approve the response and complete the task",
+      spotlightHint: "Approve and post the response",
       advance: { kind: "event", event: "northstar-feedback-response-posted" },
     },
     {
@@ -763,7 +742,7 @@ export function TutorialProvider() {
       transition: {
         eyebrow: "Technical workflow recap",
         summary:
-          "A raw two-star review became structured risk data, complaint themes, a recovery recommendation, trackable manager work, and a human-approved public response.",
+          "A raw two-star review became structured risk data, complaint themes, a recovery recommendation, and a human-approved public response.",
         details: [
           { label: "Trigger", value: "A new review entered the feedback analyzer." },
           {
@@ -774,7 +753,7 @@ export function TutorialProvider() {
           {
             label: "System writes",
             value:
-              "The analysis and response draft were stored, business rules created a due-now manager task, and posting the response completed that task and cleared the notification.",
+              "The analysis, editable response draft, approval decision, and simulated Google post were stored in the feedback history.",
           },
           {
             label: "Human control",
@@ -786,31 +765,20 @@ export function TutorialProvider() {
           "feedback.analyze",
           "risk.classify",
           "response.draft",
-          "task.create",
           "review.publish",
-          "task.complete",
           "audit.append",
         ],
         productionNote:
           "The same pattern can start from Google Business Profile, Yelp, survey software, or a support platform. API adapters or MCP servers normalize those sources into one typed workflow.",
         nextLabel: "Alright—wrap up the executive tour",
-        inspect: {
-          label: "View the completed resolution first",
-        },
       },
-      advance: { kind: "manual" },
-    },
-    {
-      id: "executive-feedback-analysis-review",
-      title: "Inspect the completed customer-recovery workflow.",
-      body: "The original review is now structured risk data, complaint themes, an internal recovery recommendation, a posted public response, and a completed manager task.\n\nLook over the entire page without any additional highlight. Finish the guided tour whenever you are ready.",
-      nextLabel: "Finish the executive tour",
       advance: { kind: "manual" },
     },
     {
       id: "executive-done",
       title: "The guided story is complete. The CRM is yours to explore.",
-      body: "You saw AI voice qualify a lead and schedule an inspection, configurable approval controls, email understanding, calendar-aware reply drafting, and a reputation workflow that ended with completed human work.\n\nClick Finish to remove the tour sidebar. Then feel free to click through every tab, inspect the leads and timelines you created, open calls and messages, change stages, use the quote tool, and experiment with the rest of the CRM. The demo remains fully interactive after the tour ends.",
+      body: "You saw AI voice qualify a lead and schedule an inspection, email understanding, calendar-aware reply drafting, and reputation triage with human approval.\n\nFinish the tour, then click through every tab, inspect the leads and timelines you created, open calls and messages, change stages, use the quote tool, and experiment with the rest of the CRM.",
+      completion: true,
       advance: { kind: "manual" },
     },
   ];
@@ -1164,6 +1132,16 @@ export function TutorialProvider() {
     />
   ) : null;
 
+  if (step.completion) {
+    return (
+      <>
+        {requestFormOverlay}
+        {simulationConfirm}
+        <TourCompletionModal step={step} onFinish={stop} />
+      </>
+    );
+  }
+
   if (step.transition) {
     const inspect = step.transition.inspect;
     return (
@@ -1372,7 +1350,7 @@ function WelcomeTourModal({
                 <Badge className="bg-brand-gold text-brand-dark">Recommended</Badge>
               </span>
               <span className="mt-2 block text-xs font-medium uppercase tracking-wide text-brand-dark/70">
-                About 8 minutes
+                About 7 minutes
               </span>
               <span className="mt-2 block text-sm leading-5 text-muted-foreground">
                 Live or silent call simulation, calendar-aware scheduling, AI-drafted email
@@ -1384,20 +1362,21 @@ function WelcomeTourModal({
             </button>
             <button
               type="button"
-              onClick={() => onStart("full")}
-              disabled={morphing}
-              className="rounded-lg border bg-background p-4 text-left transition-colors hover:bg-secondary/50 disabled:opacity-60"
+              disabled
+              className="cursor-not-allowed rounded-lg border border-zinc-200 bg-zinc-100 p-4 text-left text-zinc-400 opacity-75"
             >
-              <span className="font-semibold">Full Guided Tour</span>
+              <span className="flex items-center justify-between gap-3">
+                <span className="font-semibold">Full Guided Tour</span>
+                <Badge variant="outline" className="border-zinc-300 bg-zinc-50 text-zinc-500">
+                  Temporarily unavailable
+                </Badge>
+              </span>
               <span className="mt-2 block text-xs font-medium uppercase tracking-wide text-muted-foreground">
                 Complete guided walkthrough
               </span>
               <span className="mt-2 block text-sm leading-5 text-muted-foreground">
-                Explore every scenario, including rep-assisted calls, rescheduling, quoting,
-                feedback, settings, and the full CRM workflow.
-              </span>
-              <span className="mt-4 flex items-center gap-1 text-sm font-semibold text-primary">
-                Start full tour <ChevronRight className="h-4 w-4" />
+                The longer walkthrough is being refined. The executive tour is the only guided
+                experience currently available.
               </span>
             </button>
           </div>
@@ -1536,6 +1515,36 @@ function SimulationConfirmDialog({
             Simulate call
           </Button>
         </div>
+      </section>
+    </div>
+  );
+}
+
+function TourCompletionModal({ step, onFinish }: { step: Step; onFinish: () => void }) {
+  return (
+    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-blue-950/10 p-4 sm:p-6">
+      <section
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="tour-completion-title"
+        className="w-full max-w-2xl rounded-2xl border border-blue-200 bg-background p-6 text-center shadow-2xl sm:p-9"
+      >
+        <span className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-blue-100 text-blue-700">
+          <CheckCircle2 className="h-6 w-6" />
+        </span>
+        <p className="mt-5 text-xs font-semibold uppercase tracking-[0.16em] text-blue-700">
+          Executive tour complete
+        </p>
+        <h2 id="tour-completion-title" className="mt-2 text-2xl font-semibold tracking-tight">
+          {step.title}
+        </h2>
+        <p className="mx-auto mt-3 max-w-xl whitespace-pre-line text-sm leading-6 text-muted-foreground">
+          {step.body}
+        </p>
+        <Button className="mt-7 min-w-52" onClick={onFinish}>
+          Finish & explore the CRM
+          <ArrowRight className="h-4 w-4" />
+        </Button>
       </section>
     </div>
   );
@@ -1736,7 +1745,7 @@ function TutorialSidebar({
 
       <div className="flex-1 overflow-y-auto p-4">
         {role && (
-          <p className="mb-3 rounded-lg border-2 border-brand-gold bg-brand-gold/15 px-3 py-2 text-sm font-semibold text-brand-dark">
+          <p className="mb-3 rounded-lg border-2 border-blue-500 bg-blue-50 px-3 py-2 text-sm font-semibold text-blue-950">
             {role}
           </p>
         )}
@@ -1777,7 +1786,7 @@ function TutorialSidebar({
           <Button
             onClick={onNext}
             data-tour="tutorial-next-button"
-            className={`mt-4 w-full ring-2 ring-brand-gold ring-offset-2 ring-offset-background ${
+            className={`mt-4 w-full ring-2 ring-blue-500 ring-offset-2 ring-offset-background ${
               pulseNext ? "tour-target-wiggle" : ""
             }`}
           >

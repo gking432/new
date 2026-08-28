@@ -3,7 +3,6 @@ import {
   Star,
   ThumbsDown,
   ThumbsUp,
-  TimerOff,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -19,7 +18,7 @@ import { FeedbackAnalyzer } from "@/components/app/FeedbackAnalyzer";
 import { FeedbackCharts } from "@/components/app/FeedbackCharts";
 import { FeedbackSourceSummary } from "@/components/app/FeedbackSourceSummary";
 import { MetricCard } from "@/components/app/MetricCard";
-import { getFeedbackList, getTasks } from "@/lib/db/queries";
+import { getFeedbackList } from "@/lib/db/queries";
 import { createClient } from "@/lib/supabase/server";
 import { formatDate } from "@/lib/utils/format";
 import {
@@ -30,7 +29,7 @@ import {
 } from "@/lib/utils/statuses";
 import type { Feedback } from "@/types/app";
 import { isLocalDemoMode } from "@/lib/demo/mode";
-import { getLocalFeedback, getLocalTasks } from "@/lib/demo/localData";
+import { getLocalFeedback } from "@/lib/demo/localData";
 
 export const dynamic = "force-dynamic";
 
@@ -201,23 +200,15 @@ function sourceLabel(source: string | null) {
   return REVIEW_SOURCE_LABELS[source] ?? source.replace(/_/g, " ");
 }
 
-export default async function FeedbackPage({
-  searchParams,
-}: {
-  searchParams: Promise<{ task?: string; feedback?: string }>;
-}) {
-  const { task: reviewTaskId, feedback: reviewFeedbackId } = await searchParams;
-  const [databaseFeedback, tasks] = isLocalDemoMode()
-    ? await Promise.all([getLocalFeedback(), getLocalTasks()])
+export default async function FeedbackPage() {
+  const databaseFeedback = isLocalDemoMode()
+    ? await getLocalFeedback()
     : await (async () => {
         const supabase = await createClient();
-        return Promise.all([getFeedbackList(supabase), getTasks(supabase)]);
+        return getFeedbackList(supabase);
       })();
   const sampleMode = databaseFeedback.length === 0;
   const feedback = sampleMode ? SAMPLE_FEEDBACK : databaseFeedback;
-  const reviewFeedback = reviewTaskId
-    ? databaseFeedback.find((item) => item.id === reviewFeedbackId) ?? databaseFeedback[0] ?? null
-    : null;
 
   const rated = feedback.filter((item) => item.rating != null);
   const averageRating =
@@ -240,13 +231,6 @@ export default async function FeedbackPage({
   }
   const topComplaint = [...complaintCounts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0];
   const topPraise = [...praiseCounts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0];
-  const openFeedbackTasks = tasks.filter(
-    (task) => task.type === "manager_review" && (task.status === "open" || task.status === "in_progress")
-  ).length;
-  const reviewTaskCount = sampleMode
-    ? feedback.filter((item) => item.risk_level === "high" || item.risk_level === "urgent").length
-    : openFeedbackTasks;
-
   const sourceStats = [...feedback.reduce((map, item) => {
     const source = item.source ?? "unknown";
     const current = map.get(source) ?? { count: 0, ratingTotal: 0, rated: 0, risk: 0 };
@@ -274,19 +258,16 @@ export default async function FeedbackPage({
         <div>
           <h2 className="text-xl font-semibold tracking-tight">Review Management</h2>
           <p className="mt-1 max-w-3xl text-sm text-muted-foreground">
-            Analyze customer feedback and turn it into structured risk, a response draft, and
-            trackable manager work.
+            Triage incoming reviews, understand customer risk, and approve AI-assisted public
+            responses from one workspace.
           </p>
         </div>
         <Badge variant="secondary">{sampleMode ? "Sample review feed" : "Current reviews"}</Badge>
       </div>
 
-      <FeedbackAnalyzer
-        initialFeedback={reviewFeedback}
-        reviewTaskId={reviewTaskId}
-      />
+      <FeedbackAnalyzer />
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <MetricCard label="Average Rating" value={averageRating} icon={Star} />
         <MetricCard
           label="Negative Feedback"
@@ -305,7 +286,6 @@ export default async function FeedbackPage({
           icon={ThumbsUp}
           tone="success"
         />
-        <MetricCard label="Open Review Tasks" value={reviewTaskCount} icon={TimerOff} />
       </div>
 
       <FeedbackSourceSummary sources={sourceStats} />
@@ -316,7 +296,7 @@ export default async function FeedbackPage({
         <CardHeader>
           <CardTitle>{sampleMode ? "Sample review feed" : "Feedback history"}</CardTitle>
           <CardDescription>
-            Reviews are sample data after reset. Paste a real review above to analyze new feedback.
+            Connected reviews and completed AI analyses appear here as an auditable history.
           </CardDescription>
         </CardHeader>
         <CardContent className="p-0">

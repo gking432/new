@@ -73,12 +73,13 @@ export async function analyzeFeedbackContent(input: FeedbackFormValues) {
 }
 
 /**
- * Analyzes customer feedback, saves the record with its analysis, creates a
- * manager review task for high-risk feedback, and runs feedback automations.
+ * Analyzes customer feedback, saves the record with its analysis, optionally
+ * creates manager work, and runs configured feedback automations.
  */
 export async function analyzeAndSaveFeedback(
   supabase: SupabaseClient,
-  input: FeedbackFormValues
+  input: FeedbackFormValues,
+  options: { createManagerTask?: boolean } = {}
 ): Promise<AnalyzeFeedbackResult> {
   const { analysis, aiUsed } = await analyzeFeedbackContent(input);
 
@@ -110,7 +111,10 @@ export async function analyzeAndSaveFeedback(
 
   const feedback = saved as Feedback;
 
-  if (analysis.risk_level === "high" || analysis.risk_level === "urgent") {
+  if (
+    options.createManagerTask !== false &&
+    (analysis.risk_level === "high" || analysis.risk_level === "urgent")
+  ) {
     await supabase.from("tasks").insert({
       title: `Review ${analysis.risk_level}-risk customer feedback${
         input.customer_name ? ` from ${input.customer_name}` : ""
