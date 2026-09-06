@@ -215,6 +215,7 @@ export function AiAutomationsCenter({
       setLastOutput(result.data ?? null);
       const approval = result.data?.approvalCommunicationId ? " Approval draft created." : "";
       toast.success(`Workflow test complete.${approval}`);
+      window.dispatchEvent(new CustomEvent("northstar-automation-test-complete"));
       router.refresh();
     });
   }
@@ -304,7 +305,15 @@ export function AiAutomationsCenter({
         <TabsList className="flex h-auto flex-wrap justify-start">
           <TabsTrigger value="library">Workflow library</TabsTrigger>
           <TabsTrigger value="integrations">Integration Lab</TabsTrigger>
-          <TabsTrigger value="modules">Workflow modules</TabsTrigger>
+          <TabsTrigger
+            value="modules"
+            data-tour="automation-modules-tab"
+            onClick={() =>
+              window.dispatchEvent(new CustomEvent("northstar-automation-modules-opened"))
+            }
+          >
+            Workflow modules
+          </TabsTrigger>
           <TabsTrigger value="logs">Run log</TabsTrigger>
           <TabsTrigger value="rules">Internal rules</TabsTrigger>
         </TabsList>
@@ -413,6 +422,7 @@ export function AiAutomationsCenter({
                         size="sm"
                         onClick={() => runModule(module.id)}
                         disabled={!selectedLeadId || running || module.status === "disabled"}
+                        data-tour={`automation-run-${module.id}`}
                       >
                         {running ? (
                           <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -469,7 +479,7 @@ function InfoBlock({ label, value }: { label: string; value: string }) {
 
 function LastOutputCard({ output }: { output: ModuleRunOutput }) {
   return (
-    <Card className="border-primary/30 bg-primary/5">
+    <Card className="border-primary/30 bg-primary/5" data-tour="automation-test-output">
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-base">
           <CheckCircle2 className="h-4 w-4 text-status-success" />

@@ -28,6 +28,8 @@ import { Spotlight } from "@/components/tutorial/Spotlight";
 import { ensureDemoStorylineLead } from "@/lib/actions/demo";
 import { simulateInboundEmail, simulateInboundText } from "@/lib/actions/inbox";
 import { appendDemoEvent } from "@/lib/demo-log";
+import { TOOL_EXPLANATIONS } from "@/lib/tutorial/tools";
+import { readCheckpoint, checkpointKey, restoreStep } from "@/lib/tutorial/checkpoint";
 
 type Advance =
   | { kind: "manual" }
@@ -69,6 +71,8 @@ interface Step {
 }
 
 type TourMode = "full" | "executive";
+
+const FULL_TOUR_ENABLED = true;
 
 const INDEX_KEY = "northstar-tutorial-index";
 const ACTIVE_KEY = "northstar-tutorial-active";
@@ -125,6 +129,8 @@ export function TutorialProvider() {
   const [pulseNext, setPulseNext] = useState(false);
   const [storylineLeadId, setStorylineLeadId] = useState<string | null>(null);
   const [gregLeadId, setGregLeadId] = useState<string | null>(null);
+  const [ready, setReady] = useState(false);
+  const lastLocation = useRef("/app");
   const welcomeHandledRef = useRef<string | null>(null);
 
   // ── Step definitions ──────────────────────────────────────────────────────
@@ -236,9 +242,54 @@ export function TutorialProvider() {
       advance: { kind: "manual" },
     },
     {
+      id: "rep-assisted-call-recap",
+      title: "The rep-assisted call workflow is complete.",
+      body: "",
+      transition: {
+        eyebrow: "Technical workflow recap",
+        summary:
+          "A salesperson handled the conversation while AI converted the call into structured CRM data, a validated appointment, follow-up work, and a human-approved confirmation.",
+        details: [
+          { label: "Trigger", value: "An inbound phone session started with no existing customer record." },
+          {
+            label: "AI orchestration",
+            value:
+              "Live transcription extracted identity, project, urgency, and scheduling details while checking the requested time against real availability.",
+          },
+          {
+            label: "System writes",
+            value:
+              "The workflow created the lead, call summary, appointment, task, confirmation draft, and linked activity history.",
+          },
+          {
+            label: "Human control",
+            value:
+              "The rep led the call, reviewed the captured record before saving, and approved the customer-facing confirmation before it was logged as sent.",
+          },
+        ],
+        tools: [
+          "phone.session",
+          "transcript.capture",
+          "lead.extract",
+          "availability.search",
+          "lead.create",
+          "task.create",
+          "call.summarize",
+          "appointment.create",
+          "message.draft",
+          "message.approve",
+          "audit.append",
+        ],
+        productionNote:
+          "The same pattern can augment a human rep inside an existing CRM: telephony supplies the call event, the AI extracts typed fields, and CRM/calendar tools enforce permissions and booking rules.",
+        nextLabel: "Continue to the website-lead callback",
+      },
+      advance: { kind: "manual" },
+    },
+    {
       id: "speed-to-lead",
       title: "Now meet the AI phone scheduler.",
-      body: "This step shows the AI assistant handling a new website lead.\n\nA homeowner fills out the form. The AI calls back quickly, gathers details, checks the CRM, and books an inspection. Fast speed-to-lead is one benefit, but the bigger point is the AI phone person and scheduler doing real follow-up work.\n\nWhat to do:\n1. Click Open form.\n2. Put in your real first and last name.\n3. Use fake contact details if you want.\n4. Submit the request.\n5. Answer the browser call, or choose Simulate call for a silent walkthrough.\n\nYou are now the customer.",
+      body: "This step shows the AI assistant handling a new website lead.\n\nA homeowner fills out the form. The AI calls back quickly, gathers details, checks the CRM, and books an inspection. Fast speed-to-lead is one benefit, but the bigger point is the AI phone person and scheduler doing real follow-up work.\n\nWhat to do:\n1. Click Open form.\n2. Put in your real first and last name.\n3. Use the sample contact details or your own fictional details.\n4. Submit the request.\n5. Answer the browser call, or choose Simulate call for a silent walkthrough.\n\nYou are now the customer. For this scenario, describe storm damage and a growing ceiling water stain; later you will ask for an earlier inspection.",
       action: {
         label: "Open form",
         icon: PhoneOutgoing,
@@ -290,6 +341,54 @@ export function TutorialProvider() {
       advance: { kind: "event", event: "northstar-comm-sent" },
     },
     {
+      id: "speed-to-lead-recap",
+      title: "The AI-handled website lead is complete.",
+      body: "",
+      transition: {
+        eyebrow: "Technical workflow recap",
+        summary:
+          "A sparse website request became an identity-matched, qualified CRM record with a booked inspection, auditable call history, follow-up work, and a human-approved confirmation.",
+        details: [
+          { label: "Trigger", value: "A website form submission created the initial lead and callback event." },
+          {
+            label: "AI orchestration",
+            value:
+              "The voice assistant gathered missing project context, applied qualification rules, and selected an available appointment that the customer accepted.",
+          },
+          {
+            label: "System writes",
+            value:
+              "The workflow updated the lead, stored the transcript and CRM note, created the appointment and task, and drafted the confirmation.",
+          },
+          {
+            label: "Human control",
+            value:
+              "A configurable approval policy held the outbound SMS until a team member reviewed the appointment details and approved it.",
+          },
+        ],
+        tools: [
+          "form.ingest",
+          "contact.match",
+          "voice.call",
+          "transcript.capture",
+          "call.summarize",
+          "crm_note.append",
+          "lead.upsert",
+          "lead.qualify",
+          "availability.search",
+          "appointment.create",
+          "task.create",
+          "message.draft",
+          "message.approve",
+          "audit.append",
+        ],
+        productionNote:
+          "In production, the trigger could come from an existing website or CRM, while Twilio or another phone provider, CRM APIs or MCP, and a calendar adapter remain separate typed tools.",
+        nextLabel: "Continue to the customer's urgent text",
+      },
+      advance: { kind: "manual" },
+    },
+    {
       id: "text",
       title: "The same customer texts back.",
       body: "The lead created earlier sends an urgent update: the leak is getting worse and they want someone there sooner.\n\nWatch the notification at the top of the screen. The CRM resolves the exact lead, flags the message urgent, and looks for an earlier estimator opening.",
@@ -309,6 +408,7 @@ export function TutorialProvider() {
             throw new Error(r.error);
           }
           r.data.events.forEach(appendDemoEvent);
+          router.push(`/app/inbox?tab=conversations&lead=${context.data.lead.id}`);
           toast("Urgent", {
             description: r.data.headline,
             position: "top-center",
@@ -327,7 +427,7 @@ export function TutorialProvider() {
     {
       id: "go-inbox-urgent-text",
       title: "Open the urgent text.",
-      body: "The Inbox badge means a real customer message needs attention.\n\nIf you are already in Inbox, click Conversations. If you are somewhere else, open Inbox first, then click Conversations.\n\nReview Jordan's message with the AI scheduling note.",
+      body: "The Inbox badge means a real customer message needs attention.\n\nIf you are already in Inbox, click Conversations. If you are somewhere else, open Inbox first, then click Conversations.\n\nReview the website customer's message with the AI scheduling note.",
       spotlight: "inbox-conversations",
       spotlightHint: "Click Conversations",
       advance: { kind: "event", event: "northstar-inbox-conversations-opened" },
@@ -350,10 +450,12 @@ export function TutorialProvider() {
     },
     {
       id: "back-to-inbox-reschedule",
-      title: "Go back to Jordan's text.",
-      body: "Now that the opening is verified, go back to Jordan's text by clicking Inbox, or by following the Tasks/message notification if one is visible.\n\nThe AI can draft the message asking Jordan if that earlier time works.",
-      spotlight: "nav-inbox",
-      spotlightHint: "Click Inbox",
+      title: "Go back to the website customer's text.",
+      body: "Now that the opening is verified, go back to the website customer's text using Return to the customer’s text below.\n\nThe AI can draft the message asking the customer if that earlier time works.",
+      action: {
+        label: "Return to the customer’s text",
+        run: () => router.push(`/app/inbox?tab=conversations&lead=${storylineLeadId ?? ""}`),
+      },
       advance: { kind: "navigate", pathname: "/app/inbox" },
     },
     {
@@ -366,8 +468,8 @@ export function TutorialProvider() {
     },
     {
       id: "approve-reschedule-offer",
-      title: "Ask Jordan if the time works.",
-      body: "The draft appears under the conversation.\n\nThis is still a human-approved step in the demo, but a company could make this fully automatic for low-risk scheduling messages.\n\nReview it, then approve and send it. Jordan will reply in the demo. The CRM will move the appointment and send the updated confirmation automatically.",
+      title: "Ask the customer if the time works.",
+      body: "The draft appears under the conversation.\n\nThis is still a human-approved step in the demo, but a company could make this fully automatic for low-risk scheduling messages.\n\nReview it, then approve and send it. The customer will reply in the demo. The CRM will move the appointment and send the updated confirmation automatically.",
       spotlight: "inbox-approve",
       spotlightHint: "Approve the reschedule offer",
       advance: { kind: "event", event: "northstar-comm-sent" },
@@ -375,7 +477,7 @@ export function TutorialProvider() {
     {
       id: "go-appointments-after-reschedule",
       title: "See the booking on the calendar.",
-      body: "Jordan accepted the earlier time. The AI moved the appointment and sent the updated confirmation automatically.\n\nGo to Appointments. Jess Romero's schedule now includes the booked inspection, and in a real rollout Jess could get a dashboard notification as soon as the booking is made.",
+      body: "The website customer accepted the earlier time. The AI moved the appointment and sent the updated confirmation automatically.\n\nGo to Appointments. Jess Romero's schedule now includes the booked inspection, and in a real rollout Jess could get a dashboard notification as soon as the booking is made.",
       spotlight: "nav-appointments",
       spotlightHint: "Click Appointments",
       advance: { kind: "navigate", pathname: "/app/appointments" },
@@ -389,26 +491,66 @@ export function TutorialProvider() {
       advance: { kind: "manual" },
     },
     {
+      id: "urgent-reschedule-recap",
+      title: "The urgent reschedule workflow is complete.",
+      body: "",
+      transition: {
+        eyebrow: "Technical workflow recap",
+        summary:
+          "An urgent inbound text was matched to the existing customer, grounded against estimator availability, approved by a human, and completed as a connected appointment change.",
+        details: [
+          { label: "Trigger", value: "An inbound SMS reported that the active leak was getting worse." },
+          {
+            label: "AI orchestration",
+            value:
+              "The workflow resolved the customer identity, classified urgency, read the current appointment, searched earlier openings, and drafted a grounded offer.",
+          },
+          {
+            label: "System writes",
+            value:
+              "After the simulated customer accepted, the appointment was moved, the old slot was released, the new slot was blocked, and the updated confirmation was logged.",
+          },
+          {
+            label: "Human control",
+            value:
+              "The team verified the calendar and approved the outbound reschedule offer before the system changed anything.",
+          },
+        ],
+        tools: [
+          "sms.ingest",
+          "contact.match",
+          "lead.context",
+          "intent.classify",
+          "availability.search",
+          "reply.draft",
+          "message.approve",
+          "appointment.reschedule",
+          "reminder.update",
+          "audit.append",
+        ],
+        productionNote:
+          "This is a useful MCP-style orchestration boundary: the model can request customer, calendar, and messaging actions, while each tool validates identity, permissions, and state transitions.",
+        nextLabel: "Continue to the inbound email workflow",
+      },
+      advance: { kind: "manual" },
+    },
+    {
       id: "email",
       title: "A brand-new lead emails in",
       body: "Now a brand-new person sends an email about replacing 12 windows.\n\nWatch how the AI turns that email into a CRM lead. It picks the service type, writes a summary, and flags the Inbox conversation.\n\nNew leads are time-sensitive, so the system treats this as urgent.",
       action: {
         label: "Receive email lead",
         icon: Mail,
-        run: async (ctx) => {
-          const r = await simulateInboundEmail();
+        run: async () => {
+          const r = await simulateInboundEmail({ executiveScheduling: true });
           if (!r.success) {
             toast.error(r.error);
             throw new Error(r.error);
           }
+          setGregLeadId(r.data.leadId);
+          router.push(`/app/inbox?tab=conversations&lead=${r.data.leadId}`);
           r.data.events.forEach(appendDemoEvent);
           window.dispatchEvent(new CustomEvent("northstar-inbox-updated"));
-          toast("New email", {
-            description: r.data.headline,
-            position: "top-center",
-            duration: 12000,
-            action: { label: "Open Inbox", onClick: () => ctx.router.push("/app/inbox") },
-          });
         },
       },
       advance: { kind: "action" },
@@ -424,7 +566,7 @@ export function TutorialProvider() {
     {
       id: "reply-email",
       title: "Reply like a normal email.",
-      body: "The message looks like an email thread.\n\nClick Reply, then choose Draft a response. The AI writes a starting point, but the team stays in control before anything goes out.\n\nApproval Queue is for automatic follow-ups and reminders. This email stays in Conversations.",
+      body: "Read Greg’s request for 12 windows and a weekday visit after 3 PM.\n\nClick Reply, then choose Draft a response. The AI writes a starting point, but the team stays in control before anything goes out.\n\nApproval Queue is for automatic follow-ups and reminders. This email stays in Conversations.",
       spotlight: "inbox-email-reply",
       spotlightHint: "Click Reply, then Draft a response",
       advance: { kind: "event", event: "northstar-email-draft-opened" },
@@ -436,6 +578,48 @@ export function TutorialProvider() {
       spotlight: "inbox-email-composer",
       spotlightHint: "Click Send reply",
       advance: { kind: "event", event: "northstar-comm-sent" },
+    },
+    {
+      id: "inbound-email-recap",
+      title: "The inbound email workflow is complete.",
+      body: "",
+      transition: {
+        eyebrow: "Technical workflow recap",
+        summary:
+          "An unstructured email became a matched CRM lead, structured project and scheduling context, an editable AI response, and a logged customer communication.",
+        details: [
+          { label: "Trigger", value: "A mailbox event delivered a new 12-window estimate request." },
+          {
+            label: "AI orchestration",
+            value:
+              "The workflow extracted contact, project scope, timing constraints, and intent, then composed a reply from CRM and calendar context.",
+          },
+          {
+            label: "System writes",
+            value:
+              "The new lead, original email, structured metadata, sent reply, and first-touch activity were stored on one customer history.",
+          },
+          {
+            label: "Human control",
+            value:
+              "The generated reply stayed editable and unsent until a person reviewed it. No appointment was invented before the customer agreed.",
+          },
+        ],
+        tools: [
+          "email.ingest",
+          "contact.match",
+          "lead.upsert",
+          "intent.extract",
+          "availability.search",
+          "reply.generate",
+          "communication.append",
+          "audit.append",
+        ],
+        productionNote:
+          "Gmail or Microsoft Graph can provide the trigger; CRM and calendar APIs or MCP servers can supply the grounded context and accept the audited writes.",
+        nextLabel: "Continue to pipeline and quoting",
+      },
+      advance: { kind: "manual" },
     },
     {
       id: "pipeline",
@@ -461,8 +645,79 @@ export function TutorialProvider() {
     },
     {
       id: "quote-tool-view",
-      title: "This is the Quote Tool.",
-      body: "This page helps the team create an internal ballpark before an inspection.\n\nTry this:\n1. Select a lead on the left.\n2. Click Generate demo property profile.\n3. Adjust the inputs if needed.\n4. Click Generate internal ballpark.\n\nThe AI value is speed and consistency: it gathers property context, applies assumptions, lists missing info, and saves the internal range to the lead timeline. It is not a customer-facing quote.",
+      title: "Choose a real CRM lead.",
+      body: "Select one of the leads created earlier. The quote workflow will use that record's service type and customer context instead of operating on disconnected sample input.",
+      spotlight: "quote-lead-select",
+      spotlightHint: "Select a lead",
+      action: searchParams.get("lead") && pathname === "/app/quote-tool" ? {
+        label: "Use the selected lead",
+        run: () => go(index + 1),
+      } : undefined,
+      advance: { kind: "event", event: "northstar-quote-lead-selected" },
+    },
+    {
+      id: "quote-property-profile",
+      title: "Build the estimator's property context.",
+      body: "Click Generate demo property profile. In production this tool could read assessor records or a property-data provider; here the source is clearly labeled simulated so the integration boundary stays honest.",
+      spotlight: "quote-property-generate",
+      spotlightHint: "Generate the property profile",
+      advance: { kind: "event", event: "northstar-quote-property-ready" },
+    },
+    {
+      id: "quote-generate-ballpark",
+      title: "Generate the internal ballpark.",
+      body: "Review the job inputs against the customer’s request. For Greg, enter 12 in Window count; the simulated property profile is an estimate of the house, not the agreed project scope. Then click Generate internal ballpark. This is internal sales preparation—not a customer-facing final quote.",
+      spotlight: "quote-generate",
+      spotlightHint: "Generate the internal ballpark",
+      advance: { kind: "event", event: "northstar-quote-generated" },
+    },
+    {
+      id: "quote-review-result",
+      title: "Review the grounded estimate package.",
+      body: "The output includes a range, confidence, line items, assumptions, missing information, inspection questions, and sales talking points. Read it, then click Next in the sidebar.",
+      spotlight: "quote-result",
+      spotlightHint: "Review the estimate package, then click Next in the sidebar",
+      advance: { kind: "manual" },
+    },
+    {
+      id: "quote-recap",
+      title: "The estimator-prep workflow is complete.",
+      body: "",
+      transition: {
+        eyebrow: "Technical workflow recap",
+        summary:
+          "A CRM lead became a grounded internal estimate package with explicit assumptions, missing-data warnings, inspection questions, and an auditable lead-timeline record.",
+        details: [
+          { label: "Trigger", value: "A salesperson selected an existing lead for pre-inspection preparation." },
+          {
+            label: "AI orchestration",
+            value:
+              "The workflow combined CRM context and property facts with deterministic pricing calculations, then generated a plain-language summary and talking points.",
+          },
+          {
+            label: "System writes",
+            value:
+              "The property profile and internal estimate were saved against the selected lead so later users can reproduce the assumptions and range.",
+          },
+          {
+            label: "Human control",
+            value:
+              "The result is explicitly internal, editable through its inputs, and blocked from being represented as final pricing before inspection.",
+          },
+        ],
+        tools: [
+          "lead.read",
+          "property.lookup",
+          "pricing.calculate",
+          "estimate.explain",
+          "inspection_questions.generate",
+          "quote.save",
+          "activity.append",
+        ],
+        productionNote:
+          "Property and pricing tools can be swapped for company-specific systems while the model remains constrained to explaining calculator output rather than inventing prices.",
+        nextLabel: "Continue to reputation management",
+      },
       advance: { kind: "manual" },
     },
     {
@@ -475,8 +730,66 @@ export function TutorialProvider() {
     },
     {
       id: "feedback-view",
-      title: "This is Feedback.",
-      body: "Review management is a major part of home-service operations.\n\nThis page brings Google, Yelp, Yellow Pages, and survey-style feedback into one place.\n\nThe AI reads each review, scores sentiment, flags reputation risk, finds repeated service issues, and suggests a manager response. That turns scattered public feedback into customer-service work the team can actually handle.",
+      title: "A new two-star Google review is waiting.",
+      body: "Open the new review and read the customer's original words before AI does anything. It describes acceptable repair work but repeated rescheduling, missed callbacks, and a request for a manager.",
+      spotlight: "feedback-new-review",
+      spotlightHint: "Open the new Google review",
+      advance: { kind: "event", event: "northstar-feedback-opened" },
+    },
+    {
+      id: "feedback-analyze",
+      title: "Have AI analyze the review.",
+      body: "Click Have AI analyze it. The AI will return schema-validated sentiment, risk, complaint themes, a recovery recommendation, and an editable public response.",
+      spotlight: "feedback-analyze",
+      spotlightHint: "Analyze the review",
+      advance: { kind: "event", event: "northstar-feedback-analyzed" },
+    },
+    {
+      id: "feedback-publish",
+      title: "Review the recommendation, then publish.",
+      body: "Read the analysis and editable response. When you are comfortable with what will be public, click Approve & post to Google. Posting is simulated, but the approval and audit behavior are real demo actions.",
+      spotlight: "feedback-analysis-result",
+      spotlightHint: "Review the analysis and response, then approve and post",
+      advance: { kind: "event", event: "northstar-feedback-response-posted" },
+    },
+    {
+      id: "feedback-recap",
+      title: "The reputation-recovery workflow is complete.",
+      body: "",
+      transition: {
+        eyebrow: "Technical workflow recap",
+        summary:
+          "A raw public review became structured customer-risk data, operational complaint themes, a recovery recommendation, and a human-approved public response.",
+        details: [
+          { label: "Trigger", value: "A connected reputation channel delivered a new two-star review." },
+          {
+            label: "AI orchestration",
+            value:
+              "Structured output classified sentiment, escalation risk, operational category, complaint themes, and the recommended recovery action.",
+          },
+          {
+            label: "System writes",
+            value:
+              "The original review, analysis, editable response, approval decision, and simulated post were stored in feedback history.",
+          },
+          {
+            label: "Human control",
+            value:
+              "AI organized and drafted the work, but a manager retained final editing and publishing authority.",
+          },
+        ],
+        tools: [
+          "review.ingest",
+          "feedback.analyze",
+          "risk.classify",
+          "response.draft",
+          "review.publish",
+          "audit.append",
+        ],
+        productionNote:
+          "The same typed workflow can normalize Google Business Profile, Yelp, surveys, or support systems through direct APIs or MCP servers.",
+        nextLabel: "Continue to workflow orchestration",
+      },
       advance: { kind: "manual" },
     },
     {
@@ -489,8 +802,67 @@ export function TutorialProvider() {
     },
     {
       id: "automations-view",
-      title: "This is Automations.",
-      body: "Automations show the business-systems side of the demo.\n\nFilter the library by business unit: sales, marketing, customer service, operations, administration, and IT.\n\nThese are workflow ideas a home-improvement company could actually use: speed-to-lead alerts, missed-call rescue, review-risk triage, estimator prep packets, weather-aware reschedules, duplicate cleanup, and integration health monitoring.\n\nThey could be built inside this custom CRM, or connected to an existing CRM with Zapier, Make, Power Automate, n8n, custom APIs, or native CRM automations.",
+      title: "Open the executable workflow modules.",
+      body: "The library documents broader business opportunities. Workflow modules prove that the orchestration layer actually runs against CRM records and produces auditable output. Open Workflow modules.",
+      spotlight: "automation-modules-tab",
+      spotlightHint: "Open Workflow modules",
+      advance: { kind: "event", event: "northstar-automation-modules-opened" },
+    },
+    {
+      id: "automation-run-analysis",
+      title: "Run a workflow against existing CRM data.",
+      body: "A lead from the tour is already selected. Run Lead Intake Analysis. The module reads the record, executes its typed workflow, writes only permitted internal outputs, and creates a run log.",
+      spotlight: "automation-run-lead_intake_analysis",
+      spotlightHint: "Run Lead Intake Analysis",
+      advance: { kind: "event", event: "northstar-automation-test-complete" },
+    },
+    {
+      id: "automation-recap",
+      title: "The automation-module workflow is complete.",
+      body: "",
+      transition: {
+        eyebrow: "Technical workflow recap",
+        summary:
+          "A reusable AI module executed against an existing lead, returned typed output, recorded every action, and exposed the result for human inspection.",
+        details: [
+          { label: "Trigger", value: "A user manually invoked Lead Intake Analysis for a selected CRM lead." },
+          {
+            label: "AI orchestration",
+            value:
+              "The module loaded the selected lead, applied demo qualification rules, and mapped its typed result to specific internal CRM updates.",
+          },
+          {
+            label: "System writes",
+            value:
+              "The internal result and an automation run record were persisted with status, actions taken, destination, and timestamps.",
+          },
+          {
+            label: "Human control",
+            value:
+              "This internal analysis needs no outbound approval; customer-facing modules route drafts into the separate approval queue.",
+          },
+        ],
+        tools: [
+          "lead.read",
+          "lead.analyze",
+          "lead.update",
+          "task.suggest",
+          "automation_run.append",
+        ],
+        productionNote:
+          "These module contracts can sit behind native APIs, MCP servers, n8n, Make, Power Automate, or CRM-native automation while preserving the same audit and approval model.",
+        nextLabel: "Continue to management reporting",
+        inspect: {
+          label: "Inspect the structured output first",
+        },
+      },
+      advance: { kind: "manual" },
+    },
+    {
+      id: "automation-output-review",
+      title: "Inspect the module's structured output.",
+      body: "The result shows the exact actions taken alongside the structured payload. This is the implementation evidence: input context, tool result, system destination, and run history are visible instead of hidden behind a chat response.\n\nExplore it, then continue to management reporting.",
+      nextLabel: "Continue to management reporting",
       advance: { kind: "manual" },
     },
     {
@@ -504,7 +876,9 @@ export function TutorialProvider() {
     {
       id: "reports-view",
       title: "This is Reports.",
-      body: "Reports turn CRM activity into management insight.\n\nLeaders can see lead volume, booking rate, source performance, pipeline value, close rate, follow-up health, and operational bottlenecks.\n\nThe AI role is to summarize what changed, explain why it matters, surface risks, and point managers toward the few actions that deserve attention first.",
+      body: "Reports turn CRM activity into management insight. The Business Insights section is computed from the pipeline created during the tour: it identifies channel performance, urgency patterns, and stalled value.\n\nThis is the management payoff—AI is not only doing work; it is explaining what changed and where a leader should act. Review the insights, then click Next in the sidebar.",
+      spotlight: "reports-business-insights",
+      spotlightHint: "Review the computed insights, then click Next in the sidebar",
       advance: { kind: "manual" },
     },
     {
@@ -517,14 +891,36 @@ export function TutorialProvider() {
     },
     {
       id: "settings-view",
-      title: "This is Settings.",
-      body: "Settings hold the company profile, team, AI controls, default tone, approval rules, and business rules.\n\nThis is where a manager would tune how the system behaves before a real rollout.",
+      title: "Finish with governance and guardrails.",
+      body: "AI controls, model choice, communication tone, approval behavior, and automation rules belong in a manager-owned configuration layer. Customer-facing commitments remain constrained and credentials stay server-side.\n\nReview the controls, then click Next in the sidebar.",
+      spotlight: "settings-ai-controls",
+      spotlightHint: "Review the AI guardrails, then click Next in the sidebar",
+      advance: { kind: "manual" },
+    },
+    {
+      id: "management-recap",
+      title: "The management review is complete.",
+      body: "",
+      transition: {
+        eyebrow: "Technical workflow recap",
+        summary: "The customer workflows now feed the management view: pipeline metrics, computed insights, and controls for how the team uses AI.",
+        details: [
+          { label: "Trigger", value: "You opened Reports and reviewed the manager’s AI controls." },
+          { label: "Analysis", value: "Reporting rules summarize the records created during the tour. These insights are computed from CRM data, not a live model’s interpretation." },
+          { label: "System reads", value: "The dashboard reads lead stages, sources, urgency and value, alongside the saved configuration." },
+          { label: "Human control", value: "A manager decides how to act on the insights. Reviewing settings does not change them; edits require Save." },
+        ],
+        tools: ["pipeline.aggregate", "insights.compute", "settings.read", "approval.policy"],
+        productionNote: "The same reporting and governance layer can read an existing CRM and enforce company-specific approval rules. This demo’s controls are an inspectable prototype, not a production identity or permissions system.",
+        nextLabel: "Finish the full tour",
+      },
       advance: { kind: "manual" },
     },
     {
       id: "done",
       title: "That is the full system.",
-      body: "You just saw the whole loop.\n\nA lead came in. The AI helped with calls, notes, messages, appointments, tasks, reminders, reports, and automations.\n\nThe customer-facing calls and sends are simulated, but the workflow records are real. In production, these AI capabilities could connect to phone, SMS, email, calendar, and the CRM or workflow tools a company already uses.",
+      body: "You saw the full operating loop: assisted and autonomous calls, CRM enrichment, human-approved communication, scheduling and rescheduling, email intake, grounded quoting, reputation recovery, executable automation modules, management insights, and configurable guardrails.\n\nFinish the tour, then explore any record, timeline, workflow, report, or setting on your own.",
+      completion: true,
       advance: { kind: "manual" },
     },
   ];
@@ -778,7 +1174,7 @@ export function TutorialProvider() {
   const steps = tourMode === "executive" ? executiveSteps : fullSteps;
 
   const total = steps.length;
-  const step = steps[index];
+  const step = steps[index] ?? steps[0];
   // Don't allow Back into a phone-call step: the call already happened and the
   // call event can't re-fire, so returning there strands the tour waiting for a
   // call that already finished. (Other event steps — opening the inbox, etc. —
@@ -794,28 +1190,6 @@ export function TutorialProvider() {
   const stepId = step?.id;
   const stepAdvanceKind = step?.advance.kind;
   const compactSpotlight = false;
-  const tabClickStepIds = new Set([
-    "pipeline",
-    "quote-tool",
-    "feedback",
-    "automations",
-    "reports",
-    "settings",
-  ]);
-  const requiredOverlayStepIds = new Set([
-    "save-first-lead",
-    "go-tasks-confirmation",
-    "open-confirmation-task",
-    "open-approval-queue",
-    "approve-1",
-    "go-leads-after-confirm",
-    "open-jordan-after-confirm",
-    "timeline-after-confirm",
-    "follow-form-notifications",
-    "open-form-confirmation-task",
-    "open-form-approval-queue",
-    "approve-form-confirmation",
-  ]);
   const delayedNextStepIds = new Set([
     "pipeline-view",
     "quote-tool-view",
@@ -825,79 +1199,51 @@ export function TutorialProvider() {
     "settings-view",
     "executive-read-email",
   ]);
-  const highlightOnlyStepIds = new Set([
-    "go-inbox-urgent-text",
-    "check-jess-availability",
-    "jess-calendar",
-    "back-to-inbox-reschedule",
-    "draft-reschedule-offer",
-    "approve-reschedule-offer",
-    "go-appointments-after-reschedule",
-    "jess-booked-after-reschedule",
-    "executive-open-email",
-  ]);
-  const showRequiredSpotlight = Boolean(
-    step?.spotlight && (requiredOverlayStepIds.has(step.id) || tabClickStepIds.has(step.id))
-  );
+  // A spotlight means "this is the next place to act or read." Keep it off
+  // whole-page inspection steps so the visitor can take in the complete CRM
+  // record without being pulled toward one element.
+  const wholePageInspectionStepIds = new Set(["timeline-after-confirm"]);
   const showSpotlightHighlight = Boolean(
-    step?.spotlight &&
-      (tourMode === "executive" || showRequiredSpotlight || highlightOnlyStepIds.has(step.id))
+    step?.spotlight && !wholePageInspectionStepIds.has(step.id)
   );
 
-  // ── Persistence ─────────────────────────────────────────────────────────
+  // Hydrate once. Route changes must not overwrite in-flight tour progress.
   useEffect(() => {
-    const hasWelcomeParam =
-      searchParams.get("tour") === "welcome" ||
-      (typeof window !== "undefined" &&
-        new URLSearchParams(window.location.search).get("tour") === "welcome");
-    if (hasWelcomeParam) {
-      welcomeHandledRef.current = typeof window !== "undefined" ? window.location.href : "initial";
-      setActive(true);
-      setIndex(0);
-      setTourMode(null);
-      writeTourStorage(CHOOSER_DISMISSED_KEY, "0");
-      router.replace("/app");
-      return;
-    }
-
     const selected = readTourStorage(SELECTED_MODE_KEY);
-    const savedMode: TourMode | null =
-      selected === "executive" || selected === "full" ? selected : null;
-    if (savedMode && readTourStorage(storageKeys(savedMode).active) === "1") {
-      const keys = storageKeys(savedMode);
-      setTourMode(savedMode);
+    const mode = selected === "full" || selected === "executive" ? selected : null;
+    const welcome = new URLSearchParams(window.location.search).get("tour") === "welcome";
+    if (welcome) {
+      welcomeHandledRef.current = window.location.href;
       setActive(true);
-      setIndex(Number(readTourStorage(keys.index) ?? 0));
-      return;
-    }
-    // Preserve sessions created before the executive tour existed.
-    if (readTourStorage(ACTIVE_KEY) === "1") {
-      setTourMode("full");
-      writeTourStorage(SELECTED_MODE_KEY, "full");
+      router.replace("/app");
+    } else if (mode) {
+      const checkpoint = readCheckpoint(readTourStorage(checkpointKey(mode)));
+      const list = mode === "full" ? fullSteps : executiveSteps;
+      const restored = restoreStep(list, checkpoint, true);
+      setTourMode(mode);
+      setIndex(restored.index);
+      setStorylineLeadId(checkpoint?.storylineLeadId ?? null);
+      setGregLeadId(checkpoint?.gregLeadId ?? null);
+      lastLocation.current = restored.route;
+      const wasActive = readTourStorage(storageKeys(mode).active) === "1";
+      setActive(wasActive);
+      if (wasActive && restored.route !== window.location.pathname + window.location.search) {
+        router.replace(restored.route);
+      }
+      if (wasActive && restored.recovered) {
+        toast("Resume this workflow", { description: "Your saved CRM records are still here. Reopen the working panel to continue." });
+      }
+    } else if (readTourStorage(CHOOSER_DISMISSED_KEY) !== "1") {
       setActive(true);
-      setIndex(Number(readTourStorage(INDEX_KEY) ?? 0));
-      return;
     }
-    if (pathname.startsWith("/app")) {
-      const completedSelected =
-        savedMode && readTourStorage(storageKeys(savedMode).completed) === "1";
-      if (completedSelected || readTourStorage(CHOOSER_DISMISSED_KEY) === "1") return;
-      setActive(true);
-      setIndex(0);
-      setTourMode(null);
-    }
-  }, [pathname, router, searchParams]);
+    setReady(true);
+    // Initialization intentionally runs once; subsequent progress belongs to this component.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
-    const match = pathname.match(/^\/app\/leads\/([^/]+)$/);
-    if (match?.[1] && match[1] !== "new") setStorylineLeadId(match[1]);
-  }, [pathname]);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
     const href = window.location.href;
-    const hasWelcomeParam = new URLSearchParams(window.location.search).get("tour") === "welcome";
-    if (!hasWelcomeParam || welcomeHandledRef.current === href) return;
+    if (searchParams.get("tour") !== "welcome" || welcomeHandledRef.current === href) return;
     welcomeHandledRef.current = href;
     setActive(true);
     setIndex(0);
@@ -907,20 +1253,37 @@ export function TutorialProvider() {
     router.replace("/app");
   }, [pathname, router, searchParams]);
 
+  // Capture the rep-assisted lead only at its explicit handoff. Browsing another
+  // record must never silently replace the website customer's storyline.
+  useEffect(() => {
+    if (step.id !== "save-first-lead") return;
+    const match = pathname.match(/^\/app\/leads\/([^/]+)$/);
+    if (match?.[1] && match[1] !== "new") setStorylineLeadId(match[1]);
+  }, [pathname, step.id]);
+
+  useEffect(() => {
+    if (!ready || !active || !tourMode) return;
+    const route = pathname + (searchParams.size ? `?${searchParams.toString()}` : "");
+    lastLocation.current = route;
+    writeTourStorage(checkpointKey(tourMode), JSON.stringify({
+      stepId: step.id, route, storylineLeadId, gregLeadId,
+    }));
+  }, [ready, active, tourMode, step.id, pathname, searchParams, storylineLeadId, gregLeadId]);
+
   const showTourDock =
     active && !compactSpotlight && Boolean(tourMode) && (step?.id !== "welcome" || welcomeMorphing);
 
   useEffect(() => {
     document.body.classList.toggle("tutorial-open", showTourDock);
-    if (tourMode) {
+    if (ready && tourMode) {
       writeTourStorage(storageKeys(tourMode).active, active ? "1" : "0");
     }
     return () => document.body.classList.remove("tutorial-open");
-  }, [active, showTourDock, tourMode]);
+  }, [active, showTourDock, tourMode, ready]);
 
   useEffect(() => {
-    if (tourMode) writeTourStorage(storageKeys(tourMode).index, String(index));
-  }, [index, tourMode]);
+    if (ready && tourMode) writeTourStorage(storageKeys(tourMode).index, String(index));
+  }, [index, tourMode, ready]);
 
   const go = useCallback(
     (next: number) => {
@@ -930,23 +1293,20 @@ export function TutorialProvider() {
     [total]
   );
 
-  const start = useCallback(() => {
-    const selected = readTourStorage(SELECTED_MODE_KEY);
-    const savedMode: TourMode | null =
-      selected === "executive" || selected === "full" ? selected : null;
+  function start() {
     setActive(true);
     writeTourStorage(CHOOSER_DISMISSED_KEY, "0");
-    if (!savedMode || readTourStorage(storageKeys(savedMode).completed) === "1") {
+    if (!tourMode || readTourStorage(storageKeys(tourMode).completed) === "1") {
       setTourMode(null);
       setIndex(0);
-    } else {
-      const saved = Number(readTourStorage(storageKeys(savedMode).index) ?? 0);
-      setTourMode(savedMode);
-      setIndex(Math.max(0, Number.isFinite(saved) ? saved : 0));
-      writeTourStorage(storageKeys(savedMode).active, "1");
+      router.push("/app");
+      return;
     }
-    router.push("/app");
-  }, [router]);
+    writeTourStorage(storageKeys(tourMode).active, "1");
+    // Keep mounted panels intact when resuming on the same page.
+    const current = pathname + (searchParams.size ? `?${searchParams.toString()}` : "");
+    if (current !== lastLocation.current) router.push(lastLocation.current);
+  }
 
   const stop = useCallback(() => {
     if (tourMode) {
@@ -962,8 +1322,21 @@ export function TutorialProvider() {
     setRequestFormOpen(false);
   }, [index, tourMode, total]);
 
-  function startTourFromWelcome(mode: TourMode) {
+  async function startTourFromWelcome(mode: TourMode) {
+    if (mode === "full" && !FULL_TOUR_ENABLED) return;
     setWelcomeMorphing(true);
+    try {
+      const response = await fetch("/api/demo/reset?manual=1", { method: "POST" });
+      const result = await response.json();
+      if (!response.ok || !result.success || !result.reset) throw new Error("Could not start a fresh demo workspace. Please try again.");
+      router.refresh();
+    } catch {
+      setWelcomeMorphing(false);
+      toast.error("Could not start a fresh demo workspace. Please try again.");
+      return;
+    }
+    setStorylineLeadId(null);
+    setGregLeadId(null);
     const keys = storageKeys(mode);
     writeTourStorage(SELECTED_MODE_KEY, mode);
     writeTourStorage(CHOOSER_DISMISSED_KEY, "0");
@@ -994,7 +1367,7 @@ export function TutorialProvider() {
 
   // ── Auto-advance on navigation ──────────────────────────────────────────
   useEffect(() => {
-    if (!active || !step) return;
+    if (!ready || !active || !step) return;
     if (step.advance.kind === "navigate") {
       if (pathname === step.advance.pathname) {
         go(index + 1);
@@ -1007,12 +1380,12 @@ export function TutorialProvider() {
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pathname, active, index, tourMode]);
+  }, [pathname, active, index, tourMode, ready]);
 
   // Advance steps that wait for a real interaction (a call finishing, a message
   // being sent) — never via a button.
   useEffect(() => {
-    if (!active || !step || step.advance.kind !== "event") return;
+    if (!ready || !active || !step || step.advance.kind !== "event") return;
     const ev = step.advance.event;
     if (
       ev === "northstar-inbox-conversations-opened" &&
@@ -1034,7 +1407,7 @@ export function TutorialProvider() {
     window.addEventListener(ev, handler);
     return () => window.removeEventListener(ev, handler);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [active, index, pathname, tourMode]);
+  }, [active, index, pathname, tourMode, ready]);
 
   async function runAction() {
     if (!step.action) return;
@@ -1086,6 +1459,8 @@ export function TutorialProvider() {
     return "You are the customer. The AI assistant is answering.";
   }
 
+  if (!ready) return null;
+
   if (!active) {
     return (
       <button
@@ -1112,6 +1487,7 @@ export function TutorialProvider() {
           callerPhone: lead.phone,
           subtitle: "AI Scheduling Assistant",
           direction: "inbound",
+          seedFields: tourMode === "full" ? { service_type: "storm_damage" } : undefined,
           navigateTo: `/app/leads/${lead.leadId}`,
         });
       }}
@@ -1144,6 +1520,7 @@ export function TutorialProvider() {
           step={step}
           index={index}
           total={total}
+          mode={tourMode ?? "full"}
           onNext={() => go(index + (inspect ? 2 : 1))}
           onInspect={
             inspect
@@ -1180,6 +1557,7 @@ export function TutorialProvider() {
         {requestFormOverlay}
         {simulationConfirm}
         <TutorialSidebar
+          key={step.id}
           step={step}
           index={index}
           total={total}
@@ -1206,15 +1584,18 @@ export function TutorialProvider() {
       {showSpotlightHighlight && (
         <Spotlight target={step.spotlight} stepKey={step.id} wiggle={false} />
       )}
-      <TutorialTooltip
-        stepKey={step.id}
-        step={step}
-        running={running}
-        role={callRole()}
-        onRunAction={runAction}
-        onRunSimulation={runSimulation}
-      />
+      {showSpotlightHighlight && (
+        <TutorialTooltip
+          stepKey={step.id}
+          step={step}
+          running={running}
+          role={callRole()}
+          onRunAction={runAction}
+          onRunSimulation={runSimulation}
+        />
+      )}
       <TutorialSidebar
+        key={step.id}
         step={step}
         index={index}
         total={total}
@@ -1328,7 +1709,7 @@ function WelcomeTourModal({
           </div>
           <p className="mt-3 text-sm leading-6 text-muted-foreground">
             See how AI voice, scheduling, messaging, and CRM workflow completion work together.
-            Customer-facing calls and sends are simulated, so nothing reaches a real customer.
+            Customer-facing calls and sends are simulated, so nothing reaches a real customer. Each tour starts with a fresh demo workspace.
           </p>
           <div className="mt-5 grid gap-3 sm:grid-cols-2">
             <button
@@ -1354,21 +1735,25 @@ function WelcomeTourModal({
             </button>
             <button
               type="button"
-              disabled
-              className="cursor-not-allowed rounded-lg border border-zinc-200 bg-zinc-100 p-4 text-left text-zinc-400 opacity-75"
+              onClick={() => onStart("full")}
+              disabled={morphing}
+              className="rounded-lg border border-stone-300 bg-card p-4 text-left transition-colors hover:bg-secondary disabled:opacity-60"
             >
               <span className="flex items-center justify-between gap-3">
                 <span className="font-semibold">Full Guided Tour</span>
                 <Badge variant="outline" className="border-zinc-300 bg-zinc-50 text-zinc-500">
-                  Temporarily unavailable
+                  Explore every workflow
                 </Badge>
               </span>
               <span className="mt-2 block text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                Complete guided walkthrough
+                About 20–30 minutes
               </span>
               <span className="mt-2 block text-sm leading-5 text-muted-foreground">
-                The longer walkthrough is being refined. The executive tour is the only guided
-                experience currently available.
+                Assisted calls, website callbacks, urgent rescheduling, email, quotes,
+                feedback, automations, and reporting—with tools explained after each workflow.
+              </span>
+              <span className="mt-4 flex items-center gap-1 text-sm font-semibold text-primary">
+                Start full tour <ChevronRight className="h-4 w-4" />
               </span>
             </button>
           </div>
@@ -1525,7 +1910,7 @@ function TourCompletionModal({ step, onFinish }: { step: Step; onFinish: () => v
           <CheckCircle2 className="h-6 w-6" />
         </span>
         <p className="mt-5 text-xs font-semibold uppercase tracking-[0.16em] text-blue-700">
-          Executive tour complete
+          Guided tour complete
         </p>
         <h2 id="tour-completion-title" className="mt-2 text-2xl font-semibold tracking-tight">
           {step.title}
@@ -1546,6 +1931,7 @@ function TechnicalTransitionModal({
   step,
   index,
   total,
+  mode,
   onNext,
   onInspect,
   onStop,
@@ -1553,19 +1939,34 @@ function TechnicalTransitionModal({
   step: Step;
   index: number;
   total: number;
+  mode: TourMode;
   onNext: () => void;
   onInspect?: () => void;
   onStop: () => void;
 }) {
   const recap = step.transition!;
+  const [minimized, setMinimized] = useState(false);
+
+  if (minimized) {
+    return (
+      <aside aria-label="Workflow recap" className="fixed inset-x-2 bottom-2 z-[70] flex items-center gap-2 rounded-xl border bg-brand-dark p-3 text-white shadow-xl">
+        <button type="button" className="min-h-11 min-w-0 flex-1 text-left text-sm" onClick={() => setMinimized(false)}>
+          <span className="block text-xs text-blue-200">Step {index + 1} of {total} · Show recap</span>
+          {step.title}
+        </button>
+        <Button className="min-h-11" onClick={onNext}>Continue</Button>
+      </aside>
+    );
+  }
 
   return (
-    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-blue-950/10 p-4 sm:p-6">
+    <div className="fixed inset-0 z-[70] flex items-end justify-center bg-blue-950/10 p-2 sm:items-center sm:p-6">
       <section
         role="dialog"
         aria-modal="true"
         aria-labelledby="technical-recap-title"
-        className="max-h-[calc(100vh-2rem)] w-full max-w-5xl overflow-y-auto rounded-2xl border border-blue-200 bg-background shadow-2xl"
+        data-tour-step={step.id}
+        className="max-h-[85dvh] w-full max-w-5xl overflow-y-auto rounded-2xl border border-blue-200 bg-background shadow-2xl sm:max-h-[calc(100dvh-2rem)]"
       >
         <div className="flex items-center justify-between gap-4 rounded-t-2xl bg-brand-dark px-5 py-4 text-white sm:px-7">
           <div className="flex items-center gap-3">
@@ -1577,16 +1978,12 @@ function TechnicalTransitionModal({
                 {recap.eyebrow}
               </p>
               <p className="mt-0.5 text-xs text-white/60">
-                Executive tour · {index + 1} / {total}
+                {mode === "executive" ? "Executive tour" : "Full guided tour"} · {index + 1} / {total}
               </p>
             </div>
           </div>
-          <button
-            type="button"
-            onClick={onStop}
-            className="rounded-md p-1 text-white/60 hover:bg-white/10 hover:text-white"
-            aria-label="Exit tour"
-          >
+          <button type="button" onClick={() => setMinimized(true)} className="min-h-11 shrink-0 rounded-md px-2 text-xs text-white lg:hidden">Hide recap</button>
+          <button type="button" onClick={onStop} className="hidden rounded-md p-1 text-white/80 hover:bg-white/10 hover:text-white lg:block" aria-label="Exit tour">
             <X className="h-5 w-5" />
           </button>
         </div>
@@ -1616,23 +2013,22 @@ function TechnicalTransitionModal({
           <div className="border-t bg-blue-50/60 p-5 sm:p-7 lg:border-l lg:border-t-0">
             <div className="flex items-center gap-2 text-blue-900">
               <Workflow className="h-4 w-4" />
-              <h3 className="text-sm font-semibold">Tool-oriented architecture</h3>
+              <h3 className="text-sm font-semibold">Tools used in this workflow</h3>
             </div>
             <p className="mt-2 text-sm leading-6 text-blue-950/70">
-              The orchestration layer works through narrow, auditable tool contracts rather than
-              giving the model unrestricted system access.
+              These are the responsibilities performed by the application in this workflow.
+              Silent calls use a script. Other panels identify whether configured AI,
+              demo rules, or simulated property data produced the result.
             </p>
 
-            <div className="mt-4 flex flex-wrap gap-2" aria-label="Workflow tools">
+            <dl className="mt-4 space-y-3" aria-label="Workflow tools">
               {recap.tools.map((tool) => (
-                <code
-                  key={tool}
-                  className="rounded-md border border-blue-200 bg-white px-2 py-1 text-xs font-medium text-blue-900 shadow-sm"
-                >
-                  {tool}
-                </code>
+                <div key={tool}>
+                  <dt className="font-mono text-xs font-semibold text-blue-900">{tool}</dt>
+                  <dd className="mt-0.5 text-xs leading-5 text-blue-950/75">{TOOL_EXPLANATIONS[tool]}</dd>
+                </div>
               ))}
-            </div>
+            </dl>
 
             <div className="mt-6 rounded-xl border border-blue-200 bg-white p-4">
               <p className="flex items-center gap-2 text-sm font-semibold text-blue-950">
@@ -1652,18 +2048,19 @@ function TechnicalTransitionModal({
           </div>
         </div>
 
-        <div className="flex flex-col-reverse gap-2 border-t bg-background px-5 py-4 sm:flex-row sm:items-center sm:justify-end sm:px-7">
+        <div className="sticky bottom-0 flex flex-col-reverse gap-2 border-t bg-background px-5 py-4 sm:flex-row sm:items-center sm:justify-end sm:px-7">
+          <button type="button" onClick={onStop} className="min-h-11 text-xs text-muted-foreground underline lg:hidden">End demo</button>
           {recap.inspect && onInspect && (
             <Button
               variant="outline"
               onClick={onInspect}
-              className="min-w-64 border-stone-300 bg-[#fffaf0] text-brand-dark hover:bg-[#f7efdf]"
+              className="h-auto min-h-11 whitespace-normal border-stone-300 bg-[#fffaf0] text-brand-dark hover:bg-[#f7efdf] sm:min-w-64"
             >
               <Database className="h-4 w-4" />
               {recap.inspect.label}
             </Button>
           )}
-          <Button onClick={onNext} className="min-w-64">
+          <Button onClick={onNext} className="h-auto min-h-11 whitespace-normal sm:min-w-64">
             {recap.nextLabel}
             <ArrowRight className="h-4 w-4" />
           </Button>
@@ -1705,10 +2102,72 @@ function TutorialSidebar({
   canGoBack: boolean;
 }) {
   const ActionIcon = step.action?.icon;
+  const router = useRouter();
+  const [hiddenStep, setHiddenStep] = useState<string | null>(null);
+  const collapsed = hiddenStep === step.id;
+  const guideRef = useRef<HTMLElement>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
+  const restoreRef = useRef<HTMLButtonElement>(null);
+
+  // Reserve only the space the guide actually occupies, including on rotation.
+  useEffect(() => {
+    const guide = guideRef.current;
+    if (!guide) return;
+    const observer = new ResizeObserver(() => {
+      document.body.style.setProperty("--tour-guide-height", `${guide.getBoundingClientRect().height}px`);
+    });
+    observer.observe(guide);
+    return () => {
+      observer.disconnect();
+      document.body.style.removeProperty("--tour-guide-height");
+    };
+  }, []);
+
+  useEffect(() => {
+    contentRef.current?.scrollTo({ top: 0 });
+  }, [step.id]);
+
+  function hideGuide() {
+    setHiddenStep(step.id);
+    requestAnimationFrame(() => {
+      restoreRef.current?.focus({ preventScroll: true });
+      window.dispatchEvent(new CustomEvent("northstar-tour-guide-collapsed"));
+    });
+  }
+
+  function actThenHide(action: () => void) {
+    if (window.matchMedia("(max-width: 1023px)").matches) hideGuide();
+    action();
+  }
+
+  const mobileHint = (step.spotlightHint ?? role ?? step.title).replaceAll("click", "tap").replaceAll("Click", "Tap").replaceAll("in the sidebar", "in the guide");
+  const mobilePath = step.advance.kind === "navigate" ? step.advance.pathname
+    : step.id === "executive-open-email" ? "/app/inbox" : null;
+  function showMobileStep() {
+    if (step.action) return actThenHide(onRunAction);
+    if (mobilePath) {
+      hideGuide();
+      if (step.id === "executive-open-email") {
+        window.dispatchEvent(new CustomEvent("northstar-nav-inbox-clicked"));
+      }
+      router.push(mobilePath);
+      return;
+    }
+    hideGuide();
+  }
 
   return (
-    <aside className="fixed bottom-3 right-3 top-3 z-40 flex w-[340px] max-w-[90vw] flex-col overflow-hidden rounded-l-2xl rounded-r-lg border bg-card shadow-2xl">
-      <div className="flex items-center justify-between gap-2 border-b bg-brand-dark px-4 py-3 text-white">
+    <aside ref={guideRef} aria-label="Demo guide" data-tour-step={step.id} data-collapsed={collapsed} className="tour-sidebar fixed bottom-3 right-3 top-3 z-40 flex w-[340px] max-w-[90vw] flex-col overflow-hidden rounded-l-2xl rounded-r-lg border bg-card shadow-2xl">
+      <div className="tour-mobile-bar hidden items-center gap-2 bg-brand-dark px-3 py-2 text-white">
+        <button ref={restoreRef} type="button" onClick={() => setHiddenStep(null)} aria-expanded={!collapsed} aria-controls="tour-guide-content" className="min-h-11 min-w-0 flex-1 text-left">
+          <span className="block text-[11px] text-blue-200">Demo · Step {index + 1} of {total} · Show instructions</span>
+          <span role="status" className="line-clamp-2 text-xs font-medium">{mobileHint}</span>
+        </button>
+        {step.advance.kind === "manual" && showManualNext && index < total - 1 && (
+          <Button size="sm" className="min-h-11 shrink-0" onClick={onNext} aria-label={step.nextLabel ?? "Next step"}>Next <ChevronRight className="h-4 w-4" /></Button>
+        )}
+      </div>
+      <div className="tour-expanded flex items-center justify-between gap-2 border-b bg-brand-dark px-4 py-3 text-white">
         <span className="flex items-center gap-2 text-sm font-semibold">
           <GraduationCap className="h-4 w-4 text-brand-gold" />
           {mode === "executive" ? "Executive tour" : "Guided tour"}
@@ -1717,10 +2176,11 @@ function TutorialSidebar({
           <Badge variant="secondary" className="bg-white/15 text-[10px] text-white">
             {index + 1} / {total}
           </Badge>
+          <button type="button" onClick={hideGuide} className="min-h-11 rounded px-2 text-xs text-white lg:hidden" aria-label="Hide guide, keep demo running">Hide guide</button>
           <button
             type="button"
             onClick={onStop}
-            className="rounded p-0.5 text-white/60 hover:text-white"
+            className="hidden rounded p-0.5 text-white/60 hover:text-white lg:block"
             aria-label="Exit tour"
           >
             <X className="h-4 w-4" />
@@ -1728,14 +2188,17 @@ function TutorialSidebar({
         </div>
       </div>
 
-      <div className="h-1 w-full bg-secondary">
+      <div className="tour-expanded h-1 w-full bg-secondary">
         <div
           className="h-full bg-brand-gold transition-all"
           style={{ width: `${((index + 1) / total) * 100}%` }}
         />
       </div>
 
-      <div className="flex-1 overflow-y-auto p-4">
+      <div id="tour-guide-content" ref={contentRef} className="tour-expanded min-h-0 flex-1 overflow-y-auto overscroll-contain p-4">
+        <div className="mb-3 rounded-lg bg-blue-50 p-3 text-xs text-blue-950 lg:hidden">
+          Follow the blue outlines and notifications. Hide the guide anytime; the demo keeps running.
+        </div>
         {role && (
           <p className="mb-3 rounded-lg border-2 border-blue-500 bg-blue-50 px-3 py-2 text-sm font-semibold text-blue-950">
             {role}
@@ -1743,12 +2206,12 @@ function TutorialSidebar({
         )}
 
         <h3 className="text-base font-semibold tracking-tight">{step.title}</h3>
-        <p className="mt-2 whitespace-pre-line text-sm text-muted-foreground">{step.body}</p>
+        <p className="mt-2 whitespace-pre-line text-sm text-muted-foreground">{step.body.replaceAll("in the sidebar", "in the guide").replaceAll("in the left menu", "in the navigation")}</p>
 
         {step.action && (
           <Button
-            className="mt-4 w-full whitespace-normal text-center leading-snug"
-            onClick={onRunAction}
+            className="mt-4 hidden w-full whitespace-normal text-center leading-snug lg:inline-flex"
+            onClick={() => actThenHide(onRunAction)}
             disabled={running}
           >
             {running ? (
@@ -1764,13 +2227,29 @@ function TutorialSidebar({
             type="button"
             variant="outline"
             className="mt-2 w-full whitespace-normal text-center leading-snug"
-            onClick={onRunSimulation}
+            onClick={() => actThenHide(onRunSimulation)}
             disabled={running}
           >
             {step.simulate.label}
           </Button>
         )}
 
+        {step.advance.kind === "navigate" && !step.action && step.spotlight?.startsWith("nav-") && (
+          <Button className="mt-4 w-full" variant="outline" onClick={() => {
+            if (step.advance.kind === "navigate") router.push(step.advance.pathname);
+          }}>
+            Open {step.advance.pathname.split("/").pop()?.replaceAll("-", " ")}
+            <ArrowRight className="h-4 w-4" />
+          </Button>
+        )}
+        {step.id === "executive-open-email" && (
+          <Button className="mt-4 w-full" variant="outline" onClick={() => {
+            window.dispatchEvent(new CustomEvent("northstar-nav-inbox-clicked"));
+            router.push("/app/inbox");
+          }}>
+            Open Inbox <ArrowRight className="h-4 w-4" />
+          </Button>
+        )}
         {/* Primary Next sits right under the instructions so it's obvious where
             to click. Only shown for steps that advance manually (and aren't the
             last step, which shows Finish in the footer instead). */}
@@ -1788,7 +2267,12 @@ function TutorialSidebar({
         )}
       </div>
 
-      <div className="flex items-center justify-between gap-2 border-t p-3">
+      <div className="tour-expanded flex flex-col gap-2 border-t p-3 lg:block">
+        <Button data-testid="tour-mobile-primary" className="h-auto min-h-11 w-full whitespace-normal lg:hidden" variant="outline" disabled={running} onClick={showMobileStep}>
+          {running ? "Working…" : step.action?.label ?? (mobilePath ? `Open ${mobilePath.split("/").pop()?.replaceAll("-", " ")}` : step.advance.kind === "manual" ? "Let me look around" : "Show me — use the app")}
+          <ArrowRight className="h-4 w-4" />
+        </Button>
+        <div className="hidden items-center justify-between gap-2 lg:flex">
         {canGoBack ? (
           <Button variant="ghost" size="sm" onClick={onBack}>
             <ChevronLeft className="h-3.5 w-3.5" />
@@ -1811,6 +2295,11 @@ function TutorialSidebar({
         ) : (
           <span className="px-2 text-xs text-muted-foreground">Waiting for the dashboard action…</span>
         )}
+        </div>
+        <div className="flex items-center justify-between lg:hidden">
+          {canGoBack ? <Button variant="ghost" className="min-h-11" onClick={onBack}><ChevronLeft className="h-4 w-4" />Back</Button> : <span />}
+          <button type="button" onClick={onStop} className="min-h-11 px-2 text-xs text-muted-foreground underline">End demo</button>
+        </div>
       </div>
     </aside>
   );
@@ -1878,7 +2367,7 @@ function TutorialTooltip({
   return (
     <section
       data-testid="tour-tooltip"
-      className={`fixed z-50 max-h-[calc(100vh-2rem)] overflow-y-auto rounded-lg border border-white/15 bg-zinc-700 text-white shadow-2xl transition-opacity duration-500 ease-out motion-reduce:transition-none ${
+      className={`fixed z-50 hidden lg:block max-h-[calc(100vh-2rem)] overflow-y-auto rounded-lg border border-white/15 bg-zinc-700 text-white shadow-2xl transition-opacity duration-500 ease-out motion-reduce:transition-none ${
         hasAnchor && visible ? "opacity-100" : "pointer-events-none opacity-0"
       }`}
       style={style}

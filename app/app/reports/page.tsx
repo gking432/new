@@ -713,7 +713,7 @@ export default async function ReportsPage() {
         </Card>
       </div>
 
-      <Card>
+      <Card data-tour="reports-business-insights">
         <CardHeader>
           <CardTitle>Business Insights</CardTitle>
           <CardDescription>

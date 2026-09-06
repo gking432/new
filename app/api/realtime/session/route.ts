@@ -1,3 +1,4 @@
+import { reserveVoiceMint, liveVoiceConfigured } from "@/lib/realtime/quota";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getScriptedScenario } from "@/lib/calls/scriptedScenarios";
@@ -22,8 +23,7 @@ const DEFAULT_REALTIME_MODEL = "gpt-realtime";
  * response switches to scripted fallback mode — and includes the reason in
  * `realtime_error` so the UI can show exactly why live voice didn't start.
  *
- * GET runs a diagnostic mint and returns the raw outcome (used by the Demo
- * Center "Test AI voice" button).
+ * GET checks configuration without contacting the paid provider.
  */
 
 const requestSchema = z.object({
@@ -37,19 +37,6 @@ const requestSchema = z.object({
   persona: z.enum(["agent", "customer"]).optional(),
   forceScripted: z.boolean().optional(),
 });
-
-// In-memory rate limit: this endpoint is reachable from the public
-// speed-to-lead page, and each realtime session costs real money.
-const sessionTimestamps: number[] = [];
-function rateLimited() {
-  const now = Date.now();
-  while (sessionTimestamps.length && sessionTimestamps[0] < now - 60_000) {
-    sessionTimestamps.shift();
-  }
-  if (sessionTimestamps.length >= 10) return true;
-  sessionTimestamps.push(now);
-  return false;
-}
 
 interface MintResult {
   ok: true;
@@ -71,6 +58,7 @@ async function tryGaMint(
   voice: string,
   interruptResponse: boolean
 ): Promise<MintResult | MintFailure> {
+  if (!(await reserveVoiceMint())) return { ok: false, error: "Live voice quota unavailable. Use the silent simulation." };
   try {
     const session: Record<string, unknown> = { type: "realtime", model, instructions };
     if (!minimal) {
@@ -94,7 +82,8 @@ async function tryGaMint(
     const res = await fetch("https://api.openai.com/v1/realtime/client_secrets", {
       method: "POST",
       headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ session }),
+      body: JSON.stringify({ session, expires_after: { anchor: "created_at", seconds: 30 } }),
+      signal: AbortSignal.timeout(10000),
     });
     const text = await res.text();
     if (res.ok) {
@@ -123,6 +112,7 @@ async function tryBetaMint(
   instructions: string,
   voice: string
 ): Promise<MintResult | MintFailure> {
+  if (!(await reserveVoiceMint())) return { ok: false, error: "Live voice quota unavailable. Use the silent simulation." };
   // cedar/marin are GA-only; map to a beta-supported voice on the fallback path.
   const betaVoice = ["cedar", "marin"].includes(voice) ? "sage" : voice;
   voice = betaVoice;
@@ -140,6 +130,7 @@ async function tryBetaMint(
         voice,
         input_audio_transcription: { model: "whisper-1" },
       }),
+      signal: AbortSignal.timeout(10000),
     });
     const text = await res.text();
     if (res.ok) {
@@ -213,28 +204,16 @@ async function mintRealtimeSecret(args: {
   return { ok: false, errors };
 }
 
-/** Diagnostics: attempts a real mint and reports the outcome. */
+/** Read-only configuration check. Never mints a paid-provider token. */
 export async function GET() {
-  const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey) {
-    return NextResponse.json({
-      ok: false,
-      reason: "OPENAI_API_KEY is not set (restart `npm run dev` after editing .env.local)",
-    });
-  }
-  if (process.env.ENABLE_REALTIME_CALLS === "false") {
-    return NextResponse.json({ ok: false, reason: "ENABLE_REALTIME_CALLS is set to false" });
-  }
-  const model = process.env.REALTIME_MODEL || DEFAULT_REALTIME_MODEL;
-  const minted = await mintRealtimeSecret({
-    apiKey,
-    model,
-    instructions: "Diagnostics test session.",
-  });
-  if (minted.ok) {
-    return NextResponse.json({ ok: true, api: minted.api, model: minted.model });
-  }
-  return NextResponse.json({ ok: false, reason: minted.errors.join(" | "), model });
+  const configured = liveVoiceConfigured();
+  return NextResponse.json({
+    ok: configured,
+    model: process.env.REALTIME_MODEL || DEFAULT_REALTIME_MODEL,
+    reason: configured
+      ? "Voice is configured. Provider connectivity and quota are checked when a call starts."
+      : "Live voice needs OPENAI_API_KEY and ENABLE_REALTIME_CALLS must not be false.",
+  }, { headers: { "Cache-Control": "no-store" } });
 }
 
 export async function POST(request: Request) {
@@ -247,9 +226,6 @@ export async function POST(request: Request) {
   const parsed = requestSchema.safeParse(body);
   if (!parsed.success) {
     return NextResponse.json({ error: "Invalid request" }, { status: 400 });
-  }
-  if (rateLimited()) {
-    return NextResponse.json({ error: "Too many call sessions right now" }, { status: 429 });
   }
 
   const {
@@ -313,7 +289,8 @@ export async function POST(request: Request) {
   // urgent calls. General availability (which days/times can be booked) is
   // conveyed to the assistant via the fixed start-time grid in the prompt.
   const slotLabels = slots.map((s) => s.label);
-  const maxSeconds = Number(process.env.REALTIME_MAX_CALL_SECONDS || 180);
+  const configuredSeconds = Number(process.env.REALTIME_MAX_CALL_SECONDS || 180);
+  const maxSeconds = Number.isFinite(configuredSeconds) ? Math.max(30, Math.min(180, configuredSeconds)) : 180;
 
   const base = {
     call_id: call.id,
@@ -327,7 +304,7 @@ export async function POST(request: Request) {
   };
 
   const apiKey = process.env.OPENAI_API_KEY;
-  const realtimeEnabled = process.env.ENABLE_REALTIME_CALLS !== "false";
+  const realtimeEnabled = liveVoiceConfigured();
   if (!apiKey || !realtimeEnabled || forceScripted) {
     return NextResponse.json({
       ...base,
@@ -336,7 +313,7 @@ export async function POST(request: Request) {
         ? undefined
         : !apiKey
           ? "OPENAI_API_KEY is not set (restart the dev server after editing .env.local)"
-          : "ENABLE_REALTIME_CALLS is false",
+          : "Live voice is disabled by ENABLE_REALTIME_CALLS=false.",
     });
   }
 
@@ -364,7 +341,7 @@ export async function POST(request: Request) {
     return NextResponse.json({
       ...base,
       mode: "scripted_fallback",
-      realtime_error: minted.errors[minted.errors.length - 1],
+      realtime_error: "Live voice is unavailable right now. Continue with the silent simulation.",
     });
   }
 

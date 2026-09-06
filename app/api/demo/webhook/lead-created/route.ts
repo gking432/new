@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";
 import { runAiWorkflowModule } from "@/lib/ai-workflows/runModule";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { isLocalDemoMode } from "@/lib/demo/mode";
+import { runLocalAutomationModule } from "@/lib/demo/localAutomation";
+import { createLocalLead } from "@/lib/demo/localWorkflows";
 import type { Lead, ServiceType } from "@/types/app";
 
 export const dynamic = "force-dynamic";
@@ -66,6 +69,34 @@ export async function POST(request: NextRequest) {
     "External CRM webhook demo lead with no message supplied.";
 
   try {
+    if (isLocalDemoMode()) {
+      const leadId = await createLocalLead({
+        first_name,
+        last_name,
+        email: text(payload.email) || null,
+        phone: text(payload.phone) || null,
+        preferred_contact_method: text(payload.email) ? "email" : "phone",
+        service_type: serviceType(payload.serviceType),
+        description,
+        source: text(event.source) || "external_crm_webhook",
+        active_leak: /\b(?:active leak|water (?:is )?(?:coming|getting) in)\b/i.test(description)
+          ? "yes"
+          : null,
+      });
+      const output = await runLocalAutomationModule("lead_intake_analysis", leadId);
+
+      revalidatePath("/app/automations");
+      revalidatePath("/app/leads");
+
+      return NextResponse.json({
+        ok: true,
+        mode: "demo",
+        notice: "Lead created and AI workflow logged. No external messages were sent.",
+        leadId,
+        workflowOutput: output,
+      });
+    }
+
     const supabase = createAdminClient();
     const { data: lead, error } = await supabase
       .from("leads")

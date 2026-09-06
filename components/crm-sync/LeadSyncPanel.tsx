@@ -62,8 +62,9 @@ export function LeadSyncPanel({ leads }: { leads: SyncableLead[] }) {
         <CardHeader>
           <CardTitle className="text-base">Leads ready to sync</CardTitle>
           <CardDescription>
-            Each sync creates/updates the HubSpot contact, creates the deal, and attaches the AI
-            summary as a note. The full payload is logged either way.
+            Each sync creates/updates the HubSpot contact and attaches the AI summary as a note.
+            A deal is created only when the local stage has an exact HubSpot mapping;
+            otherwise it is explicitly skipped. Payloads and skips are logged.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-2">
@@ -116,17 +117,22 @@ export function LeadSyncPanel({ leads }: { leads: SyncableLead[] }) {
             <DialogDescription>
               {result?.mode === "dry_run"
                 ? "This is exactly what would be sent to HubSpot. No external CRM was updated."
-                : "The records below were created in your HubSpot portal."}
+                : "The records below were created or updated in your HubSpot portal; skipped objects were not sent."}
             </DialogDescription>
           </DialogHeader>
           {result && (
             <div className="space-y-3">
               <div className="flex flex-wrap gap-2">
                 <Badge variant="secondary">Contact: {result.contactId}</Badge>
-                <Badge variant="secondary">Deal: {result.dealId}</Badge>
+                <Badge variant="secondary">Deal: {result.dealId ?? "Skipped"}</Badge>
                 <Badge variant="secondary">Note: {result.noteId}</Badge>
               </div>
-              {(["contact", "deal", "note"] as const).map((key) => (
+              {result.payload.dealSkipReason && (
+                <p role="status" className="rounded-lg border p-3 text-sm">
+                  {result.payload.dealSkipReason}
+                </p>
+              )}
+              {(["contact", "deal", "note"] as const).filter((key) => result.payload[key] !== null).map((key) => (
                 <div key={key}>
                   <p className="mb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
                     {key} payload

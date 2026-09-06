@@ -330,7 +330,11 @@ export async function sendLocalConversationReply(replyToId: string, body: string
     source.updated_at = nowIso();
     if (source.lead_id) {
       const lead = state.leads.find((candidate) => candidate.id === source.lead_id);
-      if (lead && source.metadata.demo_action === "inbound_window_email") lead.stage = "contacted";
+      if (lead?.stage === "new" && ["inbound_window_email", "executive_inbound_window_email"].includes(String(source.metadata.demo_action))) {
+        lead.stage = "contacted";
+        lead.updated_at = nowIso();
+        state.activities.push(activity(lead.id, "stage_change", "Pipeline moved to Contacted", "The team sent the first email reply."));
+      }
       state.activities.push(activity(source.lead_id, channel, `${channel === "email" ? "Email" : "Text"} reply sent (simulated)`, trimmed));
     }
   });
@@ -445,7 +449,7 @@ export async function draftLocalSoonerInspectionSms(communicationId: string) {
     const startIso = typeof meta.suggested_start_time === "string" ? meta.suggested_start_time : null;
     const endIso = typeof meta.suggested_end_time === "string" ? meta.suggested_end_time : null;
     if (!startIso || !endIso) throw new Error("No suggested appointment time found");
-    if (state.communications.some((communication) => communication.metadata.demo_action === "jordan_reschedule_offer" && communication.status === "draft")) return;
+    if (state.communications.some((communication) => communication.metadata.source_communication_id === source.id && communication.metadata.demo_action === "jordan_reschedule_offer" && communication.status === "draft")) return;
     const label = typeof meta.suggested_label === "string" ? meta.suggested_label : sameDayLabel(startIso);
     state.communications.push({
       id: demoId(),
@@ -458,7 +462,7 @@ export async function draftLocalSoonerInspectionSms(communicationId: string) {
       from_value: "Northstar Exterior & Home",
       to_value: source.from_value,
       subject: "Earlier inspection option",
-      body: `Hi Jordan, we have an opening ${label}. Would that work for your inspection?`,
+      body: `Hi ${state.leads.find((lead) => lead.id === source.lead_id)?.first_name ?? "there"}, we have an opening ${label}. Would that work for your inspection?`,
       ai_summary: "AI-written earlier-time offer.",
       suggested_next_action: "Review and send the offer.",
       ai_generated: true,
@@ -503,10 +507,12 @@ function applyLocalRescheduleAcceptance(state: Awaited<ReturnType<typeof readDem
   const endIso = typeof record.metadata.suggested_end_time === "string" ? record.metadata.suggested_end_time : null;
   if (!startIso || !endIso) return;
   const label = sameDayLabel(startIso);
+  const source = state.communications.find((message) => message.id === record.metadata.source_communication_id);
+  if (source) source.metadata = { ...source.metadata, needs_attention: false, handled_at: nowIso() };
   state.communications.push({
     id: demoId(), lead_id: record.lead_id, contact_id: null, call_id: null, channel: "sms", direction: "inbound", status: "received",
     from_value: record.to_value, to_value: "Northstar Exterior & Home", subject: null, body: "Yes that works. Thank you so much.",
-    ai_summary: "Jordan accepted the earlier inspection time.", suggested_next_action: "Appointment moved automatically.", ai_generated: false,
+    ai_summary: "The customer accepted the earlier inspection time.", suggested_next_action: "Appointment moved automatically.", ai_generated: false,
     human_approved: false, scheduled_send_at: null, automation_key: null, metadata: { demo_action: "jordan_reschedule_accepted", needs_attention: false },
     created_at: nowIso(1000), updated_at: nowIso(1000),
   });
@@ -579,7 +585,7 @@ function applyLocalRescheduleAcceptance(state: Awaited<ReturnType<typeof readDem
       task.updated_at = nowIso(1400);
     }
   });
-  const confirmation = `Hi Jordan, your updated inspection is confirmed for ${label}. If anything changes before then, reply to this message.`;
+  const confirmation = `Hi ${lead?.first_name ?? "there"}, your updated inspection is confirmed for ${label}. If anything changes before then, reply to this message.`;
   state.communications.push({
     id: demoId(), lead_id: record.lead_id, contact_id: null, call_id: null, channel: "sms", direction: "outbound", status: "simulated_sent",
     from_value: "Northstar Exterior & Home", to_value: record.to_value, subject: "Updated appointment confirmation", body: confirmation,

@@ -102,7 +102,7 @@ export function SettingsForm({ settings }: { settings: CompanySettings }) {
         </CardContent>
       </Card>
 
-      <Card>
+      <Card data-tour="settings-ai-controls">
         <CardHeader>
           <CardTitle>AI settings</CardTitle>
           <CardDescription>

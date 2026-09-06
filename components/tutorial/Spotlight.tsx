@@ -32,12 +32,20 @@ export function Spotlight({
 
   useEffect(() => {
     let raf = 0;
+    let positioned = false;
     function measure() {
-      const el = document.querySelector<HTMLElement>(`[data-tour="${target}"]`);
+      const el = Array.from(document.querySelectorAll<HTMLElement>(`[data-tour="${target}"]`))
+        .find((candidate) => candidate.getBoundingClientRect().width > 0);
       if (el) {
         el.classList.toggle("tour-target-wiggle", wiggle);
         const r = el.getBoundingClientRect();
         if (r.width > 0 && r.height > 0) {
+          if (!positioned) {
+            positioned = true;
+            const guide = document.querySelector(".tour-sidebar")?.getBoundingClientRect();
+            const bottom = window.innerWidth < 1024 ? (guide?.top ?? window.innerHeight - 120) - 16 : window.innerHeight - 32;
+            if (r.top < 64 || r.bottom > bottom) el.scrollIntoView({ block: "center", behavior: "smooth" });
+          }
           setRect({ target, top: r.top, left: r.left, width: r.width, height: r.height });
           return;
         }
@@ -52,6 +60,11 @@ export function Spotlight({
     };
     window.addEventListener("scroll", onScroll, true);
     window.addEventListener("resize", onScroll);
+    const onGuideCollapsed = () => {
+      positioned = false;
+      onScroll();
+    };
+    window.addEventListener("northstar-tour-guide-collapsed", onGuideCollapsed);
     return () => {
       document
         .querySelector<HTMLElement>(`[data-tour="${target}"]`)
@@ -60,8 +73,9 @@ export function Spotlight({
       cancelAnimationFrame(raf);
       window.removeEventListener("scroll", onScroll, true);
       window.removeEventListener("resize", onScroll);
+      window.removeEventListener("northstar-tour-guide-collapsed", onGuideCollapsed);
     };
-  }, [target, wiggle]);
+  }, [target, wiggle, stepKey]);
 
   const activeRect = rect?.target === target ? rect : null;
   const hasTarget = activeRect !== null;

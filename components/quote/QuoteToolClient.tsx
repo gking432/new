@@ -45,6 +45,21 @@ type QuoteOutput = {
   talking_points: string[];
 };
 
+function savedQuoteOutput(quote: QuoteEstimate | null): QuoteOutput | null {
+  if (!quote || quote.estimate_low === null || quote.estimate_high === null) return null;
+  return {
+    result: {
+      estimate_low: quote.estimate_low, estimate_high: quote.estimate_high,
+      confidence: quote.confidence, line_items: quote.line_items,
+      assumptions: quote.assumptions, missing_info: quote.missing_info,
+      inspection_questions: quote.inspection_questions,
+      weather_note: typeof quote.weather_adjustment.note === "string" ? quote.weather_adjustment.note : null,
+    },
+    ai_summary: quote.ai_summary,
+    talking_points: [],
+  };
+}
+
 export function QuoteToolClient({
   leads,
   selectedLead,
@@ -59,7 +74,7 @@ export function QuoteToolClient({
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [propertyPending, startPropertyTransition] = useTransition();
-  const [output, setOutput] = useState<QuoteOutput | null>(null);
+  const [output, setOutput] = useState<QuoteOutput | null>(() => savedQuoteOutput(previousQuote));
 
   // Job inputs
   const [serviceType, setServiceType] = useState(selectedLead?.service_type ?? "roofing");
@@ -82,7 +97,7 @@ export function QuoteToolClient({
   useEffect(() => {
     if (selectedLead) {
       setServiceType(selectedLead.service_type === "not_sure" ? "roofing" : selectedLead.service_type);
-      setOutput(null);
+      setOutput(savedQuoteOutput(previousQuote));
     }
   }, [selectedLead?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -92,6 +107,7 @@ export function QuoteToolClient({
       const result = await generatePropertyProfile(selectedLead.id);
       if (result.success) {
         toast.success("Demo property profile generated");
+        window.dispatchEvent(new CustomEvent("northstar-quote-property-ready"));
         router.refresh();
       } else {
         toast.error(result.error);
@@ -133,6 +149,7 @@ export function QuoteToolClient({
       if (result.success) {
         setOutput(result.data);
         toast.success("Internal ballpark saved to the lead");
+        window.dispatchEvent(new CustomEvent("northstar-quote-generated"));
         router.refresh();
       } else {
         toast.error(result.error);
@@ -167,9 +184,12 @@ export function QuoteToolClient({
           <CardContent>
             <Select
               value={selectedLead?.id ?? ""}
-              onValueChange={(value) => router.push(`/app/quote-tool?lead=${value}`)}
+              onValueChange={(value) => {
+                window.dispatchEvent(new CustomEvent("northstar-quote-lead-selected"));
+                router.push(`/app/quote-tool?lead=${value}`);
+              }}
             >
-              <SelectTrigger>
+              <SelectTrigger data-tour="quote-lead-select">
                 <SelectValue placeholder="Select a lead…" />
               </SelectTrigger>
               <SelectContent>
@@ -241,6 +261,7 @@ export function QuoteToolClient({
               size="sm"
               onClick={loadProperty}
               disabled={propertyPending || !selectedLead}
+              data-tour="quote-property-generate"
             >
               {propertyPending ? (
                 <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -326,9 +347,10 @@ export function QuoteToolClient({
               </div>
               {(serviceType === "windows") && (
                 <div className="space-y-1.5">
-                  <Label>Window count</Label>
+                  <Label htmlFor="quote-window-count">Window count</Label>
                   <Input
                     type="number"
+                    id="quote-window-count"
                     placeholder={String(property?.estimated_window_count ?? 10)}
                     value={windowCount}
                     onChange={(e) => setWindowCount(e.target.value)}
@@ -430,14 +452,19 @@ export function QuoteToolClient({
               The result saves to the lead timeline for the sales team to review before the
               inspection.
             </p>
-            <Button className="w-full" onClick={generate} disabled={pending || !selectedLead}>
+            <Button
+              className="w-full"
+              onClick={generate}
+              disabled={pending || !selectedLead}
+              data-tour="quote-generate"
+            >
               {pending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
               Generate internal ballpark
             </Button>
           </CardContent>
         </Card>
         {output ? (
-          <Card className="border-primary/30">
+          <Card className="border-primary/30" data-tour="quote-result">
             <CardHeader>
               <CardTitle className="text-base">Internal ballpark</CardTitle>
               <CardDescription>

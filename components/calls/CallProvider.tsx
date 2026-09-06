@@ -25,7 +25,7 @@ import { getDemoInspectionSlots } from "@/lib/actions/appointments";
 import { finishCall } from "@/lib/actions/calls";
 import { appendDemoEvent } from "@/lib/demo-log";
 import { slotLabel } from "@/lib/integrations/calendar/internalCalendar";
-import { demoDatePlusDays } from "@/lib/utils/demoTime";
+import { demoDatePlusDays, demoWallClockParts } from "@/lib/utils/demoTime";
 import { customerServiceLabel } from "@/lib/utils/statuses";
 import { useRingtone } from "@/lib/ringtone";
 import type { CallScenario } from "@/types/app";
@@ -262,10 +262,10 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
       return;
     }
     const session = (await res.json()) as { call_id: string };
-    const slotResult = await getDemoInspectionSlots(10, 6);
+    const slotResult = await getDemoInspectionSlots(14, 160);
     const tomorrowStart = demoDatePlusDays(1, 0, 0).getTime();
     const simulatedSlot = slotResult.success
-      ? slotResult.data.find((slot) => new Date(slot.start).getTime() >= tomorrowStart) ?? null
+      ? slotResult.data.find((slot) => new Date(slot.start).getTime() >= tomorrowStart && demoWallClockParts(new Date(slot.start)).hour >= 12) ?? null
       : null;
     const fallbackSlot = demoDatePlusDays(1, 17, 30);
     const simulatedSlotLabel = simulatedSlot?.label ?? slotLabel(fallbackSlot);

@@ -124,7 +124,7 @@ automation rules, and availability windows.
 ### 4. AI (optional, recommended)
 
 - `OPENAI_API_KEY` — enables AI lead analysis, call summaries, and **live AI
-  voice calls** (OpenAI Realtime over WebRTC).
+  voice calls** (OpenAI Realtime over WebRTC; no Redis setup required).
 - Structured workflows use strict JSON Schema generated from the application's
   Zod contracts. Deterministic business rules and clearly labeled fallbacks
   keep the operational workflow running when a provider is unavailable.
@@ -132,10 +132,25 @@ automation rules, and availability windows.
   and calls run in **scripted demo mode** (click-through customer lines) that
   produces the same transcripts, notes, tasks, and appointments.
 
-**Cost control:** Realtime sessions are capped at `REALTIME_MAX_CALL_SECONDS`
-(default 180s), session creation is rate-limited, ephemeral tokens are minted
-server-side, and silent scripted mode makes it possible to run the full workflow
-without a live voice session.
+**Voice safeguards:** live voice is enabled with `OPENAI_API_KEY` unless
+`ENABLE_REALTIME_CALLS=false`. Without Redis, a per-process burst limit allows
+10 token-mint attempts per minute by default, with no application daily quota.
+Optional `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN` enable atomic
+shared quotas (defaults: 5 attempts/minute and 30/day). Configure
+`REALTIME_MINTS_PER_MINUTE` and, for Redis only, `REALTIME_MINTS_PER_DAY` as needed.
+Retries consume quota too. An explicitly configured quota store still fails
+closed on exhaustion or outage. Missing Redis does not disable live voice.
+The voice configuration check is
+read-only and does not mint tokens or claim to verify provider connectivity.
+
+The browser ends normal calls at `REALTIME_MAX_CALL_SECONDS` (30–180 seconds).
+GA client tokens expire for new connections after 30 seconds. These are mint
+quotas and a browser time limit, **not a hard dollar cap or server-enforced call
+lifetime**: OpenAI documents that a client token can start multiple sessions
+before expiry and an established session can continue afterward. Configure
+provider spending controls for the dedicated project before enabling public
+paid voice. See [OpenAI’s client-secret reference](https://developers.openai.com/api/reference/typescript/resources/realtime/subresources/client_secrets/methods/create)
+and [Upstash’s REST API](https://upstash.com/docs/redis/features/restapi).
 
 ### 5. HubSpot (optional)
 
@@ -149,6 +164,24 @@ HUBSPOT_PRIVATE_APP_TOKEN=pat-...
 ENABLE_HUBSPOT_LIVE_SYNC=true
 ```
 
+Deal export uses explicit mappings from the local lead stage:
+`appointment_scheduled` → `appointmentscheduled`, `won` → `closedwon`, and
+`lost` → `closedlost`. For `new`, `contacted`, `estimate_sent`, or
+`follow_up_needed` (and unknown stages), only the contact and note are exported;
+the deal is logged as `skipped`, with a reason and no external or mock deal ID.
+Offering appointment times does not qualify a `new` lead as scheduled.
+
+These mappings target HubSpot's standard default pipeline. Before enabling live
+sync for a customized portal, verify its internal pipeline/stage IDs and adapt
+`HUBSPOT_DEAL_STAGES` in `lib/integrations/hubspot/client.ts` to the actual business
+milestones; do not use a later milestone as a fallback for an unmapped stage.
+See [HubSpot's pipeline documentation](https://developers.hubspot.com/docs/api-reference/latest/crm/pipelines/guide).
+Existing audit records are not rewritten; rerun a dry sync to see the corrected export.
+
+Run the connector regression tests with `npm run test:hubspot` (Node 22.6+).
+They cover stage mapping, skipped-deal audit entries, and live request shapes
+with a mocked network; they do not contact HubSpot.
+
 ### 6. Run
 
 ```bash
@@ -161,6 +194,23 @@ npm run dev
 - Case study: `http://localhost:3000/case-study`
 
 ## Demo walkthroughs
+
+The chooser offers **Executive Tour** (recommended, about 7 minutes) and
+**Full Guided Tour** (about 20–30 minutes). Starting either creates a fresh demo
+workspace. The full tour covers assisted intake, website callbacks, urgent
+rescheduling, calendar-aware email, quoting, feedback, automation modules, and
+management review. Eight workflow recaps explain the trigger, resulting CRM
+work, human controls, and the role of each listed tool.
+
+Tour checkpoints save stable step IDs, the current route, and explicit customer
+IDs in session storage. Exit/Start Tour resumes the same page. A hard reload
+reopens disposable call/form/composer panels at a repeatable entry point while
+retaining saved CRM records. Saved quotes are visible after reload. The compact
+mobile guide can be minimized, and navigation steps include direct page buttons.
+
+Run `npm run test:tour` for checkpoint and voice-quota regression checks.
+For the repeatable full browser journey and executive regression, see
+[the verification report](docs/full-tour-verification.md).
 
 ### Speed-to-lead (the primary wow demo)
 

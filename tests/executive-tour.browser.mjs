@@ -1,0 +1,30 @@
+import assert from 'node:assert/strict';
+import {inflateRawSync} from 'node:zlib';
+import {waitStep,clickText,clickSelector,next,nav,ab,sleep,evaluate} from './tour-browser-driver.mjs';
+// Run after full-tour.browser.mjs in the same browser session to verify a fresh workspace.
+await clickText('Start Tour');await sleep(500);
+evaluate('Array.from(document.querySelectorAll("button")).find(e=>e.textContent.includes("Executive Tour")).click()');
+await waitStep('speed-to-lead');await clickText('Open form');
+for(const [name,value] of [['First name','Casey'],['Last name','Morgan'],['Phone','4145550199']])ab('find','label',name,'fill',value);
+await clickText('Submit Request');await waitStep('answer-call');await clickText('Simulate call');await clickText('Simulate call');
+await nav('follow-form-notifications','/app/tasks','open-form-confirmation-task');await clickSelector('[data-tour="task-confirmation-link"]');await waitStep('approve-form-confirmation');await clickText('Approve & send (simulated)');
+await waitStep('executive-lead-recap');await clickText('View the lead record first');await waitStep('executive-lead-record-review');await clickText('Continue to the next workflow');
+await waitStep('executive-email');await clickText("Receive Greg's email");await waitStep('executive-open-email');await clickText('Open Inbox');
+await waitStep('executive-read-email');await sleep(3100);await next('executive-read-email','executive-reply-email');
+ab('click','[data-tour="inbox-email-reply"]');await sleep(500);await clickText('Draft a response','[role="menuitem"]');await waitStep('executive-send-email-reply');assert(evaluate('document.querySelector("textarea").value').includes('3 PM'));await clickText('Send reply (simulated)');
+await waitStep('executive-email-recap');await clickText("View Greg's CRM record first");await waitStep('executive-greg-record-review');await clickText('Continue to reputation triage');
+await nav('executive-feedback','/app/feedback','executive-open-review');await clickSelector('[data-tour="feedback-new-review"]');await waitStep('executive-analyze-review');await clickText('Have AI analyze it');await waitStep('executive-post-review-response');await clickText('Approve & post to Google (simulated)');
+await waitStep('executive-feedback-recap');await clickText('Alright—wrap up the executive tour');assert(evaluate('document.querySelector("#tour-completion-title").textContent').includes('The guided story is complete')); await clickText('Finish & explore the CRM');
+const cookies=JSON.parse(ab('cookies','--json')).data.cookies;
+const chunks=cookies.filter(c=>/^northstar_demo_state_\d+$/.test(c.name)).sort((a,b)=>Number(a.name.split('_').at(-1))-Number(b.name.split('_').at(-1)));
+const db=JSON.parse(inflateRawSync(Buffer.from(chunks.map(c=>c.value).join(''),'base64url')).toString());
+assert.equal(db.leads.length,2);assert(db.leads.some(l=>l.first_name==='Casey'));assert.equal(db.leads.find(l=>l.first_name==='Greg').stage,'contacted');assert.equal(db.appointments.length,1);assert.equal(db.quotes.length,0);assert.equal(db.automationRuns.length,0);assert.equal(db.feedback.length,1);
+assert.equal(ab('errors').trim(),'');console.log('PASS executive tour, both optional record inspections, fresh workspace after full tour, zero browser errors');
+
+await clickText('Start Tour');
+evaluate('Array.from(document.querySelectorAll("button")).find(e=>e.textContent.includes("Full Guided Tour")).click()');
+await waitStep('you-answer');
+const freshCookies=JSON.parse(ab('cookies','--json')).data.cookies;
+const freshChunks=freshCookies.filter(c=>/^northstar_demo_state_\d+$/.test(c.name)).sort((a,b)=>Number(a.name.split('_').at(-1))-Number(b.name.split('_').at(-1)));
+const freshDb=JSON.parse(inflateRawSync(Buffer.from(freshChunks.map(c=>c.value).join(''),'base64url')).toString());
+assert.equal(freshDb.leads.length,0);assert.equal(freshDb.appointments.length,0);assert.equal(freshDb.quotes.length,0);assert.equal(freshDb.feedback.length,0);console.log('PASS executive-to-full starts cleanly');

@@ -230,3 +230,32 @@
     border-top-right-radius: 24px;
   }
 }
+
+/* A long tour must leave the application usable on a laptop and a phone. */
+@media (min-width: 1024px) {
+  body.tutorial-open [data-tour="rep-assisted-slot-picker"] {
+    right: 368px;
+    max-height: min(70dvh, 620px);
+  }
+}
+@media (max-width: 1023px) {
+  .tour-sidebar {
+    top: auto;
+    left: 8px;
+    right: 8px;
+    bottom: max(8px, env(safe-area-inset-bottom));
+    width: auto;
+    max-width: none;
+    max-height: 55dvh;
+    border-radius: 12px;
+  }
+  .tour-sidebar[data-collapsed="true"] > .tour-expanded { display: none; }
+  .tour-sidebar[data-collapsed="true"] > .tour-mobile-bar { display: flex; }
+  body.tutorial-open [data-app-main] {
+    padding-bottom: calc(var(--tour-guide-height, 100px) + 24px + env(safe-area-inset-bottom));
+  }
+  body.tutorial-open [data-tour] { scroll-margin-bottom: 120px; }
+}
+@media (max-width: 1023px) and (max-height: 500px) {
+  .tour-sidebar { max-height: calc(100dvh - 16px); }
+}

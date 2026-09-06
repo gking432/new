@@ -108,6 +108,8 @@ export function AppSidebar({
       sessionStorage.removeItem("northstar-executive-tour-completed");
       sessionStorage.removeItem("northstar-executive-tour-index");
       sessionStorage.removeItem("northstar-executive-tour-active");
+      sessionStorage.removeItem("northstar-tour-checkpoint-full");
+      sessionStorage.removeItem("northstar-tour-checkpoint-executive");
       sessionStorage.removeItem("northstar-selected-tour-mode");
       sessionStorage.removeItem("northstar-tour-chooser-dismissed");
     } catch {

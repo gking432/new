@@ -572,6 +572,11 @@ export default async function CrmSyncPage() {
                       <Badge className={EVENT_STATUS_STYLES[event.status]} variant="secondary">
                         {event.status.replace(/_/g, " ")}
                       </Badge>
+                      {event.status === "skipped" && typeof event.response_payload.reason === "string" && (
+                        <p className="mt-0.5 max-w-xs text-xs text-muted-foreground">
+                          {event.response_payload.reason}
+                        </p>
+                      )}
                       {event.error_message && (
                         <p className="mt-0.5 max-w-xs truncate text-xs text-red-600">
                           {event.error_message}

@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   buildHubSpotPayload,
+  buildHubSpotSyncEntries,
   mockHubSpotIds,
   syncToHubSpotLive,
   type HubSpotSyncPayload,
@@ -29,7 +30,7 @@ export interface SyncResult {
   mode: "dry_run" | "live";
   payload: HubSpotSyncPayload;
   contactId: string;
-  dealId: string;
+  dealId: string | null;
   noteId: string;
 }
 
@@ -50,13 +51,9 @@ export async function syncLeadToHubSpot(leadId: string): Promise<ActionResult<Sy
           .filter((item) => item.lead_id === leadId)
           .sort((a, b) => b.created_at.localeCompare(a.created_at))[0] ?? null;
         const payload = buildHubSpotPayload(lead, analysis);
-        const ids = mockHubSpotIds();
+        const ids = mockHubSpotIds(payload);
         const createdAt = new Date().toISOString();
-        const entries = [
-          { entityType: "contact", externalId: ids.contactId, action: "create_or_update_contact", request: payload.contact },
-          { entityType: "deal", externalId: ids.dealId, action: "create_deal", request: payload.deal },
-          { entityType: "note", externalId: ids.noteId, action: "create_note", request: payload.note },
-        ];
+        const entries = buildHubSpotSyncEntries(payload, ids, "dry_run");
         state.crmSyncEvents.unshift(
           ...entries.map((entry) => ({
             id: demoId(),
@@ -67,9 +64,9 @@ export async function syncLeadToHubSpot(leadId: string): Promise<ActionResult<Sy
             external_id: entry.externalId,
             direction: "outbound" as const,
             action: entry.action,
-            status: "dry_run" as const,
+            status: entry.status,
             request_payload: entry.request as unknown as Record<string, unknown>,
-            response_payload: { id: entry.externalId, simulated: true },
+            response_payload: entry.response,
             error_message: null,
             created_at: createdAt,
           }))
@@ -80,7 +77,7 @@ export async function syncLeadToHubSpot(leadId: string): Promise<ActionResult<Sy
           user_id: null,
           type: "crm_sync",
           title: "HubSpot dry-run sync completed - no external CRM was updated",
-          description: "Contact, deal, and AI note payloads were generated and logged for inspection.",
+          description: payload.dealSkipReason ?? "Contact, deal, and AI note payloads were generated and logged for inspection.",
           metadata: { mode: "dry_run", contact_id: ids.contactId, deal_id: ids.dealId },
           created_at: createdAt,
         });
@@ -118,7 +115,7 @@ export async function syncLeadToHubSpot(leadId: string): Promise<ActionResult<Sy
       entityId: string | null;
       externalId: string | null;
       action: string;
-      status: "success" | "failed" | "dry_run";
+      status: "success" | "failed" | "dry_run" | "skipped";
       request: unknown;
       response: unknown;
       error?: string;
@@ -139,38 +136,15 @@ export async function syncLeadToHubSpot(leadId: string): Promise<ActionResult<Sy
     };
 
     if (!live) {
-      const ids = mockHubSpotIds();
-      await logEvent({
-        entityType: "contact",
-        entityId: leadId,
-        externalId: ids.contactId,
-        action: "create_or_update_contact",
-        status: "dry_run",
-        request: payload.contact,
-        response: { id: ids.contactId, simulated: true },
-      });
-      await logEvent({
-        entityType: "deal",
-        entityId: leadId,
-        externalId: ids.dealId,
-        action: "create_deal",
-        status: "dry_run",
-        request: payload.deal,
-        response: { id: ids.dealId, simulated: true },
-      });
-      await logEvent({
-        entityType: "note",
-        entityId: leadId,
-        externalId: ids.noteId,
-        action: "create_note",
-        status: "dry_run",
-        request: payload.note,
-        response: { id: ids.noteId, simulated: true },
-      });
+      const ids = mockHubSpotIds(payload);
+      for (const entry of buildHubSpotSyncEntries(payload, ids, "dry_run")) {
+        await logEvent({ ...entry, entityId: leadId });
+      }
       await supabase.from("activities").insert({
         lead_id: leadId,
         type: "crm_sync",
         title: "HubSpot dry-run sync completed — no external CRM was updated",
+        description: payload.dealSkipReason,
         metadata: { mode: "dry_run", contact_id: ids.contactId, deal_id: ids.dealId },
       });
       if (connection) {
@@ -185,37 +159,14 @@ export async function syncLeadToHubSpot(leadId: string): Promise<ActionResult<Sy
 
     try {
       const outcome = await syncToHubSpotLive(token!, payload, (lead as Lead).email);
-      await logEvent({
-        entityType: "contact",
-        entityId: leadId,
-        externalId: outcome.contactId,
-        action: "create_or_update_contact",
-        status: "success",
-        request: payload.contact,
-        response: { id: outcome.contactId },
-      });
-      await logEvent({
-        entityType: "deal",
-        entityId: leadId,
-        externalId: outcome.dealId,
-        action: "create_deal",
-        status: "success",
-        request: payload.deal,
-        response: { id: outcome.dealId },
-      });
-      await logEvent({
-        entityType: "note",
-        entityId: leadId,
-        externalId: outcome.noteId,
-        action: "create_note",
-        status: "success",
-        request: payload.note,
-        response: { id: outcome.noteId },
-      });
+      for (const entry of buildHubSpotSyncEntries(payload, outcome, "live")) {
+        await logEvent({ ...entry, entityId: leadId });
+      }
       await supabase.from("activities").insert({
         lead_id: leadId,
         type: "crm_sync",
         title: "Lead synced to HubSpot (live)",
+        description: payload.dealSkipReason,
         metadata: { mode: "live", contact_id: outcome.contactId, deal_id: outcome.dealId },
       });
       if (connection) {

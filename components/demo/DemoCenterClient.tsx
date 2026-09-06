@@ -170,9 +170,12 @@ export function DemoCenterClient({
     }
     appendDemoEvent(
       result.data.mode === "dry_run"
-        ? `HubSpot dry run successful — contact ${result.data.contactId}, deal ${result.data.dealId} (no external CRM updated)`
-        : `HubSpot live sync complete — contact ${result.data.contactId}, deal ${result.data.dealId}`
+        ? `HubSpot dry run successful — contact ${result.data.contactId}, deal ${result.data.dealId ?? "skipped"} (no external CRM updated)`
+        : `HubSpot live sync complete — contact ${result.data.contactId}, deal ${result.data.dealId ?? "skipped"}`
     );
+    if (result.data.payload.dealSkipReason) {
+      appendDemoEvent(result.data.payload.dealSkipReason);
+    }
     toast.success(
       result.data.mode === "dry_run"
         ? "Dry run successful — see CRM Sync for the payload"
@@ -187,8 +190,8 @@ export function DemoCenterClient({
     const data = (await res.json()) as { ok: boolean; reason?: string; api?: string; model?: string };
     setBusy(null);
     if (data.ok) {
-      toast.success(`Live AI voice is working (${data.api} API · ${data.model})`);
-      appendDemoEvent(`AI voice check passed: ${data.model} via ${data.api} API`);
+      toast.success(`Live voice configured (${data.model}); connection checked when a call starts`);
+      appendDemoEvent(`Voice configuration checked: ${data.model}`);
     } else {
       toast.error(`Live AI voice unavailable — calls will run in scripted mode`, {
         description: data.reason,
@@ -369,7 +372,7 @@ export function DemoCenterClient({
           <CardContent>
             <Button variant="outline" size="sm" onClick={testAiVoice} disabled={busy !== null}>
               {busy === "voice" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Mic className="h-3.5 w-3.5" />}
-              Test AI voice
+              Check voice configuration
             </Button>
           </CardContent>
         </Card>

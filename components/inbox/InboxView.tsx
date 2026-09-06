@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -92,8 +92,9 @@ export function InboxView({
   const [search, setSearch] = useState("");
   // Preselect the conversation for the customer we arrived from (Open Inbox on
   // a lead) so you don't have to hunt for them again.
+  const autoSelectedLead = useRef<string | undefined>(undefined);
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
-  const [autoSelected, setAutoSelected] = useState(false);
+
   const [editedBody, setEditedBody] = useState<string | null>(null);
   const [replyOpen, setReplyOpen] = useState(false);
   const [replyBody, setReplyBody] = useState("");
@@ -210,13 +211,20 @@ export function InboxView({
   }, [approvalConversations, conversations, scheduledConversations, tab, channelFilter, search]);
 
   useEffect(() => {
-    if (autoSelected || !initialLeadId) return;
+    setTab(normalizeTab(initialTab));
+    setChannelFilter(null);
+    setSearch("");
+  }, [initialTab, initialLeadId]);
+
+  useEffect(() => {
+    if (!initialLeadId || autoSelectedLead.current === initialLeadId) return;
     const match = conversationsForSelection.find((c) => c.lead?.id === initialLeadId);
     if (match) {
       setSelectedKey(match.key);
-      setAutoSelected(true);
+      autoSelectedLead.current = initialLeadId;
+
     }
-  }, [conversationsForSelection, initialLeadId, autoSelected]);
+  }, [conversationsForSelection, initialLeadId]);
 
   const selected = filtered.find((c) => c.key === selectedKey) ?? filtered[0] ?? null;
   const pendingDraft = selected?.messages.find(
@@ -277,7 +285,7 @@ export function InboxView({
         if (meta.demo_action === "jordan_reschedule_offer") {
           toast("Appointment moved", {
             description:
-              "AI: Jordan accepted the earlier opening. Jess was notified and the calendar was blocked.",
+              "The customer accepted the earlier opening. The appointment and estimator calendar were updated.",
             position: "top-center",
             duration: 9000,
             action: { label: "Open Appointments", onClick: () => router.push("/app/appointments") },
@@ -376,7 +384,7 @@ export function InboxView({
   return (
     <div className="space-y-4" data-tour="inbox-root">
       <div className="flex flex-wrap items-center gap-3">
-        <div className="inline-flex rounded-md bg-secondary p-1">
+        <div className="inline-flex max-w-full flex-wrap rounded-md bg-secondary p-1">
           {(
             [
               ["conversations", "Conversations", attentionCount, "bg-red-500", "inbox-conversations"],
@@ -748,7 +756,7 @@ function AiAvailabilityInsight({
   if (offerDrafted) return null;
   if (message.direction !== "inbound") return null;
   const meta = (message.metadata ?? {}) as Record<string, unknown>;
-  if (meta.demo_action !== "jordan_urgent_reschedule") return null;
+  if (!["storyline_urgent_reschedule", "jordan_urgent_reschedule"].includes(String(meta.demo_action)) || meta.handled_at) return null;
   const estimatorName =
     typeof meta.suggested_estimator_name === "string" ? meta.suggested_estimator_name : "Jess Romero";
   const label =

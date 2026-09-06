@@ -1,4 +1,4 @@
-import type { Lead, LeadAnalysis } from "@/types/app";
+import type { Lead, LeadAnalysis, LeadStage } from "@/types/app";
 
 /**
  * HubSpot connector. Two modes:
@@ -21,17 +21,35 @@ export const HUBSPOT_FIELD_MAPPING: { local: string; external: string }[] = [
   { local: "urgency", external: "urgency (custom property)" },
   { local: "lead_quality", external: "lead_quality (custom property)" },
   { local: "estimated value", external: "deal amount" },
+  { local: "stage", external: "dealstage (exact mappings only; otherwise deal skipped)" },
   { local: "recommended_next_action", external: "note body" },
   { local: "ai crm_note", external: "note body" },
 ];
 
+// Standard default-pipeline IDs. Do not substitute a later business milestone
+// for a local stage without an equivalent. Customized portals need their own mapping.
+const HUBSPOT_DEAL_STAGES: Record<LeadStage, string | null> = {
+  new: null,
+  contacted: null,
+  appointment_scheduled: "appointmentscheduled",
+  estimate_sent: null,
+  follow_up_needed: null,
+  won: "closedwon",
+  lost: "closedlost",
+};
+
 export interface HubSpotSyncPayload {
   contact: { properties: Record<string, string> };
-  deal: { properties: Record<string, string> };
+  deal: { properties: Record<string, string> } | null;
+  // Local preview/audit metadata, never sent to HubSpot.
+  dealSkipReason: string | null;
   note: { properties: { hs_note_body: string; hs_timestamp: string } };
 }
 
 export function buildHubSpotPayload(lead: Lead, analysis?: LeadAnalysis | null): HubSpotSyncPayload {
+  const dealStage = Object.hasOwn(HUBSPOT_DEAL_STAGES, lead.stage)
+    ? HUBSPOT_DEAL_STAGES[lead.stage]
+    : null;
   const noteLines = [
     `AI lead summary (Northstar Command Center)`,
     analysis?.summary ?? lead.description,
@@ -51,16 +69,19 @@ export function buildHubSpotPayload(lead: Lead, analysis?: LeadAnalysis | null):
         ...(lead.city ? { city: lead.city } : {}),
       },
     },
-    deal: {
+    deal: dealStage ? {
       properties: {
         dealname: `${lead.first_name} ${lead.last_name} — ${lead.service_type.replace(/_/g, " ")}`,
         pipeline: "default",
-        dealstage: "appointmentscheduled",
+        dealstage: dealStage,
         ...(lead.estimated_value_max
           ? { amount: String(Math.round(((lead.estimated_value_min ?? 0) + lead.estimated_value_max) / 2)) }
           : {}),
       },
-    },
+    } : null,
+    dealSkipReason: dealStage
+      ? null
+      : `Deal skipped: local stage "${lead.stage}" has no exact mapping in the HubSpot default pipeline. Contact and note only; no appointment is implied.`,
     note: {
       properties: {
         hs_note_body: noteLines.join("\n"),
@@ -72,7 +93,7 @@ export function buildHubSpotPayload(lead: Lead, analysis?: LeadAnalysis | null):
 
 export interface HubSpotSyncOutcome {
   contactId: string;
-  dealId: string;
+  dealId: string | null;
   noteId: string;
 }
 
@@ -94,7 +115,7 @@ async function hubspotFetch(token: string, path: string, init?: RequestInit) {
   return body;
 }
 
-/** Live sync: create-or-update contact, create deal, attach the note. */
+/** Live sync: create-or-update contact, create a mapped deal, attach the note. */
 export async function syncToHubSpotLive(
   token: string,
   payload: HubSpotSyncPayload,
@@ -136,7 +157,7 @@ export async function syncToHubSpotLive(
     contactId = created.id as string;
   }
 
-  const deal = await hubspotFetch(token, "/crm/v3/objects/deals", {
+  const deal = payload.deal ? await hubspotFetch(token, "/crm/v3/objects/deals", {
     method: "POST",
     body: JSON.stringify({
       ...payload.deal,
@@ -147,7 +168,7 @@ export async function syncToHubSpotLive(
         },
       ],
     }),
-  });
+  }) : null;
 
   const note = await hubspotFetch(token, "/crm/v3/objects/notes", {
     method: "POST",
@@ -162,10 +183,33 @@ export async function syncToHubSpotLive(
     }),
   });
 
-  return { contactId: contactId!, dealId: deal.id, noteId: note.id };
+  return { contactId: contactId!, dealId: deal?.id ?? null, noteId: note.id };
 }
 
-export function mockHubSpotIds(): HubSpotSyncOutcome {
+export function mockHubSpotIds(payload: HubSpotSyncPayload): HubSpotSyncOutcome {
   const n = () => String(Math.floor(100000000 + Math.random() * 900000000));
-  return { contactId: `demo-${n()}`, dealId: `demo-${n()}`, noteId: `demo-${n()}` };
+  return { contactId: `demo-${n()}`, dealId: payload.deal ? `demo-${n()}` : null, noteId: `demo-${n()}` };
+}
+
+/** Shared audit entries keep local dry-run, database dry-run, and live logs consistent. */
+export function buildHubSpotSyncEntries(
+  payload: HubSpotSyncPayload,
+  outcome: HubSpotSyncOutcome,
+  mode: "dry_run" | "live"
+) {
+  return [
+    { entityType: "contact", externalId: outcome.contactId, action: "create_or_update_contact", request: payload.contact },
+    { entityType: "deal", externalId: outcome.dealId, action: payload.deal ? "create_deal" : "skip_deal", request: payload.deal },
+    { entityType: "note", externalId: outcome.noteId, action: "create_note", request: payload.note },
+  ].map((entry) => {
+    const skipped = entry.entityType === "deal" && payload.deal === null;
+    return {
+      ...entry,
+      request: entry.request ?? {},
+      status: skipped ? "skipped" as const : mode === "dry_run" ? "dry_run" as const : "success" as const,
+      response: skipped
+        ? { reason: payload.dealSkipReason }
+        : { id: entry.externalId, ...(mode === "dry_run" ? { simulated: true } : {}) },
+    };
+  });
 }

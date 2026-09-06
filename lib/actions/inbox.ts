@@ -210,7 +210,7 @@ async function applyJordanRescheduleAcceptance(
     from_value: record.to_value,
     to_value: "Northstar Exterior & Home",
     body: "Yes that works. Thank you so much.",
-    ai_summary: "Jordan accepted the earlier inspection time.",
+    ai_summary: "The customer accepted the earlier inspection time.",
     suggested_next_action: "Move the inspection and send the updated confirmation.",
     ai_generated: false,
     metadata: {
@@ -287,7 +287,8 @@ async function applyJordanRescheduleAcceptance(
 
   await completeUrgentRescheduleTasks(supabase, record.lead_id);
 
-  const confirmationBody = `Hi Jordan, your updated inspection is confirmed for ${label}. If anything changes before then, reply to this message.`;
+  const { data: customer } = await supabase.from("leads").select("first_name").eq("id", record.lead_id).maybeSingle();
+  const confirmationBody = `Hi ${customer?.first_name ?? "there"}, your updated inspection is confirmed for ${label}. If anything changes before then, reply to this message.`;
   const confirmationSentAt = new Date(Date.now() + 2000).toISOString();
   const { data: confirmation } = await supabase
     .from("communications")
@@ -692,17 +693,20 @@ export async function sendConversationReply({
 
     if (record.lead_id) {
       const recordMeta = metadataOf(record);
-      if (channel === "email" && recordMeta.demo_action === "inbound_window_email") {
-        await supabase
+      if (channel === "email" && ["inbound_window_email", "executive_inbound_window_email"].includes(String(recordMeta.demo_action))) {
+        const { data: movedLead } = await supabase
           .from("leads")
           .update({ stage: "contacted", updated_at: now })
-          .eq("id", record.lead_id);
-        await supabase.from("activities").insert({
+          .eq("id", record.lead_id)
+          .eq("stage", "new")
+          .select("id")
+          .maybeSingle();
+        if (movedLead) await supabase.from("activities").insert({
           lead_id: record.lead_id,
           user_id: user.id,
           type: "stage_change",
           title: "Pipeline moved to Contacted",
-          description: "AI moved Greg Tomlinson after the team sent the first email reply.",
+          description: "The team sent the first email reply.",
           metadata: {
             from_stage: "new",
             to_stage: "contacted",
@@ -979,6 +983,7 @@ export async function draftSoonerInspectionSms(
     const label =
       typeof meta.suggested_label === "string" ? meta.suggested_label : sameDayLabel(startIso);
 
+    const { data: customer } = await supabase.from("leads").select("first_name").eq("id", record.lead_id).maybeSingle();
     const { data: existing } = await supabase
       .from("communications")
       .select("id")
@@ -997,7 +1002,7 @@ export async function draftSoonerInspectionSms(
         from_value: "Northstar Exterior & Home",
         to_value: record.from_value,
         subject: "Earlier inspection option",
-        body: `Hi Jordan, we have an opening ${label}. Would that work for your inspection?`,
+        body: `Hi ${customer?.first_name ?? "there"}, we have an opening ${label}. Would that work for your inspection?`,
         ai_generated: true,
         human_approved: false,
         metadata: {
