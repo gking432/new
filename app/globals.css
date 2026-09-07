@@ -180,6 +180,7 @@
 }
 
 @media (max-width: 1023px) {
+  html:has([data-testid="tour-request-form"]) { overflow: hidden; }
   .tour-welcome-card--morphing {
     left: 5vw;
     top: 12px;
@@ -251,6 +252,13 @@
   }
   .tour-sidebar[data-collapsed="true"] > .tour-expanded { display: none; }
   .tour-sidebar[data-collapsed="true"] > .tour-mobile-bar { display: flex; }
+  .tour-sidebar[data-collapsed="true"] {
+    left: auto;
+    width: max-content;
+    max-width: calc(100vw - 16px);
+  }
+  .tour-sidebar[data-mobile-busy="true"] { display: none; }
+  .tour-sidebar[data-mobile-briefing="true"][data-collapsed="false"] { max-height: 85dvh; }
   body.tutorial-open [data-app-main] {
     padding-bottom: calc(var(--tour-guide-height, 100px) + 24px + env(safe-area-inset-bottom));
   }

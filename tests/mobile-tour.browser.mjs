@@ -1,5 +1,6 @@
 // Run against an isolated local-demo server (DEMO_STORAGE=local npm run dev -- --port 3100).
-// Uses a separate browser session; never starts voice calls or sends customer messages.
+// Uses a separate browser session; submits a sample form and shows the incoming
+// browser call without answering it. No paid voice connection or customer sends.
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 
@@ -29,38 +30,71 @@ function checkpoint(stepId, route = "/app") {
 try {
   browser("set", "viewport", "390", "844");
   browser("open", base + "/app");
+  browser("wait", "--fn", "document.body.innerText.includes('Executive Tour')");
+  assert.equal(evaluate("document.body.innerText.includes('Full Guided Tour')"), false);
+  // Old saved full-tour sessions must not expose the unreleased tour either.
+  browser("eval", "sessionStorage.setItem('northstar-selected-tour-mode','full');sessionStorage.setItem('northstar-tutorial-active','1')");
+  browser("open", base + "/app");
+  browser("wait", "--fn", "sessionStorage.getItem('northstar-tutorial-active') === '0'");
+  assert.equal(evaluate("document.body.innerText.includes('Full Guided Tour')"), false);
+  browser("find", "role", "button", "click", "--name", "Executive Tour");
+  stepIs("speed-to-lead");
+  assert.equal(metrics().collapsed, "false");
+  assert.ok(evaluate("document.querySelector('#tour-guide-content').innerText.includes('allow microphone access')"));
+  browser("click", '[data-testid="tour-mobile-primary"]');
+  browser("wait", '[data-testid="tour-request-form"]');
+  for (const [width, height] of [[320,568],[390,844],[844,390]]) {
+    browser("set", "viewport", String(width), String(height));
+    assert.equal(metrics().height, 0, "No guide at all while completing the form");
+    assert.equal(evaluate("document.querySelector('[data-testid=\"request-form-explanation\"]').getBoundingClientRect().height"), 0);
+    assert.equal(metrics().overflow, false);
+    if (height >= 568) assert.ok(evaluate("document.querySelector('button[type=submit]').getBoundingClientRect().bottom < innerHeight"), "Submit fits without scrolling on a small portrait phone");
+  }
+  browser("set", "viewport", "1440", "900");
+  assert.ok(evaluate("document.querySelector('[data-testid=\"request-form-explanation\"]').getBoundingClientRect().height > 0"), "Desktop keeps the explanation");
+  assert.ok(metrics().height > 0, "Desktop keeps the guide beside the form");
+  browser("set", "viewport", "390", "844");
+  browser("fill", "#first_name", "Avery");
+  browser("fill", "#last_name", "Mobile");
+  browser("fill", "#phone", "4145550199");
+  browser("find", "role", "button", "click", "--name", "Submit Request", "--exact");
+  stepIs("answer-call");
+  browser("wait", "--fn", "document.querySelector('.tour-sidebar')?.getBoundingClientRect().height === 0");
+  assert.equal(metrics().height, 0, "Call is unobstructed, not another instruction sheet");
+  // Reload discards the unconnected call before testing a separate workflow.
   checkpoint("executive-email");
   stepIs("executive-email");
   browser("click", '[aria-label="Hide guide, keep demo running"]');
   assert.equal(metrics().active, "1");
   assert.equal(metrics().collapsed, "true");
-  assert.ok(metrics().height < 120, "Collapsed rail must leave the phone usable");
+  assert.ok(metrics().height <= 50, "Working mode is a small Guide control, not an instruction panel");
   browser("click", '.tour-mobile-bar button');
   assert.equal(metrics().collapsed, "false");
 
   // Real server action creates the isolated demo email; the existing event flow advances.
   browser("click", '[data-testid="tour-mobile-primary"]');
   stepIs("executive-open-email");
-  assert.equal(metrics().collapsed, "false", "Instructions return on advancement");
-  browser("click", '[data-testid="tour-mobile-primary"]');
+  assert.equal(metrics().collapsed, "true", "Working steps do not reopen instructions");
+  browser("find", "role", "button", "click", "--name", "Open inbox", "--exact");
   stepIs("executive-read-email");
   browser("wait", "--fn", "location.pathname === '/app/inbox'");
   browser("wait", '[data-tour="inbox-executive-email"]');
-  browser("click", '[data-testid="tour-mobile-primary"]');
+  assert.equal(metrics().collapsed, "true", "Reading the email leaves the app visible");
   browser("wait", '.tour-mobile-bar button[aria-label="Next step"]');
   assert.equal(metrics().tooltipVisible, false, "No duplicate mobile tooltip");
   assert.equal(metrics().overflow, false);
   browser("click", '.tour-mobile-bar button[aria-label="Next step"]');
   stepIs("executive-reply-email");
-  assert.equal(metrics().collapsed, "false");
+  assert.equal(metrics().collapsed, "true");
 
   for (const [width, height] of [[320,568],[390,844],[844,390]]) {
     browser("set", "viewport", String(width), String(height));
     assert.equal(metrics().overflow, false, `No horizontal overflow at ${width}x${height}`);
     assert.ok(metrics().top >= 0, "Guide fits within the viewport");
-    browser("click", '[data-testid="tour-mobile-primary"]');
-    assert.ok(metrics().height < 140);
+    assert.ok(metrics().height <= 50);
     browser("click", '.tour-mobile-bar button');
+    assert.equal(metrics().collapsed, "false");
+    browser("click", '[data-testid="tour-mobile-primary"]');
   }
   browser("set", "viewport", "1440", "900");
   assert.equal(evaluate("Math.round(document.querySelector('.tour-sidebar').getBoundingClientRect().width)"), 340);
@@ -79,7 +113,7 @@ try {
   browser("wait", "--fn", "sessionStorage.getItem('northstar-executive-tour-active') === '0'");
   assert.equal(evaluate("Boolean(document.querySelector('[data-nextjs-dialog]'))"), false);
   assert.equal(browser("errors"), "", "No browser runtime errors");
-  console.log("PASS: mobile collapse/restore, real email action, navigation, Next, recap, explicit exit, 3 phone sizes, desktop sidebar.");
+  console.log("PASS: full tour hidden (including saved sessions), pre-form briefing, compact form, unobstructed incoming call, working steps stay collapsed, email action/navigation/Next, recap/exit, 3 phone sizes, desktop instructions preserved.");
 } finally {
   browser("close");
 }

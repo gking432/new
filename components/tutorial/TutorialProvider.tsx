@@ -49,6 +49,8 @@ interface Step {
   id: string;
   title: string;
   body: string;
+  // Mobile explains the workflow once, then leaves the application unobstructed.
+  mobileBriefing?: string;
   completion?: boolean;
   nextLabel?: string;
   spotlight?: string;
@@ -72,7 +74,7 @@ interface Step {
 
 type TourMode = "full" | "executive";
 
-const FULL_TOUR_ENABLED = true;
+const FULL_TOUR_ENABLED = false;
 
 const INDEX_KEY = "northstar-tutorial-index";
 const ACTIVE_KEY = "northstar-tutorial-active";
@@ -930,10 +932,14 @@ export function TutorialProvider() {
     {
       ...fullStep("speed-to-lead"),
       title: "See the AI phone scheduler in action.",
+      mobileBriefing: "You are the homeowner.\n\n1. Enter your name and a sample phone number, then submit the request. Email is optional.\n2. Answer the call in this browser and allow microphone access. Tell Riley about your project, urgency, and a good time for an inspection.\n3. Agree on an available time, then hang up. We’ll show you what the AI saved.\n\nNo call goes to your phone. Simulate call is available if you cannot use audio.",
       body: "A homeowner submits a request, and the AI calls back while the lead is still fresh.\n\nYou can answer and act as the homeowner, or simulate the call for a faster walkthrough. The AI gathers project details, checks real openings, books the inspection, writes the CRM note, and prepares the follow-up work.",
     },
     fullStep("answer-call"),
-    fullStep("follow-form-notifications"),
+    {
+      ...fullStep("follow-form-notifications"),
+      mobileBriefing: "The call has finished. Now you are the team member reviewing the follow-up.\n\nOpen Tasks, open the confirmation task, and review the AI-written SMS in Approval Queue. Check the appointment details, then approve and send.\n\nFollow the blue outlines. The send is simulated; no customer is contacted.",
+    },
     fullStep("open-form-confirmation-task"),
     fullStep("open-form-approval-queue"),
     {
@@ -993,6 +999,7 @@ export function TutorialProvider() {
     {
       id: "executive-email",
       title: "Now Greg sends an email about 12 windows.",
+      mobileBriefing: "Greg wants 12 replacement windows and a weekday visit after 3 PM.\n\nReceive his email, then open Inbox. Read his request and tap Next. Choose Reply → Draft a response, review the available times in the draft, then send it.\n\nFollow the blue outlines. Sending is simulated and does not book an appointment.",
       body: "The first homeowner workflow is complete. Next, Greg Tomlinson emails about replacing 12 windows before winter. He says weekdays after 3 PM work best.\n\nClick Receive Greg's email. The Inbox notification appears immediately, just like it would for a real inbound message.",
       action: {
         label: "Receive Greg's email",
@@ -1094,6 +1101,7 @@ export function TutorialProvider() {
     {
       id: "executive-feedback",
       title: "Now test AI reputation triage.",
+      mobileBriefing: "You are the manager responding to a two-star review.\n\nOpen Feedback, open the new review, then choose Have AI analyze it. Review the risk assessment and suggested response, edit it if needed, then approve the post.\n\nFollow the blue outlines. Nothing is actually posted to Google.",
       body: "A scheduling workflow protects revenue before the job. Review management protects the customer relationship after the work.\n\nOpen Feedback. A new public review is already waiting there, exactly as it would arrive from a connected reputation channel.",
       spotlight: "nav-feedback",
       spotlightHint: "Open Feedback",
@@ -1210,7 +1218,12 @@ export function TutorialProvider() {
   // Hydrate once. Route changes must not overwrite in-flight tour progress.
   useEffect(() => {
     const selected = readTourStorage(SELECTED_MODE_KEY);
-    const mode = selected === "full" || selected === "executive" ? selected : null;
+    const mode = selected === "executive" || (selected === "full" && FULL_TOUR_ENABLED) ? selected : null;
+    if (selected === "full" && !FULL_TOUR_ENABLED) {
+      writeTourStorage(SELECTED_MODE_KEY, "");
+      writeTourStorage(ACTIVE_KEY, "0");
+      writeTourStorage(CHOOSER_DISMISSED_KEY, "0");
+    }
     const welcome = new URLSearchParams(window.location.search).get("tour") === "welcome";
     if (welcome) {
       welcomeHandledRef.current = window.location.href;
@@ -1557,7 +1570,7 @@ export function TutorialProvider() {
         {requestFormOverlay}
         {simulationConfirm}
         <TutorialSidebar
-          key={step.id}
+          key={`${step.id}:${requestFormOpen}`}
           step={step}
           index={index}
           total={total}
@@ -1572,6 +1585,7 @@ export function TutorialProvider() {
           pulseNext={pulseNext}
           showManualNext={showManualNext}
           canGoBack={canGoBack}
+          mobileBusy={requestFormOpen || Boolean(callRole())}
         />
       </>
     );
@@ -1595,7 +1609,7 @@ export function TutorialProvider() {
         />
       )}
       <TutorialSidebar
-        key={step.id}
+        key={`${step.id}:${requestFormOpen}`}
         step={step}
         index={index}
         total={total}
@@ -1610,6 +1624,7 @@ export function TutorialProvider() {
         pulseNext={pulseNext}
         showManualNext={showManualNext}
         canGoBack={canGoBack}
+        mobileBusy={requestFormOpen || Boolean(callRole())}
       />
     </>
   );
@@ -1711,7 +1726,7 @@ function WelcomeTourModal({
             See how AI voice, scheduling, messaging, and CRM workflow completion work together.
             Customer-facing calls and sends are simulated, so nothing reaches a real customer. Each tour starts with a fresh demo workspace.
           </p>
-          <div className="mt-5 grid gap-3 sm:grid-cols-2">
+          <div className={`mt-5 grid gap-3 ${FULL_TOUR_ENABLED ? "sm:grid-cols-2" : ""}`}>
             <button
               type="button"
               onClick={() => onStart("executive")}
@@ -1733,7 +1748,7 @@ function WelcomeTourModal({
                 Start executive tour <ChevronRight className="h-4 w-4" />
               </span>
             </button>
-            <button
+            {FULL_TOUR_ENABLED && <button
               type="button"
               onClick={() => onStart("full")}
               disabled={morphing}
@@ -1755,7 +1770,7 @@ function WelcomeTourModal({
               <span className="mt-4 flex items-center gap-1 text-sm font-semibold text-primary">
                 Start full tour <ChevronRight className="h-4 w-4" />
               </span>
-            </button>
+            </button>}
           </div>
         </div>
         <div
@@ -1789,11 +1804,30 @@ function RequestFormOverlay({
     phone: string;
   }) => void;
 }) {
+  const formPanel = useRef<HTMLElement>(null);
+  useEffect(() => {
+    if (!window.matchMedia("(max-width: 1023px)").matches) return;
+    const previousFocus = document.activeElement as HTMLElement | null;
+    formPanel.current?.querySelector<HTMLButtonElement>('[data-testid="request-form-close"]')?.focus();
+    return () => {
+      if (previousFocus?.isConnected) previousFocus.focus({ preventScroll: true });
+    };
+  }, []);
+
   return (
-    <div className="fixed inset-y-0 left-0 right-0 z-30 overflow-y-auto bg-zinc-950/70 p-6 backdrop-blur-sm lg:right-[340px]">
-      <div className="mx-auto flex min-h-full max-w-6xl items-center justify-center">
-        <section className="grid w-full overflow-hidden rounded-xl border bg-background shadow-2xl md:grid-cols-[0.8fr_1.2fr]">
-          <div className="border-b bg-zinc-900 p-7 text-white md:border-b-0 md:border-r">
+    <div data-testid="tour-request-form" className="fixed inset-y-0 left-0 right-0 z-[60] overflow-y-auto bg-background lg:z-30 lg:right-[340px] lg:bg-zinc-950/70 lg:p-6 lg:backdrop-blur-sm">
+      <div className="mx-auto flex min-h-full max-w-6xl items-start justify-center lg:items-center">
+        <section ref={formPanel} role="dialog" aria-label="Customer request" onKeyDown={(event) => {
+          if (!window.matchMedia("(max-width: 1023px)").matches) return;
+          if (event.key === "Escape") { event.preventDefault(); onClose(); }
+          if (event.key !== "Tab") return;
+          const controls = Array.from(formPanel.current?.querySelectorAll<HTMLElement>('button:not(:disabled), input:not(:disabled), select, textarea, [tabindex="0"]') ?? []).filter((el) => el.getClientRects().length > 0);
+          const first = controls[0];
+          const last = controls.at(-1);
+          if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
+          if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
+        }} className="grid w-full bg-background lg:grid-cols-[0.8fr_1.2fr] lg:overflow-hidden lg:rounded-xl lg:border lg:shadow-2xl">
+          <div data-testid="request-form-explanation" className="hidden border-r bg-zinc-900 p-7 text-white lg:block">
             <div className="flex items-start justify-between gap-4">
               <p className="text-xs font-semibold uppercase tracking-wide text-brand-gold">
                 Speed-to-lead workflow
@@ -1837,13 +1871,13 @@ function RequestFormOverlay({
               )}
             </div>
           </div>
-          <div className="max-h-[88vh] overflow-y-auto">
-            <div className="sticky top-0 z-10 flex items-start justify-between gap-3 border-b bg-background/95 px-6 py-4 backdrop-blur">
+          <div className="lg:max-h-[88vh] lg:overflow-y-auto">
+            <div className="sticky top-0 z-10 flex items-center justify-between gap-3 border-b bg-background/95 px-4 py-2 backdrop-blur lg:items-start lg:px-6 lg:py-4">
               <div>
-                <p className="text-xs font-semibold uppercase tracking-wide text-brand-gold">
+                <p className="hidden text-xs font-semibold uppercase tracking-wide text-brand-gold lg:block">
                   Customer request
                 </p>
-                <h2 className="text-base font-semibold">Create the storyline lead</h2>
+                <h2 className="text-base font-semibold"><span className="lg:hidden">Request a callback</span><span className="hidden lg:inline">Create the storyline lead</span></h2>
               </div>
               <Button
                 type="button"
@@ -1851,12 +1885,13 @@ function RequestFormOverlay({
                 size="icon"
                 onClick={onClose}
                 aria-label="Close form"
-                className="hidden h-8 w-8 md:inline-flex"
+                className="h-11 w-11 lg:h-8 lg:w-8"
+                data-testid="request-form-close"
               >
                 <X className="h-4 w-4" />
               </Button>
             </div>
-            <div className="p-6">
+            <div className="p-4 pb-[max(1rem,env(safe-area-inset-bottom))] lg:p-6">
               <LeadForm dashboardDemo showDemoFill onDashboardSubmit={onSubmit} />
             </div>
           </div>
@@ -2085,6 +2120,7 @@ function TutorialSidebar({
   pulseNext,
   showManualNext,
   canGoBack,
+  mobileBusy,
 }: {
   step: Step;
   index: number;
@@ -2100,11 +2136,11 @@ function TutorialSidebar({
   pulseNext: boolean;
   showManualNext: boolean;
   canGoBack: boolean;
+  mobileBusy: boolean;
 }) {
   const ActionIcon = step.action?.icon;
   const router = useRouter();
-  const [hiddenStep, setHiddenStep] = useState<string | null>(null);
-  const collapsed = hiddenStep === step.id;
+  const [collapsed, setCollapsed] = useState(!step.mobileBriefing);
   const guideRef = useRef<HTMLElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   const restoreRef = useRef<HTMLButtonElement>(null);
@@ -2128,7 +2164,7 @@ function TutorialSidebar({
   }, [step.id]);
 
   function hideGuide() {
-    setHiddenStep(step.id);
+    setCollapsed(true);
     requestAnimationFrame(() => {
       restoreRef.current?.focus({ preventScroll: true });
       window.dispatchEvent(new CustomEvent("northstar-tour-guide-collapsed"));
@@ -2140,8 +2176,7 @@ function TutorialSidebar({
     action();
   }
 
-  const mobileHint = (step.spotlightHint ?? role ?? step.title).replaceAll("click", "tap").replaceAll("Click", "Tap").replaceAll("in the sidebar", "in the guide");
-  const mobilePath = step.advance.kind === "navigate" ? step.advance.pathname
+  const mobilePath = step.advance.kind === "navigate" && step.spotlight?.startsWith("nav-") ? step.advance.pathname
     : step.id === "executive-open-email" ? "/app/inbox" : null;
   function showMobileStep() {
     if (step.action) return actThenHide(onRunAction);
@@ -2157,12 +2192,12 @@ function TutorialSidebar({
   }
 
   return (
-    <aside ref={guideRef} aria-label="Demo guide" data-tour-step={step.id} data-collapsed={collapsed} className="tour-sidebar fixed bottom-3 right-3 top-3 z-40 flex w-[340px] max-w-[90vw] flex-col overflow-hidden rounded-l-2xl rounded-r-lg border bg-card shadow-2xl">
-      <div className="tour-mobile-bar hidden items-center gap-2 bg-brand-dark px-3 py-2 text-white">
-        <button ref={restoreRef} type="button" onClick={() => setHiddenStep(null)} aria-expanded={!collapsed} aria-controls="tour-guide-content" className="min-h-11 min-w-0 flex-1 text-left">
-          <span className="block text-[11px] text-blue-200">Demo · Step {index + 1} of {total} · Show instructions</span>
-          <span role="status" className="line-clamp-2 text-xs font-medium">{mobileHint}</span>
+    <aside ref={guideRef} aria-label="Demo guide" data-tour-step={step.id} data-collapsed={collapsed} data-mobile-briefing={Boolean(step.mobileBriefing)} data-mobile-busy={mobileBusy} className="tour-sidebar fixed bottom-3 right-3 top-3 z-40 flex w-[340px] max-w-[90vw] flex-col overflow-hidden rounded-l-2xl rounded-r-lg border bg-card shadow-2xl">
+      <div className="tour-mobile-bar hidden items-center gap-1 bg-brand-dark px-2 text-white">
+        <button ref={restoreRef} type="button" onClick={() => setCollapsed(false)} aria-label="Show instructions" aria-expanded={!collapsed} aria-controls="tour-guide-content" className="min-h-11 px-2 text-left text-xs">
+          Guide · {index + 1}/{total}
         </button>
+        {mobilePath && <Button size="sm" className="min-h-11" onClick={showMobileStep}>Open {mobilePath.split("/").pop()}</Button>}
         {step.advance.kind === "manual" && showManualNext && index < total - 1 && (
           <Button size="sm" className="min-h-11 shrink-0" onClick={onNext} aria-label={step.nextLabel ?? "Next step"}>Next <ChevronRight className="h-4 w-4" /></Button>
         )}
@@ -2196,17 +2231,15 @@ function TutorialSidebar({
       </div>
 
       <div id="tour-guide-content" ref={contentRef} className="tour-expanded min-h-0 flex-1 overflow-y-auto overscroll-contain p-4">
-        <div className="mb-3 rounded-lg bg-blue-50 p-3 text-xs text-blue-950 lg:hidden">
-          Follow the blue outlines and notifications. Hide the guide anytime; the demo keeps running.
-        </div>
         {role && (
-          <p className="mb-3 rounded-lg border-2 border-blue-500 bg-blue-50 px-3 py-2 text-sm font-semibold text-blue-950">
+          <p className="mb-3 hidden rounded-lg border-2 border-blue-500 bg-blue-50 px-3 py-2 text-sm font-semibold text-blue-950 lg:block">
             {role}
           </p>
         )}
 
         <h3 className="text-base font-semibold tracking-tight">{step.title}</h3>
-        <p className="mt-2 whitespace-pre-line text-sm text-muted-foreground">{step.body.replaceAll("in the sidebar", "in the guide").replaceAll("in the left menu", "in the navigation")}</p>
+        <p className="mt-2 whitespace-pre-line text-sm text-muted-foreground lg:hidden">{(step.mobileBriefing ?? step.body).replaceAll("in the sidebar", "in the guide").replaceAll("in the left menu", "in the navigation")}</p>
+        <p className="mt-2 hidden whitespace-pre-line text-sm text-muted-foreground lg:block">{step.body}</p>
 
         {step.action && (
           <Button
@@ -2235,7 +2268,7 @@ function TutorialSidebar({
         )}
 
         {step.advance.kind === "navigate" && !step.action && step.spotlight?.startsWith("nav-") && (
-          <Button className="mt-4 w-full" variant="outline" onClick={() => {
+          <Button className="mt-4 hidden w-full lg:inline-flex" variant="outline" onClick={() => {
             if (step.advance.kind === "navigate") router.push(step.advance.pathname);
           }}>
             Open {step.advance.pathname.split("/").pop()?.replaceAll("-", " ")}
@@ -2243,7 +2276,7 @@ function TutorialSidebar({
           </Button>
         )}
         {step.id === "executive-open-email" && (
-          <Button className="mt-4 w-full" variant="outline" onClick={() => {
+          <Button className="mt-4 hidden w-full lg:inline-flex" variant="outline" onClick={() => {
             window.dispatchEvent(new CustomEvent("northstar-nav-inbox-clicked"));
             router.push("/app/inbox");
           }}>

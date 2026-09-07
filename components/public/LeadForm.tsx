@@ -293,9 +293,9 @@ export function LeadForm({
   }
 
   return (
-    <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
+    <form onSubmit={handleSubmit(onSubmit)} className={dashboardDemo ? "space-y-4 lg:space-y-6" : "space-y-6"}>
       {showDemoFill && (
-        <div className="flex flex-wrap items-center gap-3 rounded-lg border border-brand-gold/40 bg-brand-gold/10 p-3">
+        <div className={dashboardDemo ? "flex flex-wrap items-center gap-3 lg:rounded-lg lg:border lg:border-brand-gold/40 lg:bg-brand-gold/10 lg:p-3" : "flex flex-wrap items-center gap-3 rounded-lg border border-brand-gold/40 bg-brand-gold/10 p-3"}>
           <Button
             type="button"
             variant="outline"
@@ -306,19 +306,19 @@ export function LeadForm({
             <Sparkles className="h-3.5 w-3.5 text-brand-gold" />
             Auto-fill demo customer
           </Button>
-          <p className="text-xs text-muted-foreground">
+          <p className={`${dashboardDemo ? "hidden lg:block " : ""}text-xs text-muted-foreground`}>
             Fills the contact fields with a realistic homeowner. The AI callback will still need to
             discover what happened and what service they need.
           </p>
         </div>
       )}
 
-      <Card>
-        <CardHeader>
+      <Card className={dashboardDemo ? "gap-0 border-0 py-0 shadow-none lg:gap-6 lg:border lg:py-6 lg:shadow-sm" : undefined}>
+        <CardHeader className={dashboardDemo ? "hidden lg:grid" : undefined}>
           <CardTitle>Your contact info</CardTitle>
           <CardDescription>We need this so the team can call or text you back.</CardDescription>
         </CardHeader>
-        <CardContent className="grid gap-4 sm:grid-cols-2">
+        <CardContent className={dashboardDemo ? "grid grid-cols-2 gap-3 px-0 lg:gap-4 lg:px-6 [&>div:nth-child(n+3)]:col-span-2 lg:[&>div:nth-child(n+3)]:col-span-1 [&_input]:text-base lg:[&_input]:text-sm" : "grid gap-4 sm:grid-cols-2"}>
           <TextField label="First name" id="first_name" error={errors.first_name?.message} {...register("first_name")} />
           <TextField label="Last name" id="last_name" error={errors.last_name?.message} {...register("last_name")} />
           <TextField label="Phone" id="phone" type="tel" error={errors.phone?.message} {...register("phone")} />
@@ -377,7 +377,7 @@ export function LeadForm({
       </Card>
       )}
 
-      <Card>
+      <Card className={dashboardDemo ? "hidden lg:flex" : undefined}>
         <CardHeader>
           <CardTitle>Where is the home?</CardTitle>
           <CardDescription>An address helps the team plan the inspection.</CardDescription>
@@ -391,7 +391,7 @@ export function LeadForm({
         </CardContent>
       </Card>
 
-      <details className="rounded-lg border bg-card p-4">
+      <details className={`${dashboardDemo ? "hidden lg:block " : ""}rounded-lg border bg-card p-4`}>
         <summary className="cursor-pointer text-sm font-medium">More details (optional)</summary>
         <div className="mt-4 grid gap-4 sm:grid-cols-2">
           <Controller
@@ -496,7 +496,7 @@ export function LeadForm({
       </details>
 
       <div className="flex flex-col items-start gap-3">
-        <Button type="submit" size="lg" disabled={submitting}>
+        <Button type="submit" size="lg" className={dashboardDemo ? "w-full lg:w-auto" : undefined} disabled={submitting}>
           {submitting ? (
             <>
               <Loader2 className="h-4 w-4 animate-spin" />
@@ -506,7 +506,8 @@ export function LeadForm({
             "Submit Request"
           )}
         </Button>
-        <p className="text-xs text-muted-foreground">
+        {dashboardDemo && <p className="text-xs text-muted-foreground lg:hidden">Demo only. No calls or messages go to your phone.</p>}
+        <p className={`${dashboardDemo ? "hidden lg:block " : ""}text-xs text-muted-foreground`}>
           This is a demonstration app for a portfolio project. No real service
           request will be created and no one will contact you.
         </p>

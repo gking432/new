@@ -195,22 +195,23 @@ npm run dev
 
 ## Demo walkthroughs
 
-The chooser offers **Executive Tour** (recommended, about 7 minutes) and
-**Full Guided Tour** (about 20–30 minutes). Starting either creates a fresh demo
-workspace. The full tour covers assisted intake, website callbacks, urgent
-rescheduling, calendar-aware email, quoting, feedback, automation modules, and
-management review. Eight workflow recaps explain the trigger, resulting CRM
-work, human controls, and the role of each listed tool.
+The chooser offers **Executive Tour** (about 7 minutes). The **Full Guided Tour
+is not released**: it is hidden from the chooser and old full-tour sessions
+cannot resume it. Its implementation remains in the repository for future work.
+Starting the executive tour creates a fresh demo workspace.
 
 Tour checkpoints save stable step IDs, the current route, and explicit customer
 IDs in session storage. Exit/Start Tour resumes the same page. A hard reload
 reopens disposable call/form/composer panels at a repeatable entry point while
-retaining saved CRM records. Saved quotes are visible after reload. The compact
-mobile guide can be minimized, and navigation steps include direct page buttons.
+retaining saved CRM records. Saved quotes are visible after reload. On mobile,
+briefings explain each workflow before the action; working steps keep the guide
+collapsed, and the callback form and call hide it entirely. Desktop retains its
+sidebar and detailed instructions. See [mobile behavior and regression checks](docs/mobile-tour.md).
 
 Run `npm run test:tour` for checkpoint and voice-quota regression checks.
-For the repeatable full browser journey and executive regression, see
-[the verification report](docs/full-tour-verification.md).
+The [historical verification report](docs/full-tour-verification.md) documents
+the earlier full-tour run; its full-tour launch tests require that feature to
+be explicitly re-enabled and are not current public-release checks.
 
 ### Speed-to-lead (the primary wow demo)
 

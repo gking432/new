@@ -1,5 +1,10 @@
 # Full tour implementation and verification — September 5, 2026
 
+> Release status update: the Full Guided Tour is now hidden and cannot resume
+> from saved sessions, at the owner's request. The enabled-chooser findings below
+> are historical, not current release status. See `docs/mobile-tour.md` for the
+> executive demo's current mobile behavior.
+
 > September 6 update: the mandatory Redis gate described in this historical
 > report was removed at the owner's request. Live voice uses the existing API
 > key and enable flag, with a per-process burst limit when Redis is absent.

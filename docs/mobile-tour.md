@@ -1,16 +1,21 @@
 # Mobile demo guide
 
-Below 1024px, the executive and full tours use a bottom guide instead of the
-desktop sidebar. Each step opens with instructions. The primary mobile button
-launches a guide-owned action (such as opening the form), opens the requested
-page, or collapses the guide so the visitor can use the highlighted control.
+The public chooser offers only the Executive Tour. Full-tour launch and resume
+are disabled. Below 1024px, the executive demo explains a workflow **before**
+the visitor starts it, then gets out of the way. Briefings introduce the callback,
+post-call approval, email reply, and reputation workflows.
 
 - **Hide guide** preserves the active tour and current step.
-- The collapsed bar shows step progress, a short instruction, and **Show instructions**.
+- Working steps stay collapsed automatically. A small 44px-high **Guide** control
+  restores help on demand; it does not repeat instructions over the application.
+- Opening the callback form hides the guide entirely. On phones the form shows
+  name, phone, optional email, and Submit, without the desktop explanation panel,
+  address section, or extra project fields. Desktop keeps those optional fields.
+- The guide remains hidden during the call; live voice behavior is unchanged.
 - Reading steps offer **Next** in the collapsed bar; action steps still wait for
   the existing real navigation/action event and cannot be skipped with Next.
-- Instructions return when the step changes. Workflow recap sheets return at
-  the existing checkpoints and can also be hidden without ending the demo.
+- Only the next workflow's briefing or the result recap reopens automatically,
+  not each click within a workflow. Recaps can be hidden without ending the demo.
 - **End demo** is separate from hiding the guide. It preserves the existing resume behavior.
 - Blue highlights remain non-blocking. Duplicate floating tooltips are desktop-only.
 - The app reserves the guide's measured height rather than a fixed fraction of
@@ -33,10 +38,12 @@ In a second terminal:
 npm run test:tour-mobile
 ```
 
-The test uses `agent-browser` through `npx` in its own browser session. It creates
-a sample Greg email in that session, verifies the real action/navigation flow,
-and checks collapse/restore, manual Next, recap hiding, explicit exit, 320×568,
-390×844, 844×390, and the 1440×900 desktop layout. Checkpoints seed the email and
-recap scenarios; this is not a full voice-to-reputation end-to-end test. No calls
-are started and no customer messages are sent. `TOUR_TEST_URL` can point to a
-different localhost port; use only a server running with `DEMO_STORAGE=local`.
+The test uses `agent-browser` through `npx` in its own browser session. It checks
+that the full tour cannot start or resume, opens the actual callback form, submits
+a sample contact, and verifies the incoming browser call does not reopen the guide.
+It does **not answer** that call or create a paid voice connection. It then creates
+a sample Greg email and verifies working steps, real action/navigation, manual Next,
+recap hiding, and explicit exit at 320×568, 390×844, 844×390, and 1440×900.
+Checkpoints seed the email and recap scenarios; this is not a complete live-voice
+or voice-to-reputation test. No external customer messages are sent.
+`TOUR_TEST_URL` can select another localhost port; use `DEMO_STORAGE=local`.
