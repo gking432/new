@@ -11,6 +11,7 @@ import { MockPhoneFrame, type PhoneFrameState } from "./MockPhoneFrame";
 import { ScriptedCallFallback } from "./ScriptedCallFallback";
 import { SmsReceivePanel } from "./SmsReceivePanel";
 import { useCallEngine } from "./useCallEngine";
+import { VoiceDiagnosticControls } from "./VoiceDiagnostics";
 
 /**
  * Full-panel call experience: phone frame + live transcript + extracted
@@ -132,6 +133,9 @@ export function RealtimeCallSimulator({
               <SmsReceivePanel leadId={resultForPhone.leadId} />
             )}
           </MockPhoneFrame>
+          {phase === "connected" && mode === "realtime" && engine.diagnosticsId && (
+            <div className="mt-2"><VoiceDiagnosticControls onMark={engine.markAudioIssue} /></div>
+          )}
         </div>
       )}
 

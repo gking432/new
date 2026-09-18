@@ -10,6 +10,8 @@
     "test:tour": "node --experimental-strip-types --test tests/tour-safety.test.mjs",
     "test:tour-mobile": "node tests/mobile-tour.browser.mjs",
     "test:hubspot": "node --experimental-strip-types --test tests/hubspot.test.mjs",
+    "test:voice": "node --experimental-strip-types --test tests/voice-diagnostics.test.mjs",
+    "test:voice-browser": "node tests/voice-diagnostics.browser.mjs",
     "seed": "node scripts/seed.mjs"
   },
   "dependencies": {

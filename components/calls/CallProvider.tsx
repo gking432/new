@@ -32,6 +32,7 @@ import type { CallScenario } from "@/types/app";
 import { extractLiveFields } from "./CallShared";
 import { ScriptedCallFallback } from "./ScriptedCallFallback";
 import { useCallEngine } from "./useCallEngine";
+import { VoiceDiagnosticControls } from "./VoiceDiagnostics";
 import type { TranscriptTurn } from "@/types/app";
 
 export interface StartCallOptions {
@@ -612,6 +613,10 @@ function ActiveCallWindow({
         onEnd={() => void endCall()}
         onClose={onClose}
       />
+
+      {phase === "connected" && mode === "realtime" && engine.diagnosticsId && (
+        <div className="mt-2"><VoiceDiagnosticControls onMark={engine.markAudioIssue} /></div>
+      )}
 
       {options.scenario === "speed_to_lead_outbound" &&
         ["dialing", "incoming", "connecting", "connected"].includes(phase) && (

@@ -44,6 +44,7 @@ interface MintResult {
   webrtcUrl: string;
   api: "ga" | "beta";
   model: string;
+  mintPath: "ga_full" | "ga_minimal" | "beta";
 }
 interface MintFailure {
   ok: false;
@@ -96,6 +97,7 @@ async function tryGaMint(
           webrtcUrl: `https://api.openai.com/v1/realtime/calls?model=${encodeURIComponent(model)}`,
           api: "ga",
           model,
+          mintPath: minimal ? "ga_minimal" : "ga_full",
         };
       }
       return { ok: false, error: "GA mint returned no client secret" };
@@ -143,6 +145,7 @@ async function tryBetaMint(
           webrtcUrl: `https://api.openai.com/v1/realtime?model=${encodeURIComponent(model)}`,
           api: "beta",
           model,
+          mintPath: "beta",
         };
       }
       return { ok: false, error: "Beta mint returned no client secret" };
@@ -347,6 +350,11 @@ export async function POST(request: Request) {
 
   if (supabase) await supabase.from("calls").update({ ai_model: minted.model }).eq("id", call.id);
 
+  // Correlates device reports with session setup, without credentials or prompts.
+  console.info("realtime.session.ready", {
+    callId: call.id, model: minted.model, api: minted.api, mintPath: minted.mintPath, persona, scenario,
+  });
+
   return NextResponse.json({
     ...base,
     mode: "realtime",
@@ -354,6 +362,7 @@ export async function POST(request: Request) {
     webrtc_url: minted.webrtcUrl,
     realtime_api: minted.api,
     model: minted.model,
+    mint_path: minted.mintPath,
     instructions,
   });
 }

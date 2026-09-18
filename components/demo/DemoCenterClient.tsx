@@ -48,6 +48,7 @@ import {
 import { simulateInboundEmail, simulateInboundText } from "@/lib/actions/inbox";
 import { appendDemoEvent } from "@/lib/demo-log";
 import { DemoEventLog } from "./DemoEventLog";
+import { VoiceDiagnosticsPanel } from "@/components/calls/VoiceDiagnostics";
 
 export function DemoCenterClient({
   latestLead,
@@ -377,6 +378,7 @@ export function DemoCenterClient({
           </CardContent>
         </Card>
 
+        <VoiceDiagnosticsPanel />
         <DemoEventLog />
 
         <Card>

@@ -143,6 +143,11 @@ closed on exhaustion or outage. Missing Redis does not disable live voice.
 The voice configuration check is
 read-only and does not mint tokens or claim to verify provider connectivity.
 
+**Voice diagnostics:** call attempts capture privacy-filtered event timelines on
+the current device. Use **Mark audio issue** during a call, then **Demo Center →
+Voice diagnostics** to share/download the report. This does not change voice
+turn-taking. See [collection, privacy, and interpretation](docs/voice-diagnostics.md).
+
 The browser ends normal calls at `REALTIME_MAX_CALL_SECONDS` (30–180 seconds).
 GA client tokens expire for new connections after 30 seconds. These are mint
 quotas and a browser time limit, **not a hard dollar cap or server-enforced call

@@ -5,6 +5,7 @@ import { finishCall, markCallMissed } from "@/lib/actions/calls";
 import type { CompleteCallResult } from "@/lib/calls/completeCall";
 import type { ScriptedScenario } from "@/lib/calls/scriptedScenarios";
 import type { CallScenario, TranscriptTurn } from "@/types/app";
+import { startBrowserVoiceTrace, observeVoiceMedia, flushVoiceReports, type VoiceTrace } from "@/lib/realtime/diagnostics";
 
 export type CallPhase =
   | "idle"
@@ -28,6 +29,7 @@ export interface SessionResponse {
   webrtc_url?: string;
   realtime_api?: "ga" | "beta";
   model?: string;
+  mint_path?: "ga_full" | "ga_minimal" | "beta";
 }
 
 export interface CallEngineOptions {
@@ -75,6 +77,9 @@ export function useCallEngine(options: CallEngineOptions) {
   const [result, setResult] = useState<CompleteCallResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [realtimeError, setRealtimeError] = useState<string | null>(null);
+  const [diagnosticsId, setDiagnosticsId] = useState<string | null>(null);
+  const traceRef = useRef<VoiceTrace | null>(null);
+  const stopObservingRef = useRef<(() => void) | null>(null);
 
   const pcRef = useRef<RTCPeerConnection | null>(null);
   const dcRef = useRef<RTCDataChannel | null>(null);
@@ -100,7 +105,11 @@ export function useCallEngine(options: CallEngineOptions) {
     setTurns(turnsRef.current);
   }, []);
 
-  const cleanupMedia = useCallback(() => {
+  const cleanupMedia = useCallback((reason = "unmount") => {
+    traceRef.current?.finish(reason);
+    stopObservingRef.current?.();
+    stopObservingRef.current = null;
+    flushVoiceReports();
     if (autoEndTimerRef.current !== null) {
       window.clearTimeout(autoEndTimerRef.current);
       autoEndTimerRef.current = null;
@@ -118,6 +127,7 @@ export function useCallEngine(options: CallEngineOptions) {
     const dc = dcRef.current;
     if (!dc || dc.readyState !== "open") return;
     try {
+      traceRef.current?.record("client.wrap_up_requested");
       dc.send(
         JSON.stringify({
           type: "conversation.item.create",
@@ -140,10 +150,10 @@ export function useCallEngine(options: CallEngineOptions) {
   }, []);
 
   const endCall = useCallback(
-    async (scriptedSeed?: Record<string, string | null>) => {
+    async (scriptedSeed?: Record<string, string | null>, reason = "user_hangup") => {
       if (endedRef.current) return;
       endedRef.current = true;
-      cleanupMedia();
+      cleanupMedia(reason);
       setAiSpeaking(false);
       setPhase("processing");
       emit("Call ended — generating transcript, CRM notes, and next steps");
@@ -201,8 +211,9 @@ export function useCallEngine(options: CallEngineOptions) {
     }
     autoEndTimerRef.current = window.setTimeout(() => {
       autoEndTimerRef.current = null;
-      void endCall();
+      void endCall(undefined, "goodbye_timer");
     }, 1200);
+    traceRef.current?.record("client.goodbye_timer_scheduled");
   }, [endCall]);
 
   // Call timer + duration cap.
@@ -218,7 +229,7 @@ export function useCallEngine(options: CallEngineOptions) {
         emit("Demo time cap reached — assistant is wrapping up");
       }
       if (modeRef.current === "realtime" && secondsRef.current >= cap + 25) {
-        void endCall();
+        void endCall(undefined, "duration_cap");
       }
     }, 1000);
     return () => clearInterval(interval);
@@ -226,7 +237,7 @@ export function useCallEngine(options: CallEngineOptions) {
 
   const fallbackToScripted = useCallback(
     (reason?: string) => {
-      cleanupMedia();
+      cleanupMedia("fallback");
       // The you-answer-an-AI-customer mode needs live voice (a human is on the
       // line). Never fall back to the agent script — fail clearly instead so we
       // don't pretend a conversation happened.
@@ -254,16 +265,23 @@ export function useCallEngine(options: CallEngineOptions) {
   const connectRealtime = useCallback(
     async (s: SessionResponse) => {
       try {
+        traceRef.current?.record("microphone.requested");
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
         streamRef.current = stream;
         const pc = new RTCPeerConnection();
         pcRef.current = pc;
+        try {
+          if (traceRef.current) stopObservingRef.current = observeVoiceMedia(traceRef.current, pc, stream, audioRef.current);
+        } catch { traceRef.current?.record("diagnostics.media_observer_unavailable"); }
         stream.getTracks().forEach((track) => pc.addTrack(track, stream));
 
         pc.ontrack = (event) => {
+          traceRef.current?.record("rtc.remote_track", { trackState: event.track.readyState });
           if (audioRef.current) {
             audioRef.current.srcObject = event.streams[0];
-            void audioRef.current.play().catch(() => undefined);
+            void audioRef.current.play().catch((error: unknown) => {
+              traceRef.current?.record("playback.play_rejected", { errorName: error instanceof Error ? error.name : "unknown" });
+            });
           }
         };
 
@@ -272,21 +290,27 @@ export function useCallEngine(options: CallEngineOptions) {
         const aiBuffer = { text: "" };
 
         dc.onopen = () => {
+          traceRef.current?.record("data_channel.open");
           setPhase("connected");
           emit("Live AI voice connected");
           optionsRef.current.onAnswered?.();
           if (optionsRef.current.persona !== "customer") {
+            traceRef.current?.record("client.response_create", { reason: "greeting" });
             dc.send(JSON.stringify({ type: "response.create" }));
           }
         };
+        dc.onclose = () => traceRef.current?.record("data_channel.closed");
+        dc.onerror = () => traceRef.current?.record("data_channel.error");
 
         dc.onmessage = (event) => {
           let data: { type?: string; transcript?: string; delta?: string };
           try {
             data = JSON.parse(event.data);
           } catch {
+            traceRef.current?.record("data_channel.invalid_json");
             return;
           }
+          traceRef.current?.providerEvent(data);
           switch (data.type) {
             case "conversation.item.input_audio_transcription.completed":
               if (data.transcript?.trim()) {
@@ -347,6 +371,7 @@ export function useCallEngine(options: CallEngineOptions) {
           },
           body: offer.sdp,
         });
+        traceRef.current?.record("rtc.sdp_exchange", { httpStatus: sdpResponse.status });
         if (!sdpResponse.ok) {
           throw new Error(`SDP exchange failed: ${sdpResponse.status}`);
         }
@@ -355,6 +380,7 @@ export function useCallEngine(options: CallEngineOptions) {
         modeRef.current = "realtime";
         setMode("realtime");
       } catch (err) {
+        traceRef.current?.record("connection.failed", { errorName: err instanceof Error ? err.name : "unknown" });
         console.error("Realtime connection failed:", err);
         fallbackToScripted(err instanceof Error ? err.message : "connection error");
       }
@@ -364,6 +390,11 @@ export function useCallEngine(options: CallEngineOptions) {
 
   const answer = useCallback(async () => {
     setPhase("connecting");
+    try {
+      traceRef.current?.finish("superseded_attempt");
+      traceRef.current = startBrowserVoiceTrace({ scenario: optionsRef.current.scenario, persona: optionsRef.current.persona ?? "agent" });
+      setDiagnosticsId(traceRef.current.report.id);
+    } catch { /* Diagnostic storage must not prevent voice startup. */ }
     try {
       const opts = optionsRef.current;
       const res = await fetch("/api/realtime/session", {
@@ -378,6 +409,7 @@ export function useCallEngine(options: CallEngineOptions) {
           seedFields: opts.seedFields,
         }),
       });
+      traceRef.current?.record("session.http_response", { httpStatus: res.status });
       if (!res.ok) {
         let message = "Session request failed";
         try {
@@ -389,6 +421,7 @@ export function useCallEngine(options: CallEngineOptions) {
         throw new Error(message);
       }
       const s = (await res.json()) as SessionResponse;
+      traceRef.current?.record("session.selected", { callId: s.call_id, model: s.model, api: s.realtime_api, mode: s.mode, mintPath: s.mint_path });
       sessionRef.current = s;
       setSession(s);
       callIdRef.current = s.call_id;
@@ -401,6 +434,8 @@ export function useCallEngine(options: CallEngineOptions) {
       if (s.mode === "realtime") {
         await connectRealtime(s);
       } else if (opts.persona === "customer") {
+        traceRef.current?.finish("live_voice_unavailable");
+        flushVoiceReports();
         // You-answer mode needs live voice; don't run the agent script.
         setRealtimeError(s.realtime_error ?? null);
         setError(
@@ -410,12 +445,17 @@ export function useCallEngine(options: CallEngineOptions) {
         );
         setPhase("failed");
       } else {
+        traceRef.current?.finish("scripted_mode");
+        flushVoiceReports();
         modeRef.current = "scripted";
         setMode("scripted");
         setPhase("connected");
         optionsRef.current.onAnswered?.();
       }
     } catch (err) {
+      traceRef.current?.record("session.failed", { errorName: err instanceof Error ? err.name : "unknown" });
+      traceRef.current?.finish("session_failed");
+      flushVoiceReports();
       console.error("Could not start call:", err);
       setError(
         err instanceof Error
@@ -443,9 +483,15 @@ export function useCallEngine(options: CallEngineOptions) {
   const toggleMute = useCallback(() => {
     setMuted((current) => {
       const next = !current;
+      traceRef.current?.record("microphone.user_mute", { muted: next });
       streamRef.current?.getAudioTracks().forEach((t) => (t.enabled = !next));
       return next;
     });
+  }, []);
+
+  const markAudioIssue = useCallback(() => {
+    traceRef.current?.record("user.marked_issue");
+    flushVoiceReports();
   }, []);
 
   return {
@@ -461,6 +507,8 @@ export function useCallEngine(options: CallEngineOptions) {
     result,
     error,
     realtimeError,
+    diagnosticsId,
+    markAudioIssue,
     audioRef,
     answer,
     decline,
