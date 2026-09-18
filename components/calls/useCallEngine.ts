@@ -266,7 +266,15 @@ export function useCallEngine(options: CallEngineOptions) {
     async (s: SessionResponse) => {
       try {
         traceRef.current?.record("microphone.requested");
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        const stream = await navigator.mediaDevices.getUserMedia({
+          audio: {
+            // Request browser echo/noise processing without making unsupported
+            // constraints fatal. Keep the mic live so the user can interrupt.
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: false,
+          },
+        });
         streamRef.current = stream;
         const pc = new RTCPeerConnection();
         pcRef.current = pc;

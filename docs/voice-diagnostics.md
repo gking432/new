@@ -1,9 +1,31 @@
 # Voice interruption diagnostics
 
-Every answered call attempt now starts a device-local technical report. This is
-instrumentation only: no model, prompt, microphone constraints, VAD thresholds,
-interruption policy, or normal call timing was changed. No analytics vendor or
-new paid service is required.
+Every answered call attempt starts a device-local technical report. The recorder
+itself does not control audio or call timing. No analytics vendor or new paid
+service is required.
+
+## Speaker-feedback tuning
+
+The browser requests `echoCancellation: true`, `noiseSuppression: true`, and
+`autoGainControl: false`. These are preferences, not mandatory constraints:
+unsupported processing must not prevent microphone access. Check the report's
+`microphone.settings` for what the device actually applied.
+
+The interviewer uses `server_vad` with threshold `0.7` (previously `0.5`),
+`interrupt_response: true`, and unchanged 300 ms prefix / 800 ms silence timing.
+The microphone stays live during assistant playback; natural interruptions remain
+enabled. The AI-homeowner policy remains threshold `0.65`, interruptions disabled,
+and 950 ms silence. GA full, GA minimal, and beta mint paths all carry the same
+role-specific turn settings, so a compatibility retry cannot silently undo them.
+
+This is a targeted mitigation, not proof the original issue was echo or that it
+is fixed on iOS. After refreshing Safari, test both normal and quiet speech on
+the phone speaker, including interrupting the interviewer mid-sentence. Compare
+false speech/cancellation events and confirm real speech still triggers reliably.
+There is no automatic microphone gating or model change in this tuning.
+
+[OpenAI VAD controls](https://developers.openai.com/api/docs/guides/realtime-vad)
+document the threshold tradeoff: a higher value requires louder input.
 
 ## Reproduce on iPhone Safari
 
@@ -76,6 +98,8 @@ Official event semantics:
 
 `npm run test:voice` covers event semantics, GA/beta settings, field privacy,
 audio-stat selection, bounded storage, retention and storage-failure behavior.
+It also invokes the real session route with mocked storage/provider boundaries to
+verify role-specific audio settings in every mint path without paid API requests.
 
 On an isolated local server, `npm run test:voice-browser` drives the real call
 engine with a **fake microphone/peer/provider** and checks report creation,

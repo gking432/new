@@ -10,8 +10,7 @@ import { isLocalDemoMode } from "@/lib/demo/mode";
 import { createLocalCallSession } from "@/lib/demo/localWorkflows";
 import { getLocalAvailableSlots } from "@/lib/demo/localData";
 
-// Full gpt-realtime = ChatGPT-voice-mode quality. Set REALTIME_MODEL to
-// gpt-realtime-mini for a cheaper (slightly less natural) option.
+// Keep the configured Realtime model; audio tuning does not require a model change.
 const DEFAULT_REALTIME_MODEL = "gpt-realtime";
 
 /**
@@ -51,6 +50,19 @@ interface MintFailure {
   error: string;
 }
 
+function voiceTurnDetection(interruptResponse: boolean) {
+  return {
+    type: "server_vad",
+    // Reduce false speech triggers from speaker bleed while preserving barge-in
+    // for the interviewer. Leave the AI-homeowner turn policy unchanged.
+    threshold: interruptResponse ? 0.7 : 0.65,
+    prefix_padding_ms: 300,
+    silence_duration_ms: interruptResponse ? 800 : 950,
+    create_response: true,
+    interrupt_response: interruptResponse,
+  };
+}
+
 async function tryGaMint(
   apiKey: string,
   model: string,
@@ -61,25 +73,18 @@ async function tryGaMint(
 ): Promise<MintResult | MintFailure> {
   if (!(await reserveVoiceMint())) return { ok: false, error: "Live voice quota unavailable. Use the silent simulation." };
   try {
-    const session: Record<string, unknown> = { type: "realtime", model, instructions };
-    if (!minimal) {
-      session.audio = {
+    const session = {
+      type: "realtime", model, instructions,
+      audio: {
         input: {
-          transcription: { model: "gpt-4o-mini-transcribe" },
-          // Server-side voice activity detection so the assistant WAITS for the
-          // other person to finish before replying (no barrelling ahead).
-          turn_detection: {
-            type: "server_vad",
-            threshold: interruptResponse ? 0.5 : 0.65,
-            prefix_padding_ms: 300,
-            silence_duration_ms: interruptResponse ? 800 : 950,
-            create_response: true,
-            interrupt_response: interruptResponse,
-          },
+          ...(!minimal ? { transcription: { model: "gpt-4o-mini-transcribe" } } : {}),
+          // The compatibility retry may drop voice/transcription options, but
+          // must not silently revert the speech threshold or interruption policy.
+          turn_detection: voiceTurnDetection(interruptResponse),
         },
-        output: { voice },
-      };
-    }
+        ...(!minimal ? { output: { voice } } : {}),
+      },
+    };
     const res = await fetch("https://api.openai.com/v1/realtime/client_secrets", {
       method: "POST",
       headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
@@ -112,7 +117,8 @@ async function tryBetaMint(
   apiKey: string,
   model: string,
   instructions: string,
-  voice: string
+  voice: string,
+  interruptResponse: boolean
 ): Promise<MintResult | MintFailure> {
   if (!(await reserveVoiceMint())) return { ok: false, error: "Live voice quota unavailable. Use the silent simulation." };
   // cedar/marin are GA-only; map to a beta-supported voice on the fallback path.
@@ -131,6 +137,7 @@ async function tryBetaMint(
         instructions,
         voice,
         input_audio_transcription: { model: "whisper-1" },
+        turn_detection: voiceTurnDetection(interruptResponse),
       }),
       signal: AbortSignal.timeout(10000),
     });
@@ -199,7 +206,7 @@ async function mintRealtimeSecret(args: {
   errors.push(gaMinimal.error);
 
   const betaModel = args.model.startsWith("gpt-4o") ? args.model : "gpt-4o-realtime-preview";
-  const beta = await tryBetaMint(args.apiKey, betaModel, args.instructions, voice);
+  const beta = await tryBetaMint(args.apiKey, betaModel, args.instructions, voice, interruptResponse);
   if (beta.ok) return beta;
   errors.push(beta.error);
   console.error("Realtime beta mint failed:", beta.error);

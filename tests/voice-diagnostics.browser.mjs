@@ -17,7 +17,7 @@ const browser = (...args) => {
 const evaluate = (js) => JSON.parse(browser('eval', js));
 const key = 'northstar-voice-diagnostics-v1';
 function installFakeVoice() {
-  const state = window.__voiceTest = { sent: [], requestCount: 0 };
+  const state = window.__voiceTest = { sent: [], requestCount: 0, microphoneRequests: [] };
   const originalFetch = window.fetch;
   window.fetch = async (input, init) => {
     const url = String(input);
@@ -32,8 +32,12 @@ function installFakeVoice() {
   };
   const track = new EventTarget();
   Object.assign(track, { enabled: true, muted: false, readyState: 'live', stop() { this.readyState = 'ended'; },
-    getSettings() { return { echoCancellation: true, noiseSuppression: true, autoGainControl: true, sampleRate: 48000, deviceId: 'PRIVATE_DEVICE_ID' }; } });
-  navigator.mediaDevices.getUserMedia = async () => ({ getTracks: () => [track], getAudioTracks: () => [track] });
+    getSettings() { return { echoCancellation: true, noiseSuppression: true, autoGainControl: false, sampleRate: 48000, deviceId: 'PRIVATE_DEVICE_ID' }; } });
+  state.track = track;
+  navigator.mediaDevices.getUserMedia = async (constraints) => {
+    state.microphoneRequests.push(constraints);
+    return { getTracks: () => [track], getAudioTracks: () => [track] };
+  };
   HTMLMediaElement.prototype.play = () => Promise.reject(new DOMException('PRIVATE_ERROR_MESSAGE', 'NotAllowedError'));
   window.RTCPeerConnection = class extends EventTarget {
     connectionState = 'new'; iceConnectionState = 'new'; signalingState = 'stable';
@@ -70,11 +74,19 @@ try {
   browser('find', 'role', 'button', 'click', '--name', 'Simulate inbound call', '--exact');
   browser('find', 'role', 'button', 'click', '--name', 'Answer', '--exact');
   browser('wait', '--fn', "Boolean(document.querySelector('audio')) && Boolean(window.__voiceTest.dc?.onmessage)");
+  assert.deepEqual(evaluate('window.__voiceTest.microphoneRequests'), [{ audio: {
+    echoCancellation: true, noiseSuppression: true, autoGainControl: false,
+  } }], 'request audio processing without mandatory exact constraints');
   evaluate(`(() => {
     const emit = window.__voiceTest.emit;
-    emit({type:'session.created',session:{id:'sess_test',model:'gpt-realtime',instructions:'PRIVATE_PROMPT',client_secret:{value:'PRIVATE_SECRET'},audio:{input:{turn_detection:{type:'server_vad',threshold:0.5,interrupt_response:true,create_response:true}},output:{voice:'cedar'}}}});
+    emit({type:'session.created',session:{id:'sess_test',model:'gpt-realtime',instructions:'PRIVATE_PROMPT',client_secret:{value:'PRIVATE_SECRET'},audio:{input:{turn_detection:{type:'server_vad',threshold:0.7,interrupt_response:true,create_response:true}},output:{voice:'cedar'}}}});
     emit({type:'response.created',response:{id:'resp_test'}});
     emit({type:'output_audio_buffer.started',response_id:'resp_test'});
+    return true;
+  })()`);
+  assert.equal(evaluate('window.__voiceTest.track.enabled'), true, 'microphone stays live during AI playback for natural interruptions');
+  evaluate(`(() => {
+    const emit = window.__voiceTest.emit;
     emit({type:'input_audio_buffer.speech_started',item_id:'item_test',audio_start_ms:300});
     emit({type:'response.done',response:{id:'resp_test',status:'cancelled',status_details:{reason:'turn_detected'},output:[{content:[{transcript:'PRIVATE_TRANSCRIPT',audio:'PRIVATE_AUDIO'}]}]}});
     emit({type:'output_audio_buffer.cleared',response_id:'resp_test'});
@@ -86,6 +98,9 @@ try {
   const events = evaluate(`JSON.parse(localStorage.getItem('${key}'))[0].events`);
   for (const type of ['session.selected', 'session.created', 'microphone.settings', 'playback.play_rejected', 'rtc.inbound-rtp', 'response.done', 'user.marked_issue', 'playback.waiting']) assert.ok(events.some((e) => e.type === type), type);
   assert.equal(events.find((e) => e.type === 'response.done').data.reason, 'turn_detected');
+  assert.equal(events.find((e) => e.type === 'session.created').data.threshold, 0.7);
+  assert.equal(events.find((e) => e.type === 'session.created').data.interruptResponse, true);
+  assert.equal(events.find((e) => e.type === 'microphone.settings').data.autoGainControl, false);
   assert.equal(events.find((e) => e.type === 'input_audio_buffer.speech_started').data.outputPlaying, true);
   assert.deepEqual(evaluate('window.__voiceTest.sent'), [{ type: 'response.create' }], 'diagnostics send no provider commands');
   assert.equal(evaluate('window.__voiceTest.requestCount'), 1);
